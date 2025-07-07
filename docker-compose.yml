@@ -1,0 +1,13 @@
+services:
+  dev-db:
+    image: postgres:latest
+    restart: always
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    volumes:
+      - dev-db:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+volumes:
+  dev-db:
