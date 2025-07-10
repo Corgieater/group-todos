@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <%- include('../partials/temporary-style') %>
+  <title>Signup</title>
+</head>
+<body>
+
+<%- include('../partials/message', {  flash: flash } ) %>
+
+<form action="/api/auth/signup" method="POST">
+  <input type="text" name="userName" placeholder="Username" value="test">
+  <input type="email" name="email" placeholder="Email" value="test@test.com">
+  <input type="password" name="password" placeholder="Password" value="test">
+  <button type="submit">Signup</button>
+</form>
+
+<a href="/">Home</a>
+
+</body>
+</html>

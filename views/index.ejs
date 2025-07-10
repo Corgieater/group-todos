@@ -3,18 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <%- include('partials/temporary-style') %>
     <title>Index</title>
   </head>
   <body>
-<% if (message) { %>
-  <h1><%= message %></h1>
-<% } else { %>
-  <h1>
-    Hi, this is Group-todo, an app that helps you track todos for yourself or your group!
-  </h1>
-<% } %>
-     
-    
-
+    <h1>
+      Hi, this is Group-todo, an app that helps you track todos for yourself or
+      your group!
+    </h1>
+    <%- include('partials/message', { flash: flash }) %>
+    <a href="/auth/signup">Sign up</a>
+    <br />
+    <a href="">Log in</a>
   </body>
 </html>
