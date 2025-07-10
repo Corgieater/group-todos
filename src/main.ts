@@ -5,8 +5,8 @@ import { join } from 'path';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
-import connectFlash from 'connect-flash';
 import session from 'express-session';
+import { flashMessage } from './middleware/flash.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -23,7 +23,7 @@ async function bootstrap() {
       cookie: { maxAge: 60000 },
     }),
   );
-  app.use(connectFlash());
+  app.use(flashMessage);
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
