@@ -1,6 +1,5 @@
 import {
   Controller,
-  Get,
   Post,
   Req,
   Res,
@@ -22,7 +21,7 @@ export class AuthController {
     @Res() res: Response,
   ) {
     try {
-      await this.authService.create(dto);
+      await this.authService.signup(dto);
       req.session.flash = {
         type: 'success',
         message: 'Account apply succeed, please login!',

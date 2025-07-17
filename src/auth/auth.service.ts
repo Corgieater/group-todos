@@ -7,8 +7,7 @@ import * as argon from 'argon2';
 @Injectable()
 export class AuthService {
   constructor(private prisma: PrismaService) {}
-  async create(dto: AuthSignupDto): Promise<void> {
-    // check if the email exist, do test
+  async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
