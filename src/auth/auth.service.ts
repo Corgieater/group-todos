@@ -10,6 +10,11 @@ export class AuthService {
   async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      select: {
+        id: true,
+        userName: true,
+        email: true,
+      },
     });
     if (existUser) {
       throw new ConflictException();
