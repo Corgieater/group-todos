@@ -8,7 +8,7 @@ import {
   HttpException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { AuthSignupDto } from './dto/auth-signup.dto';
+import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
 import { Response, Request } from 'express';
 
 @Controller('api/auth')
@@ -33,6 +33,21 @@ export class AuthController {
         return res.redirect('/auth/signup');
       }
       throw e;
+    }
+  }
+  @Post('signin')
+  async signin(
+    @Req() req: Request,
+    @Body() dto: AuthSigninDto,
+    @Res() res: Response,
+  ) {
+    // deal with unauthorized(account or password don't match situations)
+    try {
+      const { access_token } = await this.authService.signin(dto);
+      res.cookie('jwt', access_token);
+      return res.redirect('/users/home');
+    } catch (e) {
+      console.log(e);
     }
   }
 }
