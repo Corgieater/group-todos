@@ -1,18 +1,31 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  UnauthorizedException,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { AuthSignupDto } from '../auth/dto/auth-signup.dto';
-
+import { AuthSignupDto, AuthSigninDto } from './dto/auth.dto';
+import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
+
+interface UserInfo {
+  id: number;
+  name: string;
+  hash: string;
+}
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
   async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
       select: {
         id: true,
-        userName: true,
+        name: true,
         email: true,
       },
     });
@@ -21,10 +34,31 @@ export class AuthService {
     }
     const hash = await argon.hash(dto.password);
     const data = {
-      userName: dto.userName,
+      name: dto.name,
       email: dto.email,
       hash,
     };
     await this.prisma.user.create({ data: data });
+  }
+  async signin(dto: AuthSigninDto) {
+    const userInfo: UserInfo = await this.prisma.user.findUniqueOrThrow({
+      where: { email: dto.email },
+      select: { id: true, name: true, hash: true },
+    });
+    if (!(await argon.verify(userInfo.hash, dto.password))) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    const payload = {
+      sub: userInfo.id,
+      name: userInfo.name,
+    };
+    return { access_token: await this.signToken(payload) };
+  }
+  async signToken(payload: { sub: number; name: string }): Promise<string> {
+    return await this.jwtService.signAsync(payload);
+  }
+
+  async decodeToken(token: string): Promise<{ sub: number; name: string }> {
+    return await this.jwtService.decode(token);
   }
 }
