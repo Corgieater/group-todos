@@ -34,7 +34,7 @@ describe('AuthController', () => {
       redirect: jest.fn(),
     } as unknown as Response;
     const dto = {
-      userName: 'test',
+      name: 'test',
       email: 'test@test.com',
       password: 'test',
     };
@@ -57,7 +57,7 @@ describe('AuthController', () => {
       redirect: jest.fn(),
     } as unknown as Response;
     const dto = {
-      userName: 'test',
+      name: 'test',
       email: 'test@test.com',
       password: 'test',
     };
