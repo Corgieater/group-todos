@@ -17,7 +17,7 @@ interface UserInfo {
 @Injectable()
 export class AuthService {
   constructor(
-    // getting user should belong to userService
+    // todo: getting user should belong to userService
     private prisma: PrismaService,
     private jwtService: JwtService,
   ) {}

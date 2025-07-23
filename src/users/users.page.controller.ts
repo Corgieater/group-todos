@@ -5,22 +5,18 @@ import {
   Req,
   Res,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from 'src/auth/auth.service';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('users')
 export class UsersPageController {
-  constructor(private authService: AuthService) {}
+  @UseGuards(JwtAuthGuard)
   @Get('home')
   async userPage(@Req() req: Request, @Res() res: Response) {
-    // deal with no token issue
-    // sent these users back to sign in
-    const token = req.cookies?.jwt;
-    if (typeof token !== 'string') {
-      throw new UnauthorizedException('No valid JWT found');
-    }
-    const userInfo = await this.authService.decodeJwtToken(token);
-    return res.render('user/user-page', { name: userInfo.name });
+    const user = req.user as { userId: number; userName: string };
+    return res.render('user/user-page', { name: user.userName });
   }
 }

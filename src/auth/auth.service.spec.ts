@@ -15,6 +15,7 @@ describe('AuthService', () => {
   const mockPrisma = {
     user: {
       findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
       create: jest.fn(),
     },
   };
@@ -34,55 +35,75 @@ describe('AuthService', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
-
-  it('should add user and hash password', async () => {
-    const dto = {
-      userName: 'test',
-      email: 'test@test.com',
-      password: 'test',
-    };
-
-    (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
-
-    await authService.signup(dto);
-
-    expect(prismaService.user.findUnique).toHaveBeenCalledWith({
-      where: { email: dto.email },
-      select: {
-        id: true,
-        userName: true,
-        email: true,
-      },
-    });
-    expect(argon.hash).toHaveBeenCalledWith(dto.password);
-    expect(prismaService.user.create).toHaveBeenCalledWith({
-      data: {
+  describe('signup', () => {
+    it('should add user and hash password', async () => {
+      const dto = {
+        name: 'test',
         email: 'test@test.com',
-        hash: 'hashed',
-        userName: 'test',
-      },
+        password: 'test',
+      };
+
+      (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
+
+      await authService.signup(dto);
+
+      expect(prismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { email: dto.email },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      });
+      expect(argon.hash).toHaveBeenCalledWith(dto.password);
+      expect(prismaService.user.create).toHaveBeenCalledWith({
+        data: {
+          email: 'test@test.com',
+          hash: 'hashed',
+          name: 'test',
+        },
+      });
+    });
+
+    it('should throw conflictException', async () => {
+      const dto = {
+        name: 'test',
+        email: 'test@test.com',
+        password: 'test',
+      };
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        id: 1,
+        name: 'test',
+        email: dto.email,
+      });
+      await expect(authService.signup(dto)).rejects.toThrow(ConflictException);
+
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: dto.email },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      });
     });
   });
-  it('should throw conflictException', async () => {
-    const dto = {
-      userName: 'test',
-      email: 'test@test.com',
-      password: 'test',
-    };
-    mockPrisma.user.findUnique.mockResolvedValueOnce({
-      id: 1,
-      userName: 'test',
-      email: dto.email,
-    });
-    await expect(authService.signup(dto)).rejects.toThrow(ConflictException);
 
-    expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
-      where: { email: dto.email },
-      select: {
-        id: true,
-        userName: true,
-        email: true,
-      },
+  describe('signin', () => {
+    it('should sign user in and issue access token', async () => {
+      const mockReq = {};
+      const dto = {
+        email: 'test@test.com',
+        password: 'password',
+      };
+      const mockUser = {
+        id: 1,
+        email: 'test@test.com',
+        hash: 'hashed',
+      };
+      await authService.signin(dto);
+      expect(prismaService.user.findUniqueOrThrow).toHaveBeenCalledWith(dto);
+      expect(argon.verify).toHaveBeenCalledWith(mockUser.hash, dto.password);
     });
   });
 });

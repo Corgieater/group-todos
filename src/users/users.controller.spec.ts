@@ -28,7 +28,7 @@ beforeEach(async () => {
 // testing, i think it being reasonable
 it('should call usersService and redirect to /', async () => {
   const userData = {
-    userName: 'test',
+    name: 'test',
     email: 'test@gmail.com',
     password: 'test',
   };
@@ -48,7 +48,7 @@ it('should call usersService and redirect to /', async () => {
 
 // test('should call userService and redirect to /', async () => {
 //   const userData = {
-//     userName: 'test',
+//     name: 'test',
 //     email: 'test@gmail.com',
 //     password: 'test',
 //   };

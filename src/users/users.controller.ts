@@ -11,32 +11,27 @@ import {
   Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
+import { AuthSignupDto } from '../auth/dto/auth.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Request, Response } from 'express';
-import { STATUS_CODES } from 'http';
 
-@Controller('users')
+@Controller('api/users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
   async create(
     @Req() req: Request,
-    @Body() dto: CreateUserDto,
+    @Body() dto: AuthSignupDto,
     @Res() res: Response,
   ) {
     try {
       await this.usersService.create(dto);
       return res.redirect('/');
     } catch (e) {
-      console.log('code', e.status);
       if (e.status === HttpStatus.CONFLICT) {
-        console.log('2');
-        // this won't work, do a flash message
-        // i already set connct flash up in main,ts
         return res.render('index', {
-          message: req.flash('Email already taken'),
+          message: 'Email already taken',
         });
       }
     }

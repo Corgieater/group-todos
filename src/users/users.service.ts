@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
+import { AuthSignupDto } from '../auth/dto/auth.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon from 'argon2';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -9,7 +9,7 @@ import e from 'express';
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async create(dto: CreateUserDto): Promise<void> {
+  async create(dto: AuthSignupDto): Promise<void> {
     // check if the email exist, do test
     const existUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -20,7 +20,7 @@ export class UsersService {
     }
     const hash = await argon.hash(dto.password);
     const data = {
-      userName: dto.userName,
+      name: dto.name,
       email: dto.email,
       hash,
     };

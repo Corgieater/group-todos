@@ -24,13 +24,13 @@ describe('UsersService', () => {
 
   it('should hash and create a user', async () => {
     const userData = {
-      userName: 'test',
+      name: 'test',
       email: 'test@gmail.com',
       password: 'test',
     };
     jest.spyOn(argon, 'hash').mockResolvedValue('hashed');
     const hashedData = {
-      userName: 'test',
+      name: 'test',
       email: 'test@gmail.com',
       hash: 'hashed',
     };
