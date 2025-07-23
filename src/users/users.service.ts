@@ -1,23 +1,15 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AuthSignupDto } from '../auth/dto/auth.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon from 'argon2';
 import { PrismaService } from 'src/prisma/prisma.service';
-import e from 'express';
+import { UserInfo } from 'types/users';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: AuthSignupDto): Promise<void> {
-    // check if the email exist, do test
-    const existUser = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (existUser) {
-      console.log('email exist');
-      throw new ConflictException();
-    }
     const hash = await argon.hash(dto.password);
     const data = {
       name: dto.name,
@@ -33,9 +25,30 @@ export class UsersService {
   findAll() {
     return this.prisma.user.findMany();
   }
+  async checkIfEmailExists(email: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, hash: true, name: true },
+    });
+    if (user) {
+      return true;
+    }
+    return false;
+  }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findByEmailOrThrow(email: string): Promise<UserInfo> {
+    const user = await this.findByEmailOrThrow(email);
+    return user;
+  }
+  async findOne(id: number): Promise<{ id: number; email: string } | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+    return user;
   }
 
   update(id: number, updateUserDto: UpdateUserDto) {
