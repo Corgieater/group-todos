@@ -17,6 +17,7 @@ interface UserInfo {
 @Injectable()
 export class AuthService {
   constructor(
+    // getting user should belong to userService
     private prisma: PrismaService,
     private jwtService: JwtService,
   ) {}
@@ -40,25 +41,24 @@ export class AuthService {
     };
     await this.prisma.user.create({ data: data });
   }
-  async signin(dto: AuthSigninDto) {
+  async signin(
+    email: string,
+    password: string,
+  ): Promise<{ access_token: string }> {
     const userInfo: UserInfo = await this.prisma.user.findUniqueOrThrow({
-      where: { email: dto.email },
+      where: { email },
       select: { id: true, name: true, hash: true },
     });
-    if (!(await argon.verify(userInfo.hash, dto.password))) {
+    if (!(await argon.verify(userInfo.hash, password))) {
       throw new UnauthorizedException('Invalid credentials');
     }
     const payload = {
       sub: userInfo.id,
-      name: userInfo.name,
+      userName: userInfo.name,
     };
     return { access_token: await this.signToken(payload) };
   }
-  async signToken(payload: { sub: number; name: string }): Promise<string> {
+  async signToken(payload: { sub: number; userName: string }): Promise<string> {
     return await this.jwtService.signAsync(payload);
-  }
-
-  async decodeToken(token: string): Promise<{ sub: number; name: string }> {
-    return await this.jwtService.decode(token);
   }
 }

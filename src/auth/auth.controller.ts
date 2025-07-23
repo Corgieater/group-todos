@@ -43,7 +43,10 @@ export class AuthController {
   ) {
     // deal with unauthorized(account or password don't match situations)
     try {
-      const { access_token } = await this.authService.signin(dto);
+      const { access_token } = await this.authService.signin(
+        dto.email,
+        dto.password,
+      );
       res.cookie('jwt', access_token);
       return res.redirect('/users/home');
     } catch (e) {
