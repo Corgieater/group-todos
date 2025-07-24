@@ -2,17 +2,18 @@ import {
   ConflictException,
   UnauthorizedException,
   Injectable,
-  Redirect,
 } from '@nestjs/common';
-import { AuthSignupDto, AuthSigninDto } from './dto/auth.dto';
+import { AuthSignupDto } from './dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
 import { UsersService } from 'src/users/users.service';
 import { UserInfo } from 'src/types/users';
 @Injectable()
+// TODO:
+// 1. correct signup test
+// 2. write test for signin
 export class AuthService {
   constructor(
-    // todo: getting user should belong to userService
     private usersService: UsersService,
     private jwtService: JwtService,
   ) {}
@@ -21,7 +22,13 @@ export class AuthService {
     if (emailTaken) {
       throw new ConflictException();
     }
-    await this.usersService.create(dto);
+    const hash = await argon.hash(dto.password);
+    const createUserInput = {
+      name: dto.name,
+      email: dto.email,
+      hash,
+    };
+    await this.usersService.create(createUserInput);
   }
   async signin(
     email: string,

@@ -1,25 +1,19 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { AuthSignupDto } from '../auth/dto/auth.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import * as argon from 'argon2';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UserInfo } from 'src/types/users';
+import { UserInfo, CreateUserInput } from 'src/types/users';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
   // todo: write tests
-  async create(dto: AuthSignupDto): Promise<void> {
-    const hash = await argon.hash(dto.password);
+  async create(dto: CreateUserInput): Promise<void> {
     const data = {
       name: dto.name,
       email: dto.email,
-      hash,
+      hash: dto.hash,
     };
-    if (dto.group) {
-      data['group'] = dto.group;
-    }
     await this.prisma.user.create({ data: data });
   }
 
