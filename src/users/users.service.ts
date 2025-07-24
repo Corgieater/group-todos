@@ -1,14 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuthSignupDto } from '../auth/dto/auth.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon from 'argon2';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UserInfo } from 'types/users';
+import { UserInfo } from 'src/types/users';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
-
+  // todo: write tests
   async create(dto: AuthSignupDto): Promise<void> {
     const hash = await argon.hash(dto.password);
     const data = {
@@ -37,8 +38,20 @@ export class UsersService {
   }
 
   async findByEmailOrThrow(email: string): Promise<UserInfo> {
-    const user = await this.findByEmailOrThrow(email);
-    return user;
+    try {
+      const user = await this.prisma.user.findUniqueOrThrow({
+        where: { email },
+      });
+      return user;
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
+        throw new UnauthorizedException();
+      }
+      throw e;
+    }
   }
   async findOne(id: number): Promise<{ id: number; email: string } | null> {
     const user = await this.prisma.user.findUnique({

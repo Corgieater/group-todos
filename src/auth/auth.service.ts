@@ -2,55 +2,35 @@ import {
   ConflictException,
   UnauthorizedException,
   Injectable,
+  Redirect,
 } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthSignupDto, AuthSigninDto } from './dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
-
-interface UserInfo {
-  id: number;
-  name: string;
-  hash: string;
-}
-
+import { UsersService } from 'src/users/users.service';
+import { UserInfo } from 'src/types/users';
 @Injectable()
 export class AuthService {
   constructor(
     // todo: getting user should belong to userService
-    private prisma: PrismaService,
+    private usersService: UsersService,
     private jwtService: JwtService,
   ) {}
   async signup(dto: AuthSignupDto): Promise<void> {
-    const existUser = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
-    });
-    if (existUser) {
+    const emailTaken = await this.usersService.checkIfEmailExists(dto.email);
+    if (emailTaken) {
       throw new ConflictException();
     }
-    const hash = await argon.hash(dto.password);
-    const data = {
-      name: dto.name,
-      email: dto.email,
-      hash,
-    };
-    await this.prisma.user.create({ data: data });
+    await this.usersService.create(dto);
   }
   async signin(
     email: string,
     password: string,
   ): Promise<{ access_token: string }> {
-    const userInfo: UserInfo = await this.prisma.user.findUniqueOrThrow({
-      where: { email },
-      select: { id: true, name: true, hash: true },
-    });
+    const userInfo: UserInfo =
+      await this.usersService.findByEmailOrThrow(email);
     if (!(await argon.verify(userInfo.hash, password))) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException();
     }
     const payload = {
       sub: userInfo.id,
