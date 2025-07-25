@@ -10,12 +10,18 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { UserInfo } from 'src/types/users';
+import {
+  createMockSignupDto,
+  createMockSigninDto,
+  createMockUser,
+} from 'src/test/factories/mock-user.factory';
 
 describe('AuthService', () => {
   let authService: AuthService;
   let usersService: UsersService;
 
-  let dto: { name: string; email: string; password: string };
+  let mockSignupDto: { name: string; email: string; password: string };
+  let mockSigninDto: { email: string; password: string };
   let mockUser: UserInfo;
 
   const mockUsersService = {
@@ -27,17 +33,9 @@ describe('AuthService', () => {
   const mockJwtService = { signAsync: jest.fn() };
 
   beforeEach(async () => {
-    dto = {
-      name: 'test',
-      email: 'test@test.com',
-      password: 'test',
-    };
-
-    mockUser = {
-      id: 1,
-      name: 'test',
-      hash: 'hashed',
-    };
+    mockSignupDto = createMockSignupDto();
+    mockSigninDto = createMockSigninDto();
+    mockUser = createMockUser();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -58,23 +56,27 @@ describe('AuthService', () => {
     it('should call usersService to check email exists, hash and call usersService to create user', async () => {
       (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
 
-      await authService.signup(dto);
+      await authService.signup(mockSignupDto);
 
-      expect(usersService.checkIfEmailExists).toHaveBeenCalledWith(dto.email);
-      expect(argon.hash).toHaveBeenCalledWith(dto.password);
+      expect(usersService.checkIfEmailExists).toHaveBeenCalledWith(
+        mockSignupDto.email,
+      );
+      expect(argon.hash).toHaveBeenCalledWith(mockSignupDto.password);
       expect(usersService.create).toHaveBeenCalledWith({
-        name: dto.name,
-        email: dto.email,
+        name: mockSignupDto.name,
+        email: mockSignupDto.email,
         hash: 'hashed',
       });
     });
 
     it('should call usersService.checkIfEmailExists and throw conflictException 409', async () => {
       mockUsersService.checkIfEmailExists.mockResolvedValueOnce(true);
-      await expect(authService.signup(dto)).rejects.toThrow(ConflictException);
+      await expect(authService.signup(mockSignupDto)).rejects.toThrow(
+        ConflictException,
+      );
 
       expect(mockUsersService.checkIfEmailExists).toHaveBeenCalledWith(
-        dto.email,
+        mockSignupDto.email,
       );
     });
   });
@@ -90,18 +92,26 @@ describe('AuthService', () => {
       const signTokenSpy = jest
         .spyOn(authService, 'signToken')
         .mockResolvedValueOnce('jwtToken');
-      const result = await authService.signin(dto.email, dto.password);
-      expect(usersService.findByEmailOrThrow).toHaveBeenCalledWith(dto.email);
-      expect(argon.verify).toHaveBeenCalledWith(mockUser.hash, dto.password);
+      const result = await authService.signin(
+        mockSigninDto.email,
+        mockSigninDto.password,
+      );
+      expect(usersService.findByEmailOrThrow).toHaveBeenCalledWith(
+        mockSigninDto.email,
+      );
+      expect(argon.verify).toHaveBeenCalledWith(
+        mockUser.hash,
+        mockSigninDto.password,
+      );
       expect(signTokenSpy).toHaveBeenCalledWith(payload);
       expect(result).toEqual({ access_token: 'jwtToken' });
     });
     it('should throw unauthorizedException 401', async () => {
       mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
       (argon.verify as jest.Mock).mockResolvedValueOnce(false);
-      await expect(authService.signin(dto.email, dto.password)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        authService.signin(mockSigninDto.email, mockSigninDto.password),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 });

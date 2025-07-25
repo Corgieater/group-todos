@@ -3,6 +3,10 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
+import {
+  createMockSignupDto,
+  createMockSigninDto,
+} from 'src/test/factories/mock-user.factory';
 
 describe('AuthController', () => {
   let authController: AuthController;
@@ -37,8 +41,8 @@ describe('AuthController', () => {
       cookie: jest.fn(),
     } as unknown as Response;
 
-    authSignupDto = { name: 'test', email: 'test@test.com', password: 'test' };
-    authSigninDto = { email: 'test@test.com', password: 'test' };
+    authSignupDto = createMockSignupDto();
+    authSigninDto = createMockSigninDto();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: mockAuthService }],
