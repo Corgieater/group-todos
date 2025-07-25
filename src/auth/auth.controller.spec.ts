@@ -8,12 +8,37 @@ describe('AuthController', () => {
   let authController: AuthController;
   let authService: AuthService;
 
+  let mockReq: Request;
+  let mockRes: Response;
+
+  let authSignupDto: {
+    name: string;
+    email: string;
+    password: string;
+    inviteCode?: string;
+  };
+
+  let authSigninDto: {
+    email: string;
+    password: string;
+  };
   const mockAuthService = {
     signup: jest.fn(),
     signin: jest.fn(),
   };
 
   beforeEach(async () => {
+    mockReq = {
+      session: {} as Record<string, any>,
+    } as unknown as Request;
+
+    mockRes = {
+      redirect: jest.fn(),
+      cookie: jest.fn(),
+    } as unknown as Response;
+
+    authSignupDto = { name: 'test', email: 'test@test.com', password: 'test' };
+    authSigninDto = { email: 'test@test.com', password: 'test' };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: mockAuthService }],
@@ -28,22 +53,9 @@ describe('AuthController', () => {
 
   describe('signup', () => {
     it('should call authService.signup and redirect with success flash', async () => {
-      const mockReq = {
-        session: {} as Record<string, any>,
-      } as unknown as Request;
-
-      const mockRes = {
-        redirect: jest.fn(),
-      } as unknown as Response;
-      const dto = {
-        name: 'test',
-        email: 'test@test.com',
-        password: 'test',
-      };
-
       mockAuthService.signup.mockResolvedValueOnce(undefined);
-      await authController.signup(mockReq, dto, mockRes);
-      expect(authService.signup).toHaveBeenCalledWith(dto);
+      await authController.signup(mockReq, authSignupDto, mockRes);
+      expect(authService.signup).toHaveBeenCalledWith(authSignupDto);
       expect(mockReq.session.flash).toEqual({
         type: 'success',
         message: 'Account apply succeed, please login!',
@@ -51,22 +63,9 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
     it('should set error flash and redirect if email already taken', async () => {
-      const mockReq = {
-        session: {},
-      } as unknown as Request;
-
-      const mockRes = {
-        redirect: jest.fn(),
-      } as unknown as Response;
-      const dto = {
-        name: 'test',
-        email: 'test@test.com',
-        password: 'test',
-      };
-
       mockAuthService.signup.mockRejectedValueOnce(new ConflictException());
-      await authController.signup(mockReq, dto, mockRes);
-      expect(authService.signup).toHaveBeenCalledWith(dto);
+      await authController.signup(mockReq, authSignupDto, mockRes);
+      expect(authService.signup).toHaveBeenCalledWith(authSignupDto);
       expect(mockReq.session.flash).toEqual({
         type: 'error',
         message: 'Email already taken',
@@ -76,34 +75,16 @@ describe('AuthController', () => {
   });
   describe('signin', () => {
     it('should call authService.signin, add jwt at cookie and redirect to users/home', async () => {
-      const mockReq = { session: {} } as unknown as Request;
-      const mockRes = {
-        cookie: jest.fn(),
-        redirect: jest.fn(),
-      } as unknown as Response;
-      const dto = {
-        email: 'test@test.com',
-        password: 'test',
-      };
       mockAuthService.signin.mockResolvedValueOnce({
         access_token: 'jwtToken',
       });
-      await authController.signin(mockReq, dto, mockRes);
+      await authController.signin(mockReq, authSigninDto, mockRes);
       expect(mockRes.cookie).toHaveBeenCalledWith('jwt', 'jwtToken');
       expect(mockRes.redirect).toHaveBeenLastCalledWith('/users/home');
     });
     it('should catch 401 unauthorized, set session.flash and redirect to /auth/signin', async () => {
-      const mockReq = { session: {} } as unknown as Request;
-      const mockRes = {
-        cookie: jest.fn(),
-        redirect: jest.fn(),
-      } as unknown as Response;
-      const dto = {
-        email: 'test@test.com',
-        password: 'test',
-      };
       mockAuthService.signin.mockRejectedValueOnce(new UnauthorizedException());
-      await authController.signin(mockReq, dto, mockRes);
+      await authController.signin(mockReq, authSigninDto, mockRes);
       expect(mockReq.session.flash).toEqual({
         type: 'error',
         message: 'Invalid credentials',
