@@ -38,6 +38,7 @@ describe('AuthController', () => {
     mockRes = {
       redirect: jest.fn(),
       cookie: jest.fn(),
+      clearCookie: jest.fn(),
     } as unknown as Response;
 
     authSignupDto = createMockSignupDto();
@@ -77,7 +78,7 @@ describe('AuthController', () => {
     });
   });
   describe('signin', () => {
-    it('signs in user and redirects with token', async () => {
+    it('should sign in user and redirect with token', async () => {
       mockAuthService.signin.mockResolvedValueOnce({
         access_token: 'jwtToken',
       });
@@ -94,6 +95,17 @@ describe('AuthController', () => {
         message: 'Invalid credentials',
       });
       expect(mockRes.redirect).toHaveBeenCalledWith('/auth/signin');
+    });
+  });
+  describe('signout', () => {
+    it('should sign out user and redirect with success message', () => {
+      authController.signout(mockReq, mockRes);
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('jwt');
+      expect(mockReq.session.flash).toEqual({
+        type: 'success',
+        message: 'Signed out successfully',
+      });
+      expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
   });
 });
