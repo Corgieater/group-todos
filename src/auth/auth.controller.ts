@@ -61,4 +61,13 @@ export class AuthController {
       }
     }
   }
+  @Post('signout')
+  signout(@Req() req: Request, @Res() res: Response) {
+    res.clearCookie('jwt');
+    req.session.flash = {
+      type: 'success',
+      message: 'Signed out successfully',
+    };
+    return res.redirect('/');
+  }
 }
