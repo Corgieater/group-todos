@@ -54,7 +54,7 @@ describe('AuthController', () => {
   });
 
   describe('signup', () => {
-    it('should call authService.signup and redirect with success flash', async () => {
+    it('should sign user up and redirect with success flash', async () => {
       mockAuthService.signup.mockResolvedValueOnce(undefined);
       await authController.signup(mockReq, authSignupDto, mockRes);
       expect(mockAuthService.signup).toHaveBeenCalledWith(authSignupDto);
@@ -64,7 +64,8 @@ describe('AuthController', () => {
       });
       expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
-    it('should set error flash and redirect if email already taken', async () => {
+
+    it('should redirect with error flash when email already taken', async () => {
       mockAuthService.signup.mockRejectedValueOnce(new ConflictException());
       await authController.signup(mockReq, authSignupDto, mockRes);
       expect(mockAuthService.signup).toHaveBeenCalledWith(authSignupDto);
@@ -76,7 +77,7 @@ describe('AuthController', () => {
     });
   });
   describe('signin', () => {
-    it('should call authService.signin, add jwt at cookie and redirect to users/home', async () => {
+    it('signs in user and redirects with token', async () => {
       mockAuthService.signin.mockResolvedValueOnce({
         access_token: 'jwtToken',
       });
@@ -84,7 +85,8 @@ describe('AuthController', () => {
       expect(mockRes.cookie).toHaveBeenCalledWith('jwt', 'jwtToken');
       expect(mockRes.redirect).toHaveBeenLastCalledWith('/users/home');
     });
-    it('should catch 401 unauthorized, set session.flash and redirect to /auth/signin', async () => {
+
+    it('should redirect to /auth/signin when credentials are invalid', async () => {
       mockAuthService.signin.mockRejectedValueOnce(new UnauthorizedException());
       await authController.signin(mockReq, authSigninDto, mockRes);
       expect(mockReq.session.flash).toEqual({

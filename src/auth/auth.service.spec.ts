@@ -51,7 +51,7 @@ describe('AuthService', () => {
     jest.clearAllMocks();
   });
   describe('signup', () => {
-    it('should call usersService to check email exists, hash and call usersService to create user', async () => {
+    it('should create a new user with hashed password if email is available', async () => {
       (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
 
       await authService.signup(mockSignupDto);
@@ -66,7 +66,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('should call usersService.checkIfEmailExists and throw conflictException 409', async () => {
+    it('should throw ConflictException when email is already taken', async () => {
       mockUsersService.checkIfEmailExists.mockResolvedValueOnce(true);
       await expect(authService.signup(mockSignupDto)).rejects.toThrow(
         ConflictException,
@@ -79,7 +79,7 @@ describe('AuthService', () => {
   });
 
   describe('signin', () => {
-    it('should call usersService.findByEmailOrThrow and signToken', async () => {
+    it('should sign user in and issue token', async () => {
       const payload = {
         sub: mockUser.id,
         userName: mockUser.name,
@@ -103,7 +103,7 @@ describe('AuthService', () => {
       expect(signTokenSpy).toHaveBeenCalledWith(payload);
       expect(result).toEqual({ access_token: 'jwtToken' });
     });
-    it('should throw unauthorizedException 401', async () => {
+    it('should throw unauthorizedException when password not match', async () => {
       mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
       (argon.verify as jest.Mock).mockResolvedValueOnce(false);
       await expect(
