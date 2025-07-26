@@ -10,7 +10,6 @@ import {
 
 describe('AuthController', () => {
   let authController: AuthController;
-  let authService: AuthService;
 
   let mockReq: Request;
   let mockRes: Response;
@@ -49,7 +48,6 @@ describe('AuthController', () => {
     }).compile();
 
     authController = module.get<AuthController>(AuthController);
-    authService = module.get<AuthService>(AuthService);
   });
   afterEach(() => {
     jest.clearAllMocks();
@@ -59,7 +57,7 @@ describe('AuthController', () => {
     it('should call authService.signup and redirect with success flash', async () => {
       mockAuthService.signup.mockResolvedValueOnce(undefined);
       await authController.signup(mockReq, authSignupDto, mockRes);
-      expect(authService.signup).toHaveBeenCalledWith(authSignupDto);
+      expect(mockAuthService.signup).toHaveBeenCalledWith(authSignupDto);
       expect(mockReq.session.flash).toEqual({
         type: 'success',
         message: 'Account apply succeed, please login!',
@@ -69,7 +67,7 @@ describe('AuthController', () => {
     it('should set error flash and redirect if email already taken', async () => {
       mockAuthService.signup.mockRejectedValueOnce(new ConflictException());
       await authController.signup(mockReq, authSignupDto, mockRes);
-      expect(authService.signup).toHaveBeenCalledWith(authSignupDto);
+      expect(mockAuthService.signup).toHaveBeenCalledWith(authSignupDto);
       expect(mockReq.session.flash).toEqual({
         type: 'error',
         message: 'Email already taken',

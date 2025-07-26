@@ -18,7 +18,6 @@ import {
 
 describe('AuthService', () => {
   let authService: AuthService;
-  let usersService: UsersService;
 
   let mockSignupDto: { name: string; email: string; password: string };
   let mockSigninDto: { email: string; password: string };
@@ -46,7 +45,6 @@ describe('AuthService', () => {
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
-    usersService = module.get<UsersService>(UsersService);
   });
 
   afterEach(() => {
@@ -57,12 +55,11 @@ describe('AuthService', () => {
       (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
 
       await authService.signup(mockSignupDto);
-
-      expect(usersService.checkIfEmailExists).toHaveBeenCalledWith(
+      expect(mockUsersService.checkIfEmailExists).toHaveBeenCalledWith(
         mockSignupDto.email,
       );
       expect(argon.hash).toHaveBeenCalledWith(mockSignupDto.password);
-      expect(usersService.create).toHaveBeenCalledWith({
+      expect(mockUsersService.create).toHaveBeenCalledWith({
         name: mockSignupDto.name,
         email: mockSignupDto.email,
         hash: 'hashed',
@@ -96,7 +93,7 @@ describe('AuthService', () => {
         mockSigninDto.email,
         mockSigninDto.password,
       );
-      expect(usersService.findByEmailOrThrow).toHaveBeenCalledWith(
+      expect(mockUsersService.findByEmailOrThrow).toHaveBeenCalledWith(
         mockSigninDto.email,
       );
       expect(argon.verify).toHaveBeenCalledWith(
