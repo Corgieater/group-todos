@@ -4,7 +4,7 @@ export interface UserInfo {
   hash: string;
 }
 
-export interface CreateUserInput {
+export interface UserCreatePayload {
   name: string;
   email: string;
   hash: string;

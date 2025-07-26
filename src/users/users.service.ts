@@ -2,26 +2,25 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UserInfo, CreateUserInput } from 'src/types/users';
+import { UserInfo, UserCreatePayload } from 'src/types/users';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
-  // todo: write tests
-  async create(dto: CreateUserInput): Promise<void> {
+  constructor(private prismaService: PrismaService) {}
+  async create(payload: UserCreatePayload): Promise<void> {
     const data = {
-      name: dto.name,
-      email: dto.email,
-      hash: dto.hash,
+      name: payload.name,
+      email: payload.email,
+      hash: payload.hash,
     };
-    await this.prisma.user.create({ data: data });
+    await this.prismaService.user.create({ data: data });
   }
 
-  findAll() {
-    return this.prisma.user.findMany();
-  }
+  // findAll() {
+  //   return this.prismaService.user.findMany();
+  // }
   async checkIfEmailExists(email: string): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaService.user.findUnique({
       where: { email },
       select: { id: true, email: true, hash: true, name: true },
     });
@@ -33,7 +32,7 @@ export class UsersService {
 
   async findByEmailOrThrow(email: string): Promise<UserInfo> {
     try {
-      const user = await this.prisma.user.findUniqueOrThrow({
+      const user = await this.prismaService.user.findUniqueOrThrow({
         where: { email },
       });
       return user;
@@ -48,7 +47,7 @@ export class UsersService {
     }
   }
   async findOne(id: number): Promise<{ id: number; email: string } | null> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prismaService.user.findUnique({
       where: { id },
       select: {
         id: true,
@@ -58,11 +57,11 @@ export class UsersService {
     return user;
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
-  }
+  // update(id: number, updateUserDto: UpdateUserDto) {
+  //   return `This action updates a #${id} user`;
+  // }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
-  }
+  // remove(id: number) {
+  //   return `This action removes a #${id} user`;
+  // }
 }
