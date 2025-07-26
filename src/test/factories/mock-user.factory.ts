@@ -19,6 +19,17 @@ export function createMockSigninDto(
   };
 }
 
+export function createMockCreatePayload(
+  overrides?: Partial<{ email: string; password: string }>,
+) {
+  return {
+    name: 'test',
+    email: 'test@test.com',
+    hash: 'hashed',
+    ...overrides,
+  };
+}
+
 export function createMockUser(
   overrides?: Partial<{ id: number; name: string; hash: string }>,
 ) {
