@@ -38,10 +38,14 @@ export class UsersService {
       return user;
     } catch (e) {
       if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2025'
+        // NOTE:
+        // this is for more test
+        e instanceof Prisma.PrismaClientKnownRequestError ||
+        e?.name === 'PrismaClientKnownRequestError'
       ) {
-        throw new UnauthorizedException();
+        if (e.code === 'P2025') {
+          throw new UnauthorizedException();
+        }
       }
       throw e;
     }
