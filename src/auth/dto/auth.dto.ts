@@ -1,14 +1,18 @@
-import { IsEmail, IsNotEmpty } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, IsOptional } from 'class-validator';
 
 export class AuthSignupDto {
   @IsNotEmpty()
+  @IsString()
   name: string;
   @IsEmail()
   @IsNotEmpty()
   email: string;
   @IsNotEmpty()
+  @IsString()
   password: string;
-  group?: number; /* this is for users that might got invited to some group*/
+  @IsOptional()
+  @IsString()
+  inviteCode?: string; /* this is for users that might got invited to some group*/
 }
 
 export class AuthSigninDto {
@@ -16,5 +20,15 @@ export class AuthSigninDto {
   @IsNotEmpty()
   email: string;
   @IsNotEmpty()
+  @IsString()
   password: string;
+}
+
+export class AuthUpdatePasswordDto {
+  @IsNotEmpty()
+  @IsString()
+  oldPassword: string;
+  @IsNotEmpty()
+  @IsString()
+  newPassword: string;
 }

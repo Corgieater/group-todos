@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { AccessTokenPayload } from './types/auth';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,7 +17,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       secretOrKey: configService.get<string>('JWT_SECRET')!,
     });
   }
-  async validate(payload: { sub: number; userName: string }) {
-    return { userId: payload.sub, userName: payload.userName };
+  async validate(payload: AccessTokenPayload) {
+    const { sub, ...rest } = payload;
+    return { userId: sub, ...rest };
   }
 }

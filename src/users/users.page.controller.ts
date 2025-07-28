@@ -1,22 +1,14 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Req,
-  Res,
-  UnauthorizedException,
-  UseGuards,
-} from '@nestjs/common';
-import { Request, Response } from 'express';
-import { AuthService } from 'src/auth/auth.service';
+import { Controller, Get, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { UserPayload } from 'src/common/types/user-payload';
+import { User } from 'src/common/decorators/user.decorator';
 
 @Controller('users')
 export class UsersPageController {
   @UseGuards(JwtAuthGuard)
   @Get('home')
-  async userPage(@Req() req: Request, @Res() res: Response) {
-    const user = req.user as { userId: number; userName: string };
+  async userPage(@User() user: UserPayload, @Res() res: Response) {
     return res.render('user/user-page', { name: user.userName });
   }
 }

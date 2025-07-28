@@ -31,10 +31,16 @@ export function createMockCreatePayload(
 }
 
 export function createMockUser(
-  overrides?: Partial<{ id: number; name: string; hash: string }>,
+  overrides?: Partial<{
+    id: number;
+    email: string;
+    name: string;
+    hash: string;
+  }>,
 ) {
   return {
     id: 1,
+    email: 'test@test.com',
     name: 'test',
     hash: 'hashed',
     ...overrides,

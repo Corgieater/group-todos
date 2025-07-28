@@ -9,7 +9,7 @@ import { AuthService } from './auth.service';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { UserInfo } from 'src/types/users';
+import { User } from '@prisma/client';
 import {
   createMockSignupDto,
   createMockSigninDto,
@@ -21,7 +21,7 @@ describe('AuthService', () => {
 
   let mockSignupDto: { name: string; email: string; password: string };
   let mockSigninDto: { email: string; password: string };
-  let mockUser: UserInfo;
+  let mockUser: User;
 
   const mockUsersService = {
     checkIfEmailExists: jest.fn(),
@@ -82,6 +82,7 @@ describe('AuthService', () => {
     it('should sign user in and issue token', async () => {
       const payload = {
         sub: mockUser.id,
+        email: mockUser.email,
         userName: mockUser.name,
       };
       mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);

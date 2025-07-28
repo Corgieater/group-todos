@@ -8,15 +8,15 @@ import {
   createMockSigninDto,
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
-import { UserCreatePayload, UserInfo } from 'src/types/users';
-import { Prisma } from '@prisma/client';
+import { UserCreatePayload } from 'src/users/types/users';
+import { Prisma, User } from '@prisma/client';
 
 describe('UsersService', () => {
   let usersService: UsersService;
   let mockSignUpDto: { name: string; email: string; password: string };
   let mockCreateUserPayload: UserCreatePayload;
   let mockSigninDto: { email: string; password: string };
-  let mockUser: UserInfo;
+  let mockUser: User;
 
   const mockPrismaService = {
     user: {
