@@ -3,3 +3,9 @@ export interface UserCreatePayload {
   email: string;
   hash: string;
 }
+
+export interface UserUpdatePayload {
+  id: number;
+  name?: string;
+  hash?: string;
+}

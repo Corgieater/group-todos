@@ -4,7 +4,7 @@ export interface AccessTokenPayload {
   email: string;
 }
 
-export interface AuthUpdatePassword {
+export interface AuthUpdatePasswordPayload {
   userId: number;
   userName: string;
   email: string;

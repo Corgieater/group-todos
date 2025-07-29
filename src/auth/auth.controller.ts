@@ -6,10 +6,19 @@ import {
   Body,
   HttpStatus,
   HttpException,
+  ForbiddenException,
+  UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
 import { Response, Request } from 'express';
+import { AuthUpdatePasswordDto } from './dto/auth.dto';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { User } from 'src/common/decorators/user.decorator';
+import { UserPayload } from 'src/common/types/user-payload';
+import { AuthUpdatePasswordPayload } from './types/auth';
+import { setSession } from 'src/common/helpers/flash-helper';
 
 @Controller('api/auth')
 export class AuthController {
@@ -69,5 +78,35 @@ export class AuthController {
       message: 'Signed out successfully',
     };
     return res.redirect('/');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  async changePassword(
+    @Req() req: Request,
+    @User() user: UserPayload,
+    @Body() dto: AuthUpdatePasswordDto,
+    @Res() res: Response,
+  ) {
+    const payload: AuthUpdatePasswordPayload = {
+      ...user,
+      ...dto,
+    };
+    try {
+      await this.authService.changePassword(payload);
+      setSession(req, 'success', 'Password changed');
+      res.clearCookie('jwt');
+      return res.redirect('/');
+    } catch (e) {
+      if (e instanceof ForbiddenException || e instanceof BadRequestException) {
+        setSession(req, 'error', e.message);
+        return res.redirect('/users/home');
+      }
+      // NOTE:
+      // should i directly throw e?
+      // how to deal with this?
+      // a filter to see unsolved error and document it?
+      throw e;
+    }
   }
 }

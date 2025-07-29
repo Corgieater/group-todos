@@ -1,8 +1,9 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { User } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UserInfo, UserCreatePayload } from 'src/types/users';
+import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
 
 @Injectable()
 export class UsersService {
@@ -30,7 +31,7 @@ export class UsersService {
     return false;
   }
 
-  async findByEmailOrThrow(email: string): Promise<UserInfo> {
+  async findByEmailOrThrow(email: string): Promise<User> {
     try {
       const user = await this.prismaService.user.findUniqueOrThrow({
         where: { email },
@@ -39,7 +40,7 @@ export class UsersService {
     } catch (e) {
       if (
         // NOTE:
-        // this is for more test
+        // this is for be more friendly to test
         e instanceof Prisma.PrismaClientKnownRequestError ||
         e?.name === 'PrismaClientKnownRequestError'
       ) {
@@ -50,20 +51,36 @@ export class UsersService {
       throw e;
     }
   }
-  async findOne(id: number): Promise<{ id: number; email: string } | null> {
-    const user = await this.prismaService.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
-    return user;
+  async findByIdOrThrow(id: number): Promise<User> {
+    try {
+      const user = await this.prismaService.user.findUniqueOrThrow({
+        where: { id },
+      });
+      return user;
+    } catch (e) {
+      if (
+        // NOTE:
+        // this is for be more friendly to test
+        e instanceof Prisma.PrismaClientKnownRequestError ||
+        e?.name === 'PrismaClientKnownRequestError'
+      ) {
+        if (e.code === 'P2025') {
+          throw new UnauthorizedException();
+        }
+      }
+      throw e;
+    }
   }
 
-  // update(id: number, updateUserDto: UpdateUserDto) {
-  //   return `This action updates a #${id} user`;
-  // }
+  async update(payload: UserUpdatePayload): Promise<void> {
+    const { id, ...updateField } = payload;
+    await this.prismaService.user.update({
+      where: {
+        id,
+      },
+      data: updateField,
+    });
+  }
 
   // remove(id: number) {
   //   return `This action removes a #${id} user`;
