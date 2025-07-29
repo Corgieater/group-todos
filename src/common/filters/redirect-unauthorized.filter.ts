@@ -5,18 +5,14 @@ import {
   ArgumentsHost,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-
+import { setSession } from '../helpers/flash-helper';
 @Catch(UnauthorizedException)
 export class RedirectUnauthorizedFilter implements ExceptionFilter {
-  catch(exception: UnauthorizedException, host: ArgumentsHost) {
+  catch(e: UnauthorizedException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
-
-    req.session.flash = {
-      type: 'error',
-      message: 'Please log in first',
-    };
+    setSession(req, 'error', 'Please log in first');
 
     res.redirect('/auth/signin');
   }
