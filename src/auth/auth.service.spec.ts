@@ -6,7 +6,12 @@ jest.mock('argon2', () => ({
 import * as argon from 'argon2';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
@@ -15,6 +20,9 @@ import {
   createMockSigninDto,
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
+import { AuthUpdatePasswordPayload } from './types/auth';
+import { AuthUpdatePasswordDto } from './dto/auth.dto';
+import { UserPayload } from 'src/common/types/user-payload';
 
 describe('AuthService', () => {
   let authService: AuthService;
@@ -27,6 +35,8 @@ describe('AuthService', () => {
     checkIfEmailExists: jest.fn(),
     create: jest.fn(),
     findByEmailOrThrow: jest.fn(),
+    findByIdOrThrow: jest.fn(),
+    update: jest.fn(),
   };
 
   const mockJwtService = { signAsync: jest.fn() };
@@ -110,6 +120,64 @@ describe('AuthService', () => {
       await expect(
         authService.signin(mockSigninDto.email, mockSigninDto.password),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('changePassword', () => {
+    let payload: AuthUpdatePasswordPayload;
+    beforeEach(() => {
+      payload = {
+        userId: 1,
+        userName: 'test',
+        email: 'test@tes.com',
+        oldPassword: 'test',
+        newPassword: 'foo',
+      };
+      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(mockUser);
+    });
+
+    it('should change password if old password is correct and new one is different', async () => {
+      jest
+        .spyOn(authService, 'verifyPassword')
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false);
+      (argon.hash as jest.Mock).mockResolvedValueOnce('newHash');
+
+      await authService.changePassword(payload);
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(
+        payload.userId,
+      );
+      expect(authService.verifyPassword).toHaveBeenNthCalledWith(
+        1,
+        'hashed',
+        'test',
+      );
+      expect(authService.verifyPassword).toHaveBeenNthCalledWith(
+        2,
+        'hashed',
+        'foo',
+      );
+      expect(mockUsersService.update).toHaveBeenCalledWith({
+        id: payload.userId,
+        hash: 'newHash',
+      });
+    });
+
+    it('should throw ForbiddenException', async () => {
+      jest.spyOn(authService, 'verifyPassword').mockResolvedValueOnce(false);
+      await expect(authService.changePassword(payload)).rejects.toThrow(
+        new ForbiddenException('Old password is incorrect'),
+      );
+    });
+
+    it('should throw BadRequestException', async () => {
+      jest
+        .spyOn(authService, 'verifyPassword')
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true);
+      await expect(authService.changePassword(payload)).rejects.toThrow(
+        new BadRequestException('Please use a new password'),
+      );
     });
   });
 });
