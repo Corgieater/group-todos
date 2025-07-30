@@ -14,22 +14,21 @@ import {
 } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
+import { User as UserModel } from '@prisma/client';
+import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
 import {
   createMockSignupDto,
   createMockSigninDto,
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
 import { AuthUpdatePasswordPayload } from './types/auth';
-import { AuthUpdatePasswordDto } from './dto/auth.dto';
-import { UserPayload } from 'src/common/types/user-payload';
 
 describe('AuthService', () => {
   let authService: AuthService;
 
-  let mockSignupDto: { name: string; email: string; password: string };
-  let mockSigninDto: { email: string; password: string };
-  let mockUser: User;
+  let mockAuthSignupDto: AuthSignupDto;
+  let mockAuthSigninDto: AuthSigninDto;
+  let mockUser: UserModel;
 
   const mockUsersService = {
     checkIfEmailExists: jest.fn(),
@@ -42,8 +41,8 @@ describe('AuthService', () => {
   const mockJwtService = { signAsync: jest.fn() };
 
   beforeEach(async () => {
-    mockSignupDto = createMockSignupDto();
-    mockSigninDto = createMockSigninDto();
+    mockAuthSignupDto = createMockSignupDto();
+    mockAuthSigninDto = createMockSigninDto();
     mockUser = createMockUser();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -60,30 +59,31 @@ describe('AuthService', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
+
   describe('signup', () => {
     it('should create a new user with hashed password if email is available', async () => {
       (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
 
-      await authService.signup(mockSignupDto);
+      await authService.signup(mockAuthSignupDto);
       expect(mockUsersService.checkIfEmailExists).toHaveBeenCalledWith(
-        mockSignupDto.email,
+        mockAuthSignupDto.email,
       );
-      expect(argon.hash).toHaveBeenCalledWith(mockSignupDto.password);
+      expect(argon.hash).toHaveBeenCalledWith(mockAuthSignupDto.password);
       expect(mockUsersService.create).toHaveBeenCalledWith({
-        name: mockSignupDto.name,
-        email: mockSignupDto.email,
+        name: mockAuthSignupDto.name,
+        email: mockAuthSignupDto.email,
         hash: 'hashed',
       });
     });
 
     it('should throw ConflictException when email is already taken', async () => {
       mockUsersService.checkIfEmailExists.mockResolvedValueOnce(true);
-      await expect(authService.signup(mockSignupDto)).rejects.toThrow(
+      await expect(authService.signup(mockAuthSignupDto)).rejects.toThrow(
         ConflictException,
       );
 
       expect(mockUsersService.checkIfEmailExists).toHaveBeenCalledWith(
-        mockSignupDto.email,
+        mockAuthSignupDto.email,
       );
     });
   });
@@ -101,24 +101,25 @@ describe('AuthService', () => {
         .spyOn(authService, 'signToken')
         .mockResolvedValueOnce('jwtToken');
       const result = await authService.signin(
-        mockSigninDto.email,
-        mockSigninDto.password,
+        mockAuthSigninDto.email,
+        mockAuthSigninDto.password,
       );
       expect(mockUsersService.findByEmailOrThrow).toHaveBeenCalledWith(
-        mockSigninDto.email,
+        mockAuthSigninDto.email,
       );
       expect(argon.verify).toHaveBeenCalledWith(
         mockUser.hash,
-        mockSigninDto.password,
+        mockAuthSigninDto.password,
       );
       expect(signTokenSpy).toHaveBeenCalledWith(payload);
       expect(result).toEqual({ access_token: 'jwtToken' });
     });
+
     it('should throw unauthorizedException when password not match', async () => {
       mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
       (argon.verify as jest.Mock).mockResolvedValueOnce(false);
       await expect(
-        authService.signin(mockSigninDto.email, mockSigninDto.password),
+        authService.signin(mockAuthSigninDto.email, mockAuthSigninDto.password),
       ).rejects.toThrow(UnauthorizedException);
     });
   });
@@ -127,9 +128,8 @@ describe('AuthService', () => {
     let payload: AuthUpdatePasswordPayload;
     beforeEach(() => {
       payload = {
-        userId: 1,
-        userName: 'test',
-        email: 'test@tes.com',
+        userId: mockUser.id,
+        email: mockUser.email,
         oldPassword: 'test',
         newPassword: 'foo',
       };

@@ -10,12 +10,13 @@ import {
 } from 'src/test/factories/mock-user.factory';
 import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
 import { Prisma, User } from '@prisma/client';
+import { AuthSigninDto, AuthSignupDto } from 'src/auth/dto/auth.dto';
 
 describe('UsersService', () => {
   let usersService: UsersService;
-  let mockSignUpDto: { name: string; email: string; password: string };
+  let mockSignUpDto: AuthSignupDto;
+  let mockSigninDto: AuthSigninDto;
   let mockCreateUserPayload: UserCreatePayload;
-  let mockSigninDto: { email: string; password: string };
   let mockUser: User;
 
   const mockPrismaService = {
@@ -48,6 +49,11 @@ describe('UsersService', () => {
 
     usersService = module.get<UsersService>(UsersService);
   });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
   describe('create', () => {
     it('should create user with the correct payload', async () => {
       await usersService.create(mockCreateUserPayload);
@@ -99,7 +105,7 @@ describe('UsersService', () => {
       mockPrismaService.user.findUniqueOrThrow.mockReturnValueOnce(mockUser);
       const user = await usersService.findByIdOrThrow(1);
       expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: 1 },
+        where: { id: mockUser.id },
       });
       expect(user).toEqual(mockUser);
     });
@@ -112,7 +118,7 @@ describe('UsersService', () => {
         UnauthorizedException,
       );
       expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: 1 },
+        where: { id: mockUser.id },
       });
     });
   });
