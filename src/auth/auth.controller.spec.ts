@@ -11,28 +11,29 @@ import { Request, Response } from 'express';
 import {
   createMockSignupDto,
   createMockSigninDto,
+  createMockCurrentUser,
 } from 'src/test/factories/mock-user.factory';
-import { UserPayload } from 'src/common/types/user-payload';
-import { AuthUpdatePasswordDto } from './dto/auth.dto';
+import {
+  AuthSigninDto,
+  AuthSignupDto,
+  AuthUpdatePasswordDto,
+} from './dto/auth.dto';
 import { AuthUpdatePasswordPayload } from './types/auth';
+import {
+  createMockReq,
+  createMockRes,
+} from 'src/test/factories/mock-http.factory';
+import { CurrentUser } from 'src/common/types/current-user';
 describe('AuthController', () => {
   let authController: AuthController;
 
   let mockReq: Request;
   let mockRes: Response;
-  let mockUser: UserPayload;
+  let mockCurrentUser: CurrentUser;
 
-  let authSignupDto: {
-    name: string;
-    email: string;
-    password: string;
-    inviteCode?: string;
-  };
+  let authSignupDto: AuthSignupDto;
+  let authSigninDto: AuthSigninDto;
 
-  let authSigninDto: {
-    email: string;
-    password: string;
-  };
   const mockAuthService = {
     signup: jest.fn(),
     signin: jest.fn(),
@@ -40,21 +41,9 @@ describe('AuthController', () => {
   };
 
   beforeEach(async () => {
-    mockReq = {
-      session: {} as Record<string, any>,
-    } as unknown as Request;
-
-    mockRes = {
-      redirect: jest.fn(),
-      cookie: jest.fn(),
-      clearCookie: jest.fn(),
-    } as unknown as Response;
-
-    mockUser = {
-      userId: 1,
-      userName: 'test',
-      email: 'test@test.com',
-    };
+    mockReq = createMockReq();
+    mockRes = createMockRes();
+    mockCurrentUser = createMockCurrentUser();
 
     authSignupDto = createMockSignupDto();
     authSigninDto = createMockSigninDto();
@@ -65,12 +54,13 @@ describe('AuthController', () => {
 
     authController = module.get<AuthController>(AuthController);
   });
+
   afterEach(() => {
     jest.clearAllMocks();
   });
 
   describe('signup', () => {
-    it('should sign user up and redirect with success flash', async () => {
+    it('should redirect with success flash when user signs up successfully', async () => {
       mockAuthService.signup.mockResolvedValueOnce(undefined);
       await authController.signup(mockReq, authSignupDto, mockRes);
       expect(mockAuthService.signup).toHaveBeenCalledWith(authSignupDto);
@@ -81,7 +71,7 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
 
-    it('should redirect with error flash when email already taken', async () => {
+    it('should redirect with error flash when email is already taken', async () => {
       mockAuthService.signup.mockRejectedValueOnce(new ConflictException());
       await authController.signup(mockReq, authSignupDto, mockRes);
       expect(mockAuthService.signup).toHaveBeenCalledWith(authSignupDto);
@@ -92,6 +82,7 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/auth/signup');
     });
   });
+
   describe('signin', () => {
     it('should sign in user and redirect with token', async () => {
       mockAuthService.signin.mockResolvedValueOnce({
@@ -112,6 +103,7 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/auth/signin');
     });
   });
+
   describe('signout', () => {
     it('should sign out user and redirect with success message', () => {
       authController.signout(mockReq, mockRes);
@@ -123,21 +115,30 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
   });
+
   describe('changePassword', () => {
     let dto: AuthUpdatePasswordDto;
     let payload: AuthUpdatePasswordPayload;
+
     beforeEach(() => {
       dto = {
         oldPassword: 'test',
         newPassword: 'foo',
       };
       payload = {
-        ...mockUser,
+        userId: mockCurrentUser.userId,
+        email: mockCurrentUser.email,
         ...dto,
       };
     });
+
     it('should change user password, clear cookie and redirect to /', async () => {
-      await authController.changePassword(mockReq, mockUser, dto, mockRes);
+      await authController.changePassword(
+        mockReq,
+        mockCurrentUser,
+        dto,
+        mockRes,
+      );
       expect(mockAuthService.changePassword).toHaveBeenCalledWith(payload);
       expect(mockReq.session.flash).toEqual({
         type: 'success',
@@ -147,11 +148,16 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
 
-    it('should set error flash message Old password is incorrect and redirect to /users/home', async () => {
+    it('should redirect with error flash when old password is wrong', async () => {
       mockAuthService.changePassword.mockRejectedValueOnce(
         new ForbiddenException('Old password is incorrect'),
       );
-      await authController.changePassword(mockReq, mockUser, dto, mockRes);
+      await authController.changePassword(
+        mockReq,
+        mockCurrentUser,
+        dto,
+        mockRes,
+      );
       expect(mockReq.session.flash).toEqual({
         type: 'error',
         message: 'Old password is incorrect',
@@ -159,11 +165,16 @@ describe('AuthController', () => {
       expect(mockRes.redirect).toHaveBeenCalledWith('/users/home');
     });
 
-    it('should set error flash message Please use a new password and redirect to /users/home', async () => {
+    it('should redirect with error flash when old and new password are the same', async () => {
       mockAuthService.changePassword.mockRejectedValueOnce(
         new BadRequestException('Please use a new password'),
       );
-      await authController.changePassword(mockReq, mockUser, dto, mockRes);
+      await authController.changePassword(
+        mockReq,
+        mockCurrentUser,
+        dto,
+        mockRes,
+      );
       expect(mockReq.session.flash).toEqual({
         type: 'error',
         message: 'Please use a new password',
