@@ -15,8 +15,8 @@ import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
 import { Response, Request } from 'express';
 import { AuthUpdatePasswordDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { User } from 'src/common/decorators/user.decorator';
-import { UserPayload } from 'src/common/types/user-payload';
+import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { CurrentUser } from 'src/common/types/current-user';
 import { AuthUpdatePasswordPayload } from './types/auth';
 import { setSession } from 'src/common/helpers/flash-helper';
 
@@ -84,12 +84,13 @@ export class AuthController {
   @Post('change-password')
   async changePassword(
     @Req() req: Request,
-    @User() user: UserPayload,
+    @CurrentUserDecorator() user: CurrentUser,
     @Body() dto: AuthUpdatePasswordDto,
     @Res() res: Response,
   ) {
+    const { userName: _, ...rest } = user;
     const payload: AuthUpdatePasswordPayload = {
-      ...user,
+      ...rest,
       ...dto,
     };
     try {
@@ -102,11 +103,13 @@ export class AuthController {
         setSession(req, 'error', e.message);
         return res.redirect('/users/home');
       }
-      // NOTE:
+      // QUESTION:
       // should i directly throw e?
       // how to deal with this?
       // a filter to see unsolved error and document it?
       throw e;
     }
+    // TODO:
+    // deal with user forgot password
   }
 }

@@ -6,7 +6,6 @@ export interface AccessTokenPayload {
 
 export interface AuthUpdatePasswordPayload {
   userId: number;
-  userName: string;
   email: string;
   oldPassword: string;
   newPassword: string;

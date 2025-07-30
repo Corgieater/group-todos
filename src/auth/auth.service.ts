@@ -9,8 +9,7 @@ import { AuthSignupDto } from './dto/auth.dto';
 import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
 import { UsersService } from 'src/users/users.service';
-import { Prisma, User } from '@prisma/client';
-import { isInstance } from 'class-validator';
+import { User as UserModel } from '@prisma/client';
 import { AuthUpdatePasswordPayload } from './types/auth';
 @Injectable()
 export class AuthService {
@@ -35,7 +34,8 @@ export class AuthService {
     email: string,
     password: string,
   ): Promise<{ access_token: string }> {
-    const userInfo: User = await this.usersService.findByEmailOrThrow(email);
+    const userInfo: UserModel =
+      await this.usersService.findByEmailOrThrow(email);
     if (!(await this.verifyPassword(userInfo.hash, password))) {
       throw new UnauthorizedException();
     }
@@ -52,7 +52,7 @@ export class AuthService {
   async verifyPassword(hash: string, password: string): Promise<boolean> {
     return await argon.verify(hash, password);
   }
-  async changePassword(payload: AuthUpdatePasswordPayload) {
+  async changePassword(payload: AuthUpdatePasswordPayload): Promise<void> {
     const user = await this.usersService.findByIdOrThrow(payload.userId);
     if (!(await this.verifyPassword(user.hash, payload.oldPassword))) {
       throw new ForbiddenException('Old password is incorrect');

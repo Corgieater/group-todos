@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { User } from '@prisma/client';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { User as UserModel } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
 
@@ -31,7 +30,7 @@ export class UsersService {
     return false;
   }
 
-  async findByEmailOrThrow(email: string): Promise<User> {
+  async findByEmailOrThrow(email: string): Promise<UserModel> {
     try {
       const user = await this.prismaService.user.findUniqueOrThrow({
         where: { email },
@@ -51,7 +50,7 @@ export class UsersService {
       throw e;
     }
   }
-  async findByIdOrThrow(id: number): Promise<User> {
+  async findByIdOrThrow(id: number): Promise<UserModel> {
     try {
       const user = await this.prismaService.user.findUniqueOrThrow({
         where: { id },
