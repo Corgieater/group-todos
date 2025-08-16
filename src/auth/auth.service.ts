@@ -5,66 +5,108 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { AuthSignupDto } from './dto/auth.dto';
-import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
-import { UsersService } from 'src/users/users.service';
+import crypto from 'crypto';
 import { User as UserModel } from '@prisma/client';
+
+import { AuthSignupDto } from './dto/auth.dto';
+
+import { JwtService } from '@nestjs/jwt';
+import { UsersService } from 'src/users/users.service';
+import { MailService } from 'src/mail/mail.service';
 import { AuthUpdatePasswordPayload } from './types/auth';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
+
 @Injectable()
 export class AuthService {
   constructor(
+    private config: ConfigService,
     private usersService: UsersService,
+    private prismaService: PrismaService,
     private jwtService: JwtService,
+    private mailService: MailService,
   ) {}
   async signup(dto: AuthSignupDto): Promise<void> {
-    const emailTaken = await this.usersService.checkIfEmailExists(dto.email);
-    if (emailTaken) {
+    const existUser = await this.usersService.findByEmail(dto.email);
+    if (existUser) {
       throw new ConflictException();
     }
-    const hash = await argon.hash(dto.password);
+
     const createUserInput = {
       name: dto.name,
       email: dto.email,
-      hash,
+      hash: await this.hash(dto.password),
     };
     await this.usersService.create(createUserInput);
   }
+
   async signin(
     email: string,
     password: string,
-  ): Promise<{ access_token: string }> {
+  ): Promise<{ accessToken: string }> {
     const userInfo: UserModel =
       await this.usersService.findByEmailOrThrow(email);
-    if (!(await this.verifyPassword(userInfo.hash, password))) {
+    if (!(await this.verify(userInfo.hash, password))) {
       throw new UnauthorizedException();
     }
-    const payload = {
-      sub: userInfo.id,
-      userName: userInfo.name,
-      email: userInfo.email,
+
+    return {
+      accessToken: await this.jwtService.signAsync({
+        sub: userInfo.id,
+        userName: userInfo.name,
+        email: userInfo.email,
+      }),
     };
-    return { access_token: await this.signToken(payload) };
   }
-  async signToken(payload: { sub: number; userName: string }): Promise<string> {
-    return await this.jwtService.signAsync(payload);
+
+  async hash(
+    raw: string,
+    options?: argon.Options & { type?: number },
+  ): Promise<string> {
+    return await argon.hash(raw, options);
   }
-  async verifyPassword(hash: string, password: string): Promise<boolean> {
+
+  async verify(hash: string, password: string): Promise<boolean> {
     return await argon.verify(hash, password);
   }
+
+  generateUrlFriendlySecret(bytes: number): string {
+    return crypto.randomBytes(bytes).toString('base64url');
+  }
+
   async changePassword(payload: AuthUpdatePasswordPayload): Promise<void> {
     const user = await this.usersService.findByIdOrThrow(payload.userId);
-    if (!(await this.verifyPassword(user.hash, payload.oldPassword))) {
+    if (!(await this.verify(user.hash, payload.oldPassword))) {
       throw new ForbiddenException('Old password is incorrect');
     }
-    if (await this.verifyPassword(user.hash, payload.newPassword)) {
+    if (await this.verify(user.hash, payload.newPassword)) {
       throw new BadRequestException('Please use a new password');
     }
 
-    const newHash = await argon.hash(payload.newPassword);
+    const newHash = await this.hash(payload.newPassword);
     await this.usersService.update({
       id: payload.userId,
       hash: newHash,
     });
+  }
+
+  async resetPassword(email: string): Promise<void> {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) return;
+
+    const rawToken = this.generateUrlFriendlySecret(32);
+    const hashedToken = await this.hash(rawToken, { type: argon.argon2id });
+    const row = await this.prismaService.resetPasswordToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashedToken,
+      },
+      select: { id: true },
+    });
+
+    const link = `${this.config.get<string>('BASE_URL')}api/auth/reset-password?id=${row.id}&token=${rawToken}`;
+    await this.mailService.sendMail(user, link);
   }
 }

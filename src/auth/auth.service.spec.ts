@@ -1,8 +1,3 @@
-jest.mock('argon2', () => ({
-  hash: jest.fn(),
-  verify: jest.fn(),
-}));
-
 import * as argon from 'argon2';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
@@ -22,25 +17,46 @@ import {
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
 import { AuthUpdatePasswordPayload } from './types/auth';
+import { MailService } from 'src/mail/mail.service';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
+import { createMockConfig } from 'src/test/factories/mock-config.factory';
 
 describe('AuthService', () => {
   let authService: AuthService;
+  let jwtService: JwtService;
 
   let mockAuthSignupDto: AuthSignupDto;
   let mockAuthSigninDto: AuthSigninDto;
   let mockUser: UserModel;
 
+  let spyHash: jest.SpiedFunction<AuthService['hash']>;
+  let spyVerify: jest.SpiedFunction<AuthService['verify']>;
+
   const mockUsersService = {
-    checkIfEmailExists: jest.fn(),
+    findByEmail: jest.fn(),
     create: jest.fn(),
     findByEmailOrThrow: jest.fn(),
     findByIdOrThrow: jest.fn(),
     update: jest.fn(),
   };
 
-  const mockJwtService = { signAsync: jest.fn() };
+  const mockPrismaService = {
+    resetPasswordToken: {
+      create: jest.fn(),
+    },
+  };
+
+  const mockMailService = {
+    sendMail: jest.fn(),
+  };
+
+  const mockConfigService = createMockConfig();
+
+  const FAKE_HASH = 'hashed';
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     mockAuthSignupDto = createMockSignupDto();
     mockAuthSigninDto = createMockSigninDto();
     mockUser = createMockUser();
@@ -48,41 +64,44 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        JwtService,
         { provide: UsersService, useValue: mockUsersService },
-        { provide: JwtService, useValue: mockJwtService },
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: MailService, useValue: mockMailService },
+        { provide: ConfigService, useValue: mockConfigService.mock },
       ],
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
-  });
+    jwtService = module.get<JwtService>(JwtService);
 
-  afterEach(() => {
-    jest.clearAllMocks();
+    spyHash = jest.spyOn(authService, 'hash').mockResolvedValue(FAKE_HASH);
+    spyVerify = jest.spyOn(authService, 'verify');
   });
 
   describe('signup', () => {
     it('should create a new user with hashed password if email is available', async () => {
-      (argon.hash as jest.Mock).mockResolvedValueOnce('hashed');
-
+      mockUsersService.findByEmail.mockResolvedValueOnce(null);
       await authService.signup(mockAuthSignupDto);
-      expect(mockUsersService.checkIfEmailExists).toHaveBeenCalledWith(
+
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         mockAuthSignupDto.email,
       );
-      expect(argon.hash).toHaveBeenCalledWith(mockAuthSignupDto.password);
+      expect(spyHash).toHaveBeenCalledWith(mockAuthSignupDto.password);
       expect(mockUsersService.create).toHaveBeenCalledWith({
         name: mockAuthSignupDto.name,
         email: mockAuthSignupDto.email,
-        hash: 'hashed',
+        hash: FAKE_HASH,
       });
     });
 
     it('should throw ConflictException when email is already taken', async () => {
-      mockUsersService.checkIfEmailExists.mockResolvedValueOnce(true);
+      mockUsersService.findByEmail.mockResolvedValueOnce(mockUser);
       await expect(authService.signup(mockAuthSignupDto)).rejects.toThrow(
         ConflictException,
       );
 
-      expect(mockUsersService.checkIfEmailExists).toHaveBeenCalledWith(
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         mockAuthSignupDto.email,
       );
     });
@@ -90,34 +109,35 @@ describe('AuthService', () => {
 
   describe('signin', () => {
     it('should sign user in and issue token', async () => {
-      const payload = {
-        sub: mockUser.id,
-        email: mockUser.email,
-        userName: mockUser.name,
-      };
       mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
-      (argon.verify as jest.Mock).mockResolvedValueOnce(true);
+      spyVerify.mockResolvedValueOnce(true);
       const signTokenSpy = jest
-        .spyOn(authService, 'signToken')
+        .spyOn(jwtService, 'signAsync')
         .mockResolvedValueOnce('jwtToken');
       const result = await authService.signin(
         mockAuthSigninDto.email,
         mockAuthSigninDto.password,
       );
+
       expect(mockUsersService.findByEmailOrThrow).toHaveBeenCalledWith(
         mockAuthSigninDto.email,
       );
-      expect(argon.verify).toHaveBeenCalledWith(
+      expect(spyVerify).toHaveBeenCalledWith(
         mockUser.hash,
         mockAuthSigninDto.password,
       );
-      expect(signTokenSpy).toHaveBeenCalledWith(payload);
-      expect(result).toEqual({ access_token: 'jwtToken' });
+      expect(signTokenSpy).toHaveBeenCalledWith({
+        sub: mockUser.id,
+        email: mockUser.email,
+        userName: mockUser.name,
+      });
+      expect(result).toEqual({ accessToken: 'jwtToken' });
     });
 
     it('should throw unauthorizedException when password not match', async () => {
       mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
-      (argon.verify as jest.Mock).mockResolvedValueOnce(false);
+      spyVerify.mockResolvedValueOnce(false);
+
       await expect(
         authService.signin(mockAuthSigninDto.email, mockAuthSigninDto.password),
       ).rejects.toThrow(UnauthorizedException);
@@ -126,6 +146,7 @@ describe('AuthService', () => {
 
   describe('changePassword', () => {
     let payload: AuthUpdatePasswordPayload;
+
     beforeEach(() => {
       payload = {
         userId: mockUser.id,
@@ -137,47 +158,83 @@ describe('AuthService', () => {
     });
 
     it('should change password if old password is correct and new one is different', async () => {
-      jest
-        .spyOn(authService, 'verifyPassword')
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(false);
-      (argon.hash as jest.Mock).mockResolvedValueOnce('newHash');
+      spyVerify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
       await authService.changePassword(payload);
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(
         payload.userId,
       );
-      expect(authService.verifyPassword).toHaveBeenNthCalledWith(
+      expect(spyVerify).toHaveBeenNthCalledWith(
         1,
-        'hashed',
-        'test',
+        mockUser.hash,
+        payload.oldPassword,
       );
-      expect(authService.verifyPassword).toHaveBeenNthCalledWith(
+      expect(spyVerify).toHaveBeenNthCalledWith(
         2,
-        'hashed',
-        'foo',
+        mockUser.hash,
+        payload.newPassword,
       );
       expect(mockUsersService.update).toHaveBeenCalledWith({
         id: payload.userId,
-        hash: 'newHash',
+        hash: FAKE_HASH,
       });
     });
 
     it('should throw ForbiddenException', async () => {
-      jest.spyOn(authService, 'verifyPassword').mockResolvedValueOnce(false);
+      spyVerify.mockResolvedValueOnce(false);
+
       await expect(authService.changePassword(payload)).rejects.toThrow(
         new ForbiddenException('Old password is incorrect'),
       );
     });
 
     it('should throw BadRequestException', async () => {
-      jest
-        .spyOn(authService, 'verifyPassword')
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(true);
+      spyVerify.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+
       await expect(authService.changePassword(payload)).rejects.toThrow(
         new BadRequestException('Please use a new password'),
       );
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('should send email with link if email exists', async () => {
+      const RAW_TOKEN = 'rawUrlFriendlySecret';
+      jest
+        .spyOn(authService, 'generateUrlFriendlySecret')
+        .mockReturnValueOnce(RAW_TOKEN);
+      mockUsersService.findByEmail.mockResolvedValueOnce(mockUser);
+      mockPrismaService.resetPasswordToken.create.mockResolvedValueOnce({
+        id: 1,
+      });
+
+      await authService.resetPassword(mockUser.email);
+
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(mockUser.email);
+
+      expect(spyHash).toHaveBeenCalledWith(RAW_TOKEN, {
+        type: argon.argon2id,
+      });
+      expect(mockPrismaService.resetPasswordToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: mockUser.id,
+          tokenHash: FAKE_HASH,
+        },
+        select: { id: true },
+      });
+      const link = `${mockConfigService.mock.get('BASE_URL')}api/auth/reset-password?id=1&token=${RAW_TOKEN}`;
+
+      expect(mockMailService.sendMail).toHaveBeenCalledWith(mockUser, link);
+    });
+
+    it('does nothing if email does not exist', async () => {
+      mockUsersService.findByEmail.mockResolvedValueOnce(null);
+      await authService.resetPassword('foo@test.com');
+
+      expect(
+        mockPrismaService.resetPasswordToken.create,
+      ).not.toHaveBeenCalled();
+      expect(mockMailService.sendMail).not.toHaveBeenCalled();
     });
   });
 });

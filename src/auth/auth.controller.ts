@@ -10,10 +10,15 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
+import {
+  AuthSigninDto,
+  AuthSignupDto,
+  AuthUpdatePasswordDto,
+  AuthForgotPasswordDto,
+} from './dto/auth.dto';
 import { Response, Request } from 'express';
-import { AuthUpdatePasswordDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
@@ -22,7 +27,10 @@ import { setSession } from 'src/common/helpers/flash-helper';
 
 @Controller('api/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private config: ConfigService,
+  ) {}
   @Post('signup')
   async signup(
     @Req() req: Request,
@@ -54,11 +62,15 @@ export class AuthController {
     @Res() res: Response,
   ) {
     try {
-      const { access_token } = await this.authService.signin(
+      const { accessToken } = await this.authService.signin(
         dto.email,
         dto.password,
       );
-      res.cookie('jwt', access_token);
+      res.cookie('grouptodo_login', accessToken, {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: this.config.get<number>('LOGIN_COOKIE_MAX_AGE'),
+      });
       return res.redirect('/users/home');
     } catch (e) {
       if (
@@ -72,7 +84,7 @@ export class AuthController {
   }
   @Post('signout')
   signout(@Req() req: Request, @Res() res: Response) {
-    res.clearCookie('jwt');
+    res.clearCookie('grouptodo_login');
     req.session.flash = {
       type: 'success',
       message: 'Signed out successfully',
@@ -96,20 +108,30 @@ export class AuthController {
     try {
       await this.authService.changePassword(payload);
       setSession(req, 'success', 'Password changed');
-      res.clearCookie('jwt');
+      res.clearCookie('grouptodo_login');
       return res.redirect('/');
     } catch (e) {
       if (e instanceof ForbiddenException || e instanceof BadRequestException) {
         setSession(req, 'error', e.message);
         return res.redirect('/users/home');
       }
-      // QUESTION:
-      // should i directly throw e?
-      // how to deal with this?
-      // a filter to see unsolved error and document it?
       throw e;
     }
-    // TODO:
-    // deal with user forgot password
+  }
+
+  @Post('reset-password')
+  async resetPassword(
+    @Req() req: Request,
+    @Body() dto: AuthForgotPasswordDto,
+    @Res() res: Response,
+  ) {
+    await this.authService.resetPassword(dto.email);
+
+    req.session.flash = {
+      type: 'success',
+      message:
+        'If this email is registered, a password reset link has been sent.',
+    };
+    return res.redirect('/');
   }
 }

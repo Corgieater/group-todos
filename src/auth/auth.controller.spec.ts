@@ -14,6 +14,7 @@ import {
   createMockCurrentUser,
 } from 'src/test/factories/mock-user.factory';
 import {
+  AuthForgotPasswordDto,
   AuthSigninDto,
   AuthSignupDto,
   AuthUpdatePasswordDto,
@@ -24,6 +25,9 @@ import {
   createMockRes,
 } from 'src/test/factories/mock-http.factory';
 import { CurrentUser } from 'src/common/types/current-user';
+import { ConfigService } from '@nestjs/config';
+import { createMockConfig } from 'src/test/factories/mock-config.factory';
+
 describe('AuthController', () => {
   let authController: AuthController;
 
@@ -38,9 +42,13 @@ describe('AuthController', () => {
     signup: jest.fn(),
     signin: jest.fn(),
     changePassword: jest.fn(),
+    resetPassword: jest.fn(),
   };
 
+  const mockConfigService = createMockConfig();
+
   beforeEach(async () => {
+    jest.clearAllMocks();
     mockReq = createMockReq();
     mockRes = createMockRes();
     mockCurrentUser = createMockCurrentUser();
@@ -49,14 +57,13 @@ describe('AuthController', () => {
     mockAuthSigninDto = createMockSigninDto();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: mockAuthService }],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: ConfigService, useValue: mockConfigService.mock },
+      ],
     }).compile();
 
     authController = module.get<AuthController>(AuthController);
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
   });
 
   describe('signup', () => {
@@ -86,10 +93,14 @@ describe('AuthController', () => {
   describe('signin', () => {
     it('should sign in user and redirect with token', async () => {
       mockAuthService.signin.mockResolvedValueOnce({
-        access_token: 'jwtToken',
+        accessToken: 'jwtToken',
       });
       await authController.signin(mockReq, mockAuthSigninDto, mockRes);
-      expect(mockRes.cookie).toHaveBeenCalledWith('jwt', 'jwtToken');
+      expect(mockRes.cookie).toHaveBeenCalledWith(
+        'grouptodo_login',
+        'jwtToken',
+        { httpOnly: true, maxAge: 1440000, sameSite: 'lax' },
+      );
       expect(mockRes.redirect).toHaveBeenLastCalledWith('/users/home');
     });
 
@@ -107,7 +118,7 @@ describe('AuthController', () => {
   describe('signout', () => {
     it('should sign out user and redirect with success message', () => {
       authController.signout(mockReq, mockRes);
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('jwt');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('grouptodo_login');
       expect(mockReq.session.flash).toEqual({
         type: 'success',
         message: 'Signed out successfully',
@@ -144,7 +155,7 @@ describe('AuthController', () => {
         type: 'success',
         message: 'Password changed',
       });
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('jwt');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('grouptodo_login');
       expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
 
@@ -180,6 +191,25 @@ describe('AuthController', () => {
         message: 'Please use a new password',
       });
       expect(mockRes.redirect).toHaveBeenCalledWith('/users/home');
+    });
+  });
+
+  describe('resetPassword', () => {
+    let dto: AuthForgotPasswordDto;
+    dto = {
+      email: 'test@test.com',
+    };
+
+    it('should always redirect with a success flash message', async () => {
+      await authController.resetPassword(mockReq, dto, mockRes);
+
+      expect(mockAuthService.resetPassword).toHaveBeenCalledWith(dto.email);
+      expect(mockReq.session.flash).toEqual({
+        type: 'success',
+        message:
+          'If this email is registered, a password reset link has been sent.',
+      });
+      expect(mockRes.redirect).toHaveBeenCalledWith('/');
     });
   });
 });
