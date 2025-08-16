@@ -7,14 +7,14 @@ import { AccessTokenPayload } from './types/auth';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private configService: ConfigService) {
+  constructor(private config: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
-        (req: Request) => req?.cookies?.jwt,
+        (req: Request) => req?.cookies?.grouptodo_login,
       ]),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET')!,
+      secretOrKey: config.get<string>('JWT_SECRET')!,
     });
   }
   async validate(payload: AccessTokenPayload) {

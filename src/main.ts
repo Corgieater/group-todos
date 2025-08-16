@@ -18,10 +18,12 @@ async function bootstrap() {
   app.use(cookieParser(config.get('COOKIE_SECRET')));
   app.use(
     session({
-      secret: config.get('SESSION_SECRET')!,
+      name: 'group_flash_message',
+      secret: config.get<string>('SESSION_SECRET')!,
       resave: false,
       saveUninitialized: false,
-      cookie: { maxAge: 60000 },
+      rolling: false,
+      cookie: { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 600000 },
     }),
   );
   app.use(flashMessage);

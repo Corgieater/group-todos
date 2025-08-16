@@ -3,23 +3,26 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthPageController } from './auth.page.controller';
 import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { UsersModule } from 'src/users/users.module';
 import { JwtStrategy } from './jwt.strategy';
+import { MailModule } from 'src/mail/mail.module';
+import { PrismaModule } from 'src/prisma/prisma.module';
 
 @Module({
   imports: [
-    ConfigModule,
     PassportModule,
     UsersModule,
+    PrismaModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: configService.get('TOKEN_EXPIRE_TIME') },
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: config.get('TOKEN_EXPIRE_TIME') },
       }),
     }),
+    MailModule,
   ],
   controllers: [AuthController, AuthPageController],
   providers: [AuthService, JwtStrategy],
