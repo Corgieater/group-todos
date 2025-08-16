@@ -3,6 +3,6 @@ model User {
   name  String @db.VarChar(100)
   email String  @unique @db.VarChar(254)
   hash String
-
+  resetTokens ResetPasswordToken[]
   @@map("users")
 }

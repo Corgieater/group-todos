@@ -32,3 +32,9 @@ export class AuthUpdatePasswordDto {
   @IsString()
   newPassword: string;
 }
+
+export class AuthForgotPasswordDto {
+  @IsNotEmpty()
+  @IsEmail()
+  email: string;
+}

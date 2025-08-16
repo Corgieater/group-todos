@@ -1,0 +1,12 @@
+model ResetPasswordToken{
+    id Int @default(autoincrement()) @id
+    userId Int
+    user User @relation(fields:[userId], references: [id])
+    tokenHash String
+    createdAt DateTime @default(now())
+    expiredAt DateTime @default(dbgenerated("now() + interval '15 minutes'"))
+    usedAt DateTime?
+
+    @@index([userId, createdAt])
+    @@index([expiredAt])
+}
