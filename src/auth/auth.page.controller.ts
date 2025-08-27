@@ -1,11 +1,10 @@
 import {
   Controller,
   Get,
-  Post,
   Req,
   Res,
-  Body,
   HttpStatus,
+  UseFilters,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -23,5 +22,15 @@ export class AuthPageController {
   @Get('signin')
   signinPage(@Req() req: Request, @Res() res: Response) {
     return res.render('auth/signin');
+  }
+
+  @Get('forgot-password')
+  forgotPassowrd(@Req() req: Request, @Res() res: Response) {
+    return res.render('auth/forgot-password');
+  }
+
+  @Get('reset-password')
+  resetPassword(@Req() req: Request, @Res() res: Response) {
+    return res.render('auth/reset-password');
   }
 }

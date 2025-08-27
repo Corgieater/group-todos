@@ -1,0 +1,33 @@
+enum Status {
+  UNFINISHED
+  FINISHED
+  CANCELED
+}
+
+enum Priority {
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Task {
+  id          Int       @id @default(autoincrement())
+  title       String
+  status      Status    @default(UNFINISHED)
+  priority    Priority? @default(MEDIUM)
+  description String?
+  dueAt       DateTime?
+  allDay      Boolean   @default(false)
+  location    String?
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, dueAt])
+  @@index([priority])
+  @@index([userId, status, dueAt])
+}

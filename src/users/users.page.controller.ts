@@ -1,17 +1,17 @@
 import { Controller, Get, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { CurrentUser } from 'src/common/types/current-user';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 
 @Controller('users')
 export class UsersPageController {
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AccessTokenGuard)
   @Get('home')
   async userPage(
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    return res.render('user/user-page', { name: user.userName });
+    return res.render('users/user-page', { name: user.userName });
   }
 }

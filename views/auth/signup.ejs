@@ -10,9 +10,9 @@
 <%- include('../partials/message', {  flash: flash } ) %>
 <h1>Join us!</h1>
 <form action="/api/auth/signup" method="POST">
-  <input type="text" name="name" placeholder="Name" value="test">
-  <input type="email" name="email" placeholder="Email" value="test@test.com">
-  <input type="password" name="password" placeholder="Password" value="test">
+  <input type="text" name="name" placeholder="Name" value=<%= (flash?.form?.name ?? '') %>>
+  <input type="email" name="email" placeholder="Email" value=<%= (flash?.form?.email ?? '') %>>
+  <input type="password" name="password" placeholder="Password">
   <button type="submit">Signup</button>
 </form>
 

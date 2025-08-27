@@ -1,7 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 
+import { Request, Response, NextFunction } from 'express';
+
 export function flashMessage(req: Request, res: Response, next: NextFunction) {
-  res.locals.flash = req.session.flash;
-  delete req.session.flash;
+  const msg = (req.session as any).flash;
+  if (msg !== undefined) {
+    res.locals.flash = msg;
+    delete (req.session as any).flash;
+  } else {
+    res.locals.flash = null;
+  }
   next();
 }

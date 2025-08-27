@@ -38,3 +38,11 @@ export class AuthForgotPasswordDto {
   @IsEmail()
   email: string;
 }
+
+export class AuthResetPasswordDto {
+  @IsNotEmpty()
+  newPassword: string;
+
+  @IsNotEmpty()
+  confirmPassword: string;
+}

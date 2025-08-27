@@ -1,8 +1,10 @@
 model User {
-  id    Int     @default(autoincrement()) @id
-  name  String @db.VarChar(100)
-  email String  @unique @db.VarChar(254)
-  hash String
+  id          Int                  @id @default(autoincrement())
+  name        String               @db.VarChar(100)
+  email       String               @unique @db.VarChar(254)
+  hash        String
   resetTokens ResetPasswordToken[]
+  Task        Task[]
+
   @@map("users")
 }
