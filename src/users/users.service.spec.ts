@@ -14,10 +14,10 @@ import { AuthSigninDto, AuthSignupDto } from 'src/auth/dto/auth.dto';
 
 describe('UsersService', () => {
   let usersService: UsersService;
-  let mockSignUpDto: AuthSignupDto;
-  let mockSigninDto: AuthSigninDto;
-  let mockCreateUserPayload: UserCreatePayload;
-  let mockUser: User;
+  let signUpDto: AuthSignupDto;
+  let signinDto: AuthSigninDto;
+  let createUserPayload: UserCreatePayload;
+  let user: User;
 
   const mockPrismaService = {
     user: {
@@ -35,10 +35,11 @@ describe('UsersService', () => {
   } as Prisma.PrismaClientKnownRequestError;
 
   beforeEach(async () => {
-    mockSignUpDto = createMockSignupDto();
-    mockCreateUserPayload = createMockCreatePayload();
-    mockSigninDto = createMockSigninDto();
-    mockUser = createMockUser();
+    jest.clearAllMocks();
+    signUpDto = createMockSignupDto();
+    createUserPayload = createMockCreatePayload();
+    signinDto = createMockSigninDto();
+    user = createMockUser();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,44 +51,64 @@ describe('UsersService', () => {
     usersService = module.get<UsersService>(UsersService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('create', () => {
     it('should create user with the correct payload', async () => {
-      await usersService.create(mockCreateUserPayload);
+      await usersService.create(createUserPayload);
+      expect(mockPrismaService.user.create).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.user.create).toHaveBeenCalledWith({
-        data: mockCreateUserPayload,
+        data: createUserPayload,
       });
     });
   });
-  describe('checkIfEmailExists', () => {
-    it('should return false if email not exist', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
-      const result = await usersService.checkIfEmailExists(mockSignUpDto.email);
+
+  describe('findByEmail', () => {
+    it('should return user object', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(user);
+      const result = await usersService.findByEmail(user.email);
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { email: mockSignUpDto.email },
-        select: { id: true, email: true, hash: true, name: true },
+        where: { email: user.email },
       });
-      expect(result).toEqual(false);
+      expect(result).toEqual(user);
     });
 
-    it('should return true if email already exists', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockUser);
-      const result = await usersService.checkIfEmailExists(mockSignUpDto.email);
+    it('should return null if user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
+      const result = await usersService.findByEmail(user.email);
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { email: mockSignUpDto.email },
-        select: { id: true, email: true, hash: true, name: true },
+        where: { email: user.email },
       });
-      expect(result).toEqual(true);
+      expect(result).toBeNull();
     });
   });
+
+  describe('findById', () => {
+    it('should return user object', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(user);
+      const result = await usersService.findById(user.id);
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { id: user.id },
+      });
+      expect(result).toEqual(user);
+    });
+
+    it('should return null if user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
+      const result = await usersService.findById(999);
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 999 },
+      });
+      expect(result).toBeNull();
+    });
+  });
+
   describe('findByEmailOrThrow', () => {
     it('should return user object', async () => {
-      mockPrismaService.user.findUniqueOrThrow.mockResolvedValueOnce(mockUser);
-      const result = await usersService.findByEmailOrThrow(mockSigninDto.email);
-      expect(result).toEqual(mockUser);
+      mockPrismaService.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+      const result = await usersService.findByEmailOrThrow(signinDto.email);
+      expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(user);
     });
 
     it('should throw unauthorizedException when email not found (P2025)', async () => {
@@ -95,34 +116,13 @@ describe('UsersService', () => {
         prismaError,
       );
       await expect(
-        usersService.findByEmailOrThrow(mockSigninDto.email),
+        usersService.findByEmailOrThrow(signinDto.email),
       ).rejects.toThrow(UnauthorizedException);
     });
   });
 
-  describe('findByIdOrThrow', () => {
-    it('should return user object', async () => {
-      mockPrismaService.user.findUniqueOrThrow.mockReturnValueOnce(mockUser);
-      const user = await usersService.findByIdOrThrow(1);
-      expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
-      });
-      expect(user).toEqual(mockUser);
-    });
-
-    it('should throw UnauthorizedException', async () => {
-      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(
-        prismaError,
-      );
-      await expect(usersService.findByIdOrThrow(1)).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
-      expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
-      });
-    });
-  });
-
+  // TODO:
+  // This update might be removed or check if it only update nunessential data
   describe('update', () => {
     it('should update user data based on UserUpdatePayload', async () => {
       const payload: UserUpdatePayload = {
@@ -131,6 +131,7 @@ describe('UsersService', () => {
         hash: 'newHash',
       };
       await usersService.update(payload);
+      expect(mockPrismaService.user.update).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: {
           id: payload.id,

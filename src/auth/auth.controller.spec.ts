@@ -1,12 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  UnauthorizedException,
-} from '@nestjs/common';
 import { Request, Response } from 'express';
 import {
   createMockSignupDto,
@@ -15,6 +9,7 @@ import {
 } from 'src/test/factories/mock-user.factory';
 import {
   AuthForgotPasswordDto,
+  AuthResetPasswordDto,
   AuthSigninDto,
   AuthSignupDto,
   AuthUpdatePasswordDto,
@@ -31,30 +26,29 @@ import { createMockConfig } from 'src/test/factories/mock-config.factory';
 describe('AuthController', () => {
   let authController: AuthController;
 
-  let mockReq: Request;
-  let mockRes: Response;
-  let mockCurrentUser: CurrentUser;
-
-  let mockAuthSignupDto: AuthSignupDto;
-  let mockAuthSigninDto: AuthSigninDto;
+  let req: Request;
+  let res: Response;
+  let currentUser: CurrentUser;
+  let accessToken: { accessToken: string };
 
   const mockAuthService = {
     signup: jest.fn(),
     signin: jest.fn(),
     changePassword: jest.fn(),
     resetPassword: jest.fn(),
+    verifyResetToken: jest.fn(),
+    confirmResetPassword: jest.fn(),
   };
 
   const mockConfigService = createMockConfig();
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockReq = createMockReq();
-    mockRes = createMockRes();
-    mockCurrentUser = createMockCurrentUser();
+    req = createMockReq();
+    res = createMockRes();
+    currentUser = createMockCurrentUser();
+    accessToken = { accessToken: 'jwtToken' };
 
-    mockAuthSignupDto = createMockSignupDto();
-    mockAuthSigninDto = createMockSigninDto();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
@@ -67,63 +61,52 @@ describe('AuthController', () => {
   });
 
   describe('signup', () => {
+    let dto: AuthSignupDto;
+
+    beforeEach(() => {
+      dto = createMockSignupDto();
+    });
+
     it('should redirect with success flash when user signs up successfully', async () => {
       mockAuthService.signup.mockResolvedValueOnce(undefined);
-      await authController.signup(mockReq, mockAuthSignupDto, mockRes);
-      expect(mockAuthService.signup).toHaveBeenCalledWith(mockAuthSignupDto);
-      expect(mockReq.session.flash).toEqual({
+      await authController.signup(req, dto, res);
+      expect(mockAuthService.signup).toHaveBeenCalledWith(dto);
+      expect(req.session.flash).toEqual({
         type: 'success',
         message: 'Account apply succeed, please login!',
       });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/');
-    });
-
-    it('should redirect with error flash when email is already taken', async () => {
-      mockAuthService.signup.mockRejectedValueOnce(new ConflictException());
-      await authController.signup(mockReq, mockAuthSignupDto, mockRes);
-      expect(mockAuthService.signup).toHaveBeenCalledWith(mockAuthSignupDto);
-      expect(mockReq.session.flash).toEqual({
-        type: 'error',
-        message: 'Email already taken',
-      });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/auth/signup');
+      expect(res.redirect).toHaveBeenCalledWith('/');
     });
   });
 
   describe('signin', () => {
-    it('should sign in user and redirect with token', async () => {
-      mockAuthService.signin.mockResolvedValueOnce({
-        accessToken: 'jwtToken',
-      });
-      await authController.signin(mockReq, mockAuthSigninDto, mockRes);
-      expect(mockRes.cookie).toHaveBeenCalledWith(
-        'grouptodo_login',
-        'jwtToken',
-        { httpOnly: true, maxAge: 1440000, sameSite: 'lax' },
-      );
-      expect(mockRes.redirect).toHaveBeenLastCalledWith('/users/home');
+    let dto: AuthSigninDto;
+
+    beforeEach(() => {
+      dto = createMockSigninDto();
     });
 
-    it('should redirect to /auth/signin when credentials are invalid', async () => {
-      mockAuthService.signin.mockRejectedValueOnce(new UnauthorizedException());
-      await authController.signin(mockReq, mockAuthSigninDto, mockRes);
-      expect(mockReq.session.flash).toEqual({
-        type: 'error',
-        message: 'Invalid credentials',
+    it('should sign in user and redirect with token', async () => {
+      mockAuthService.signin.mockResolvedValueOnce(accessToken);
+      await authController.signin(req, dto, res);
+      expect(res.cookie).toHaveBeenCalledWith('grouptodo_login', 'jwtToken', {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: mockConfigService.mock.get<number>('LOGIN_COOKIE_MAX_AGE'),
       });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/auth/signin');
+      expect(res.redirect).toHaveBeenLastCalledWith('/users/home');
     });
   });
 
   describe('signout', () => {
     it('should sign out user and redirect with success message', () => {
-      authController.signout(mockReq, mockRes);
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('grouptodo_login');
-      expect(mockReq.session.flash).toEqual({
+      authController.signout(req, res);
+      expect(res.clearCookie).toHaveBeenCalledWith('grouptodo_login');
+      expect(req.session.flash).toEqual({
         type: 'success',
         message: 'Signed out successfully',
       });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/');
+      expect(res.redirect).toHaveBeenCalledWith('/');
     });
   });
 
@@ -137,60 +120,21 @@ describe('AuthController', () => {
         newPassword: 'foo',
       };
       payload = {
-        userId: mockCurrentUser.userId,
-        email: mockCurrentUser.email,
+        userId: currentUser.userId,
+        email: currentUser.email,
         ...dto,
       };
     });
 
     it('should change user password, clear cookie and redirect to /', async () => {
-      await authController.changePassword(
-        mockReq,
-        mockCurrentUser,
-        dto,
-        mockRes,
-      );
+      await authController.changePassword(req, currentUser, dto, res);
       expect(mockAuthService.changePassword).toHaveBeenCalledWith(payload);
-      expect(mockReq.session.flash).toEqual({
+      expect(req.session.flash).toEqual({
         type: 'success',
         message: 'Password changed',
       });
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('grouptodo_login');
-      expect(mockRes.redirect).toHaveBeenCalledWith('/');
-    });
-
-    it('should redirect with error flash when old password is wrong', async () => {
-      mockAuthService.changePassword.mockRejectedValueOnce(
-        new ForbiddenException('Old password is incorrect'),
-      );
-      await authController.changePassword(
-        mockReq,
-        mockCurrentUser,
-        dto,
-        mockRes,
-      );
-      expect(mockReq.session.flash).toEqual({
-        type: 'error',
-        message: 'Old password is incorrect',
-      });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/users/home');
-    });
-
-    it('should redirect with error flash when old and new password are the same', async () => {
-      mockAuthService.changePassword.mockRejectedValueOnce(
-        new BadRequestException('Please use a new password'),
-      );
-      await authController.changePassword(
-        mockReq,
-        mockCurrentUser,
-        dto,
-        mockRes,
-      );
-      expect(mockReq.session.flash).toEqual({
-        type: 'error',
-        message: 'Please use a new password',
-      });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/users/home');
+      expect(res.clearCookie).toHaveBeenCalledWith('grouptodo_login');
+      expect(res.redirect).toHaveBeenCalledWith('/');
     });
   });
 
@@ -201,15 +145,86 @@ describe('AuthController', () => {
     };
 
     it('should always redirect with a success flash message', async () => {
-      await authController.resetPassword(mockReq, dto, mockRes);
+      await authController.resetPassword(req, dto, res);
 
       expect(mockAuthService.resetPassword).toHaveBeenCalledWith(dto.email);
-      expect(mockReq.session.flash).toEqual({
+      expect(req.session.flash).toEqual({
         type: 'success',
         message:
           'If this email is registered, a password reset link has been sent.',
       });
-      expect(mockRes.redirect).toHaveBeenCalledWith('/');
+      expect(res.redirect).toHaveBeenCalledWith('/');
+    });
+  });
+
+  describe('verifyResetToken', () => {
+    let tokenId: number;
+    let resetPasswordToken: string;
+
+    beforeEach(() => {
+      tokenId = 1;
+      resetPasswordToken = 'reset-password-token';
+    });
+
+    it('should return reset password form page after token verified', async () => {
+      mockAuthService.verifyResetToken.mockResolvedValueOnce(accessToken);
+      await authController.verifyResetToken(
+        req,
+        tokenId,
+        resetPasswordToken,
+        res,
+      );
+
+      expect(mockAuthService.verifyResetToken).toHaveBeenCalledWith(
+        tokenId,
+        resetPasswordToken,
+      );
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        'grouptodo_reset_password',
+        'jwtToken',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: mockConfigService.mock.get<number>(
+            'RESET_PASSWORD_COOKIE_MAX_AGE',
+          ),
+        }),
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/auth/reset-password');
+
+      expect((req.session as any).flash).toEqual(
+        expect.objectContaining({ type: 'success' }),
+      );
+    });
+  });
+
+  describe('confirmResetPassword', () => {
+    const payload = { userId: 1, tokenId: 2 };
+    const dto: AuthResetPasswordDto = {
+      newPassword: 'newPassword',
+      confirmPassword: 'newPassword',
+    };
+
+    beforeEach(() => {
+      req = createMockReq({ user: payload });
+    });
+
+    it('should reset password and redirect to / with success message', async () => {
+      await authController.confirmResetPassword(req, dto, res);
+
+      expect(mockAuthService.confirmResetPassword).toHaveBeenCalledWith(
+        payload.tokenId,
+        payload.userId,
+        dto.newPassword,
+        dto.confirmPassword,
+      );
+      expect(res.clearCookie).toHaveBeenCalledWith('grouptodo_reset_password');
+      expect(req.session.flash?.type).toEqual('success');
+      expect(req.session.flash?.message).toEqual(
+        'Reset password succeed, please re-login!',
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/');
     });
   });
 });

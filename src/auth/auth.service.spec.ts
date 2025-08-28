@@ -1,12 +1,6 @@
 import * as argon from 'argon2';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  UnauthorizedException,
-} from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { User as UserModel } from '@prisma/client';
@@ -16,50 +10,77 @@ import {
   createMockSigninDto,
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
-import { AuthUpdatePasswordPayload } from './types/auth';
+import {
+  NormalAccessTokenPayload,
+  AuthUpdatePasswordPayload,
+} from './types/auth';
 import { MailService } from 'src/mail/mail.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
+import { AuthErrors } from 'src/errors';
 
 describe('AuthService', () => {
   let authService: AuthService;
   let jwtService: JwtService;
 
-  let mockAuthSignupDto: AuthSignupDto;
-  let mockAuthSigninDto: AuthSigninDto;
-  let mockUser: UserModel;
+  let signupDto: AuthSignupDto;
+  let signinDto: AuthSigninDto;
+  let user: UserModel;
+  let accessPayload: NormalAccessTokenPayload;
 
   let spyHash: jest.SpiedFunction<AuthService['hash']>;
   let spyVerify: jest.SpiedFunction<AuthService['verify']>;
+  let spySignAsync: jest.SpiedFunction<JwtService['signAsync']>;
 
   const mockUsersService = {
     findByEmail: jest.fn(),
+    findById: jest.fn(),
     create: jest.fn(),
     findByEmailOrThrow: jest.fn(),
     findByIdOrThrow: jest.fn(),
     update: jest.fn(),
+    updatePasswordHash: jest.fn(),
   };
 
   const mockPrismaService = {
     resetPasswordToken: {
       create: jest.fn(),
+      findFirst: jest.fn(),
     },
+    $transaction: jest.fn().mockImplementation(async (fn, options) => {
+      return fn(tx);
+    }),
   };
+
+  const tx = {
+    resetPasswordToken: {
+      updateMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    user: { update: jest.fn() },
+  } as any;
 
   const mockMailService = {
     sendMail: jest.fn(),
   };
 
   const mockConfigService = createMockConfig();
-
-  const FAKE_HASH = 'hashed';
+  const JWT_TOKEN = 'jwtToken';
+  const HASH = 'hashed';
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockAuthSignupDto = createMockSignupDto();
-    mockAuthSigninDto = createMockSigninDto();
-    mockUser = createMockUser();
+
+    signupDto = createMockSignupDto();
+    signinDto = createMockSigninDto();
+    user = createMockUser();
+    accessPayload = {
+      tokenUse: 'access',
+      sub: user.id,
+      email: user.email,
+      userName: user.name,
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,72 +96,66 @@ describe('AuthService', () => {
     authService = module.get<AuthService>(AuthService);
     jwtService = module.get<JwtService>(JwtService);
 
-    spyHash = jest.spyOn(authService, 'hash').mockResolvedValue(FAKE_HASH);
+    // token hashing uses argon2id options
+    spyHash = jest.spyOn(authService, 'hash').mockResolvedValue(HASH);
     spyVerify = jest.spyOn(authService, 'verify');
+    spySignAsync = jest
+      .spyOn(jwtService, 'signAsync')
+      .mockResolvedValue(JWT_TOKEN);
   });
 
   describe('signup', () => {
     it('should create a new user with hashed password if email is available', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(null);
-      await authService.signup(mockAuthSignupDto);
+      await authService.signup(signupDto);
 
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
-        mockAuthSignupDto.email,
+        signupDto.email,
       );
-      expect(spyHash).toHaveBeenCalledWith(mockAuthSignupDto.password);
+      expect(spyHash).toHaveBeenCalledWith(signupDto.password);
       expect(mockUsersService.create).toHaveBeenCalledWith({
-        name: mockAuthSignupDto.name,
-        email: mockAuthSignupDto.email,
-        hash: FAKE_HASH,
+        name: signupDto.name,
+        email: signupDto.email,
+        hash: HASH,
       });
     });
 
     it('should throw ConflictException when email is already taken', async () => {
-      mockUsersService.findByEmail.mockResolvedValueOnce(mockUser);
-      await expect(authService.signup(mockAuthSignupDto)).rejects.toThrow(
-        ConflictException,
-      );
+      mockUsersService.findByEmail.mockResolvedValueOnce(user);
+      await expect(authService.signup(signupDto)).rejects.toMatchObject({
+        code: 'CREDENTIAL_DUPLICATED',
+      });
 
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
-        mockAuthSignupDto.email,
+        signupDto.email,
       );
     });
   });
 
   describe('signin', () => {
     it('should sign user in and issue token', async () => {
-      mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
+      mockUsersService.findByEmail.mockResolvedValueOnce(user);
       spyVerify.mockResolvedValueOnce(true);
-      const signTokenSpy = jest
-        .spyOn(jwtService, 'signAsync')
-        .mockResolvedValueOnce('jwtToken');
       const result = await authService.signin(
-        mockAuthSigninDto.email,
-        mockAuthSigninDto.password,
+        signinDto.email,
+        signinDto.password,
       );
 
-      expect(mockUsersService.findByEmailOrThrow).toHaveBeenCalledWith(
-        mockAuthSigninDto.email,
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
+        signinDto.email,
       );
-      expect(spyVerify).toHaveBeenCalledWith(
-        mockUser.hash,
-        mockAuthSigninDto.password,
-      );
-      expect(signTokenSpy).toHaveBeenCalledWith({
-        sub: mockUser.id,
-        email: mockUser.email,
-        userName: mockUser.name,
-      });
-      expect(result).toEqual({ accessToken: 'jwtToken' });
+      expect(spyVerify).toHaveBeenCalledWith(user.hash, signinDto.password);
+      expect(spySignAsync).toHaveBeenCalledWith(accessPayload);
+      expect(result).toEqual({ accessToken: JWT_TOKEN });
     });
 
-    it('should throw unauthorizedException when password not match', async () => {
-      mockUsersService.findByEmailOrThrow.mockResolvedValueOnce(mockUser);
+    it('should throw UnauthorizedException when password does not match', async () => {
+      mockUsersService.findByEmail.mockResolvedValueOnce(user);
       spyVerify.mockResolvedValueOnce(false);
 
       await expect(
-        authService.signin(mockAuthSigninDto.email, mockAuthSigninDto.password),
-      ).rejects.toThrow(UnauthorizedException);
+        authService.signin(signinDto.email, signinDto.password),
+      ).rejects.toThrow(AuthErrors.InvalidCredentialError.password());
     });
   });
 
@@ -149,82 +164,102 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       payload = {
-        userId: mockUser.id,
-        email: mockUser.email,
+        userId: user.id,
+        email: user.email,
         oldPassword: 'test',
         newPassword: 'foo',
       };
-      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(mockUser);
     });
 
     it('should change password if old password is correct and new one is different', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(user);
       spyVerify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
       await authService.changePassword(payload);
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(
-        payload.userId,
-      );
+      expect(mockUsersService.findById).toHaveBeenCalledWith(payload.userId);
       expect(spyVerify).toHaveBeenNthCalledWith(
         1,
-        mockUser.hash,
+        user.hash,
         payload.oldPassword,
       );
       expect(spyVerify).toHaveBeenNthCalledWith(
         2,
-        mockUser.hash,
+        user.hash,
         payload.newPassword,
       );
-      expect(mockUsersService.update).toHaveBeenCalledWith({
-        id: payload.userId,
-        hash: FAKE_HASH,
-      });
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockUsersService.updatePasswordHash).toHaveBeenCalledWith(
+        payload.userId,
+        HASH,
+        tx,
+      );
     });
 
-    it('should throw ForbiddenException', async () => {
+    it('should throw error when user not found', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(null);
+
+      await expect(authService.changePassword(payload)).rejects.toThrow(
+        AuthErrors.UserNotFoundError.byId(payload.userId),
+      );
+    });
+
+    it('should throw error if old password is incorrect', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(user);
       spyVerify.mockResolvedValueOnce(false);
 
       await expect(authService.changePassword(payload)).rejects.toThrow(
-        new ForbiddenException('Old password is incorrect'),
+        AuthErrors.InvalidOldPasswordError,
       );
     });
 
-    it('should throw BadRequestException', async () => {
+    it('should throw error if old and new password are the same', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(user);
       spyVerify.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
 
       await expect(authService.changePassword(payload)).rejects.toThrow(
-        new BadRequestException('Please use a new password'),
+        new AuthErrors.PasswordReuseError(),
       );
     });
   });
 
   describe('resetPassword', () => {
+    let tokenId: number;
+
+    beforeEach(() => {
+      tokenId = 2;
+    });
     it('should send email with link if email exists', async () => {
       const RAW_TOKEN = 'rawUrlFriendlySecret';
       jest
         .spyOn(authService, 'generateUrlFriendlySecret')
         .mockReturnValueOnce(RAW_TOKEN);
-      mockUsersService.findByEmail.mockResolvedValueOnce(mockUser);
+      mockUsersService.findByEmail.mockResolvedValueOnce(user);
       mockPrismaService.resetPasswordToken.create.mockResolvedValueOnce({
-        id: 1,
+        id: tokenId,
       });
 
-      await authService.resetPassword(mockUser.email);
+      await authService.resetPassword(user.email);
 
-      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(mockUser.email);
+      expect(mockUsersService.findByEmail).toHaveBeenCalledWith(user.email);
 
       expect(spyHash).toHaveBeenCalledWith(RAW_TOKEN, {
         type: argon.argon2id,
       });
       expect(mockPrismaService.resetPasswordToken.create).toHaveBeenCalledWith({
         data: {
-          userId: mockUser.id,
-          tokenHash: FAKE_HASH,
+          userId: user.id,
+          tokenHash: HASH,
         },
         select: { id: true },
       });
-      const link = `${mockConfigService.mock.get('BASE_URL')}api/auth/reset-password?id=1&token=${RAW_TOKEN}`;
 
-      expect(mockMailService.sendMail).toHaveBeenCalledWith(mockUser, link);
+      expect(mockMailService.sendMail).toHaveBeenCalledWith(
+        user,
+        expect.stringContaining(
+          `/api/auth/verify-reset-token/${tokenId}/${RAW_TOKEN}`,
+        ),
+      );
     });
 
     it('does nothing if email does not exist', async () => {
@@ -235,6 +270,215 @@ describe('AuthService', () => {
         mockPrismaService.resetPasswordToken.create,
       ).not.toHaveBeenCalled();
       expect(mockMailService.sendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyResetToken', () => {
+    let tokenId: number;
+    let resetPasswordToken: string;
+    let resetTokenRow: { id: number; tokenHash: string; user: UserModel };
+
+    beforeEach(() => {
+      tokenId = 2;
+      resetPasswordToken = 'resetPasswordToken';
+      resetTokenRow = { id: tokenId, tokenHash: 'hashedToken', user: user };
+    });
+
+    it('should return jwt if id and token matched', async () => {
+      const payload = {
+        tokenUse: 'resetPassword',
+        sub: resetTokenRow.user.id,
+        userName: resetTokenRow.user.name,
+        email: resetTokenRow.user.email,
+        tokenId: resetTokenRow.id,
+      };
+      mockPrismaService.resetPasswordToken.findFirst.mockResolvedValueOnce(
+        resetTokenRow,
+      );
+      spyVerify.mockResolvedValueOnce(true);
+      spyHash.mockResolvedValueOnce(HASH);
+
+      const token = await authService.verifyResetToken(
+        tokenId,
+        resetPasswordToken,
+      );
+
+      expect(
+        mockPrismaService.resetPasswordToken.findFirst,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: tokenId,
+            usedAt: null,
+            expiredAt: expect.objectContaining({ gt: expect.any(Date) }),
+          }),
+        }),
+      );
+
+      expect(
+        mockPrismaService.resetPasswordToken.findFirst,
+      ).toHaveBeenCalledWith({
+        where: {
+          id: tokenId,
+          usedAt: null,
+          expiredAt: expect.objectContaining({ gt: expect.any(Date) }),
+        },
+        select: {
+          id: true,
+          tokenHash: true,
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+      expect(spyVerify).toHaveBeenCalledWith(
+        resetTokenRow.tokenHash,
+        resetPasswordToken,
+      );
+      expect(spySignAsync).toHaveBeenCalledWith(payload);
+      expect(token).toEqual({ accessToken: JWT_TOKEN });
+    });
+
+    it('should raise InvalidTokenException if token id not found', async () => {
+      mockPrismaService.resetPasswordToken.findFirst.mockResolvedValueOnce(
+        null,
+      );
+      await expect(
+        authService.verifyResetToken(1, 'fakeToken'),
+      ).rejects.toThrow(AuthErrors.InvalidTokenError);
+    });
+
+    it('should raise InvalidTokenException if token not matched', async () => {
+      mockPrismaService.resetPasswordToken.findFirst.mockResolvedValueOnce(
+        resetTokenRow,
+      );
+      spyVerify.mockResolvedValueOnce(false);
+
+      await expect(
+        authService.verifyResetToken(1, 'fakeToken'),
+      ).rejects.toThrow(AuthErrors.InvalidTokenError);
+    });
+  });
+
+  describe('confirmResetPassword', () => {
+    let newPassword: string;
+    let confirmPassword: string;
+    let tokenId: number;
+    let userId: number;
+
+    beforeEach(() => {
+      tx.resetPasswordToken.updateMany.mockReset();
+      tx.resetPasswordToken.deleteMany.mockClear();
+      mockUsersService.updatePasswordHash.mockReset();
+
+      mockPrismaService.$transaction.mockClear();
+      mockPrismaService.$transaction.mockImplementation(async (fn) => fn(tx));
+    });
+    it('should reset password, mark token as used, delete other unused tokens', async () => {
+      newPassword = 'newPassword';
+      confirmPassword = 'newPassword';
+      tokenId = 2;
+      userId = user.id;
+
+      mockUsersService.findById.mockResolvedValueOnce(user);
+      spyVerify.mockResolvedValueOnce(false);
+      spyHash.mockResolvedValueOnce(HASH);
+
+      tx.resetPasswordToken.updateMany.mockResolvedValue({ count: 1 });
+
+      await authService.confirmResetPassword(
+        tokenId,
+        userId,
+        newPassword,
+        confirmPassword,
+      );
+
+      expect(mockUsersService.findById).toHaveBeenCalledWith(userId);
+      expect(spyVerify).toHaveBeenCalledWith(user.hash, newPassword);
+      expect(spyHash).toHaveBeenCalledWith(newPassword);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+
+      // update token have been used
+      expect(tx.resetPasswordToken.updateMany).toHaveBeenCalledTimes(1);
+      expect(tx.resetPasswordToken.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: tokenId,
+          userId,
+          usedAt: null,
+          expiredAt: expect.objectContaining({ gt: expect.any(Date) }),
+        },
+        data: { usedAt: expect.any(Date) },
+      });
+
+      expect(mockUsersService.updatePasswordHash).toHaveBeenCalledTimes(1);
+      expect(mockUsersService.updatePasswordHash).toHaveBeenCalledWith(
+        user.id,
+        HASH,
+        tx,
+      );
+
+      // delete unused token
+      expect(tx.resetPasswordToken.deleteMany).toHaveBeenCalledTimes(1);
+      expect(tx.resetPasswordToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: user.id, usedAt: null },
+      });
+
+      // ensure we don't delete tokens before it used
+      const orderUpdate =
+        tx.resetPasswordToken.updateMany.mock.invocationCallOrder[0];
+      const orderDelete =
+        tx.resetPasswordToken.deleteMany.mock.invocationCallOrder[0];
+      expect(orderUpdate).toBeLessThan(orderDelete);
+    });
+
+    it('should throw error if user not found', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(null);
+      await expect(
+        authService.confirmResetPassword(
+          tokenId,
+          999,
+          newPassword,
+          confirmPassword,
+        ),
+      ).rejects.toThrow(AuthErrors.UserNotFoundError.byId(999));
+    });
+
+    it('should throw error if reset password and old password are the same', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(user);
+      spyVerify.mockResolvedValueOnce(true);
+
+      await expect(
+        authService.confirmResetPassword(
+          tokenId,
+          user.id,
+          newPassword,
+          confirmPassword,
+        ),
+      ).rejects.toThrow(AuthErrors.PasswordReuseError);
+    });
+
+    it('should throw error if new password and confirm mismatch', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(user);
+      spyVerify.mockResolvedValueOnce(false);
+
+      await expect(
+        authService.confirmResetPassword(tokenId, user.id, newPassword, 'foo'),
+      ).rejects.toThrow(AuthErrors.PasswordConfirmationMismatchError);
+    });
+
+    it('should throw InvalidTokenError if count !== 1', async () => {
+      mockUsersService.findById.mockResolvedValueOnce(user);
+      spyVerify.mockResolvedValueOnce(false);
+      spyHash.mockResolvedValueOnce(HASH);
+      tx.resetPasswordToken.updateMany.mockReturnValueOnce({ count: 0 });
+      console.log(newPassword, confirmPassword);
+      await expect(
+        authService.confirmResetPassword(
+          tokenId,
+          userId,
+          newPassword,
+          confirmPassword,
+        ),
+      ).rejects.toThrow(AuthErrors.InvalidTokenError);
     });
   });
 });

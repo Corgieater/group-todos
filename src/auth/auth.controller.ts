@@ -1,14 +1,16 @@
 import {
   Controller,
+  Get,
   Post,
   Req,
   Res,
   Body,
-  HttpStatus,
-  HttpException,
   ForbiddenException,
   UseGuards,
   BadRequestException,
+  Param,
+  ParseIntPipe,
+  UseFilters,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -17,15 +19,22 @@ import {
   AuthSignupDto,
   AuthUpdatePasswordDto,
   AuthForgotPasswordDto,
+  AuthResetPasswordDto,
 } from './dto/auth.dto';
 import { Response, Request } from 'express';
-import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
-import { AuthUpdatePasswordPayload } from './types/auth';
+import {
+  AuthUpdatePasswordPayload,
+  AuthResetPasswordPayload,
+} from './types/auth';
 import { setSession } from 'src/common/helpers/flash-helper';
+import { ResetPasswordTokenGuard } from './guards/reset-password-token.guard';
+import { AccessTokenGuard } from './guards/access-token.guard';
+import { AuthPageFilter } from 'src/common/filters/auth-page.filter';
 
 @Controller('api/auth')
+@UseFilters(AuthPageFilter)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -37,51 +46,33 @@ export class AuthController {
     @Body() dto: AuthSignupDto,
     @Res() res: Response,
   ) {
-    try {
-      await this.authService.signup(dto);
-      req.session.flash = {
-        type: 'success',
-        message: 'Account apply succeed, please login!',
-      };
-      return res.redirect('/');
-    } catch (e) {
-      if (
-        e instanceof HttpException &&
-        e.getStatus() === Number(HttpStatus.CONFLICT)
-      ) {
-        req.session.flash = { type: 'error', message: 'Email already taken' };
-        return res.redirect('/auth/signup');
-      }
-      throw e;
-    }
+    await this.authService.signup(dto);
+    req.session.flash = {
+      type: 'success',
+      message: 'Account apply succeed, please login!',
+    };
+    return res.redirect('/');
   }
+
   @Post('signin')
+  @UseFilters(AuthPageFilter)
   async signin(
     @Req() req: Request,
     @Body() dto: AuthSigninDto,
     @Res() res: Response,
   ) {
-    try {
-      const { accessToken } = await this.authService.signin(
-        dto.email,
-        dto.password,
-      );
-      res.cookie('grouptodo_login', accessToken, {
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: this.config.get<number>('LOGIN_COOKIE_MAX_AGE'),
-      });
-      return res.redirect('/users/home');
-    } catch (e) {
-      if (
-        e instanceof HttpException &&
-        e.getStatus() === Number(HttpStatus.UNAUTHORIZED)
-      ) {
-        req.session.flash = { type: 'error', message: 'Invalid credentials' };
-        return res.redirect('/auth/signin');
-      }
-    }
+    const { accessToken } = await this.authService.signin(
+      dto.email,
+      dto.password,
+    );
+    res.cookie('grouptodo_login', accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: this.config.get<number>('LOGIN_COOKIE_MAX_AGE'),
+    });
+    return res.redirect('/users/home');
   }
+
   @Post('signout')
   signout(@Req() req: Request, @Res() res: Response) {
     res.clearCookie('grouptodo_login');
@@ -92,7 +83,8 @@ export class AuthController {
     return res.redirect('/');
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AccessTokenGuard)
+  @UseFilters(AuthPageFilter)
   @Post('change-password')
   async changePassword(
     @Req() req: Request,
@@ -105,18 +97,10 @@ export class AuthController {
       ...rest,
       ...dto,
     };
-    try {
-      await this.authService.changePassword(payload);
-      setSession(req, 'success', 'Password changed');
-      res.clearCookie('grouptodo_login');
-      return res.redirect('/');
-    } catch (e) {
-      if (e instanceof ForbiddenException || e instanceof BadRequestException) {
-        setSession(req, 'error', e.message);
-        return res.redirect('/users/home');
-      }
-      throw e;
-    }
+    await this.authService.changePassword(payload);
+    setSession(req, 'success', 'Password changed');
+    res.clearCookie('grouptodo_login');
+    return res.redirect('/');
   }
 
   @Post('reset-password')
@@ -133,5 +117,41 @@ export class AuthController {
         'If this email is registered, a password reset link has been sent.',
     };
     return res.redirect('/');
+  }
+
+  @Get('verify-reset-token/:id/:token')
+  async verifyResetToken(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('token') token: string,
+    @Res() res: Response,
+  ) {
+    const result = await this.authService.verifyResetToken(id, token);
+    res.cookie('grouptodo_reset_password', result?.accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: this.config.get<number>('RESET_PASSWORD_COOKIE_MAX_AGE'),
+    });
+    setSession(req, 'success', 'Token valid, please reset your password!');
+    return res.redirect('/auth/reset-password');
+  }
+
+  @UseGuards(ResetPasswordTokenGuard)
+  @Post('reset-password/confirm')
+  async confirmResetPassword(
+    @Req() req: Request,
+    @Body() dto: AuthResetPasswordDto,
+    @Res() res: Response,
+  ) {
+    const { userId, tokenId } = req.user as AuthResetPasswordPayload;
+    await this.authService.confirmResetPassword(
+      tokenId,
+      userId,
+      dto.newPassword,
+      dto.confirmPassword,
+    );
+    res.clearCookie('grouptodo_reset_password');
+    setSession(req, 'success', 'Reset password succeed, please re-login!');
+    res.redirect('/');
   }
 }
