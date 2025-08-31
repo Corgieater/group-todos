@@ -1,7 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 
-import { Request, Response, NextFunction } from 'express';
-
 export function flashMessage(req: Request, res: Response, next: NextFunction) {
   const msg = (req.session as any).flash;
   if (msg !== undefined) {

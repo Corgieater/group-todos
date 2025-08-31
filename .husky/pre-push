@@ -1,3 +1,26 @@
-echo "🔍 Full project check before push…"
-npm run typecheck
-npm run test:ci
+set -e
+
+# Figure out upstream (e.g., origin/main). Falls back to full checks if none.
+UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+
+if [ -z "$UPSTREAM" ]; then
+  echo "ℹ️ No upstream configured (first push?) → running full checks…"
+  npm run typecheck
+  npm run test:ci
+  exit 0
+fi
+
+# Use merge-base to handle diverged histories/rebases correctly
+BASE=$(git merge-base HEAD "$UPSTREAM")
+
+# Files changed between BASE..HEAD (what you’re about to push)
+CHANGED_TS=$(git diff --name-only --diff-filter=ACMR "$BASE"..HEAD \
+  | grep -E '^src/.*\.(ts|tsx)$' || true)
+
+if [ -n "$CHANGED_TS" ]; then
+  echo "✅ TS changes since $UPSTREAM detected → full project checks…"
+  npm run typecheck
+  npm run test:ci
+else
+  echo "ℹ️ No TS changes since $UPSTREAM → skipping checks"
+fi

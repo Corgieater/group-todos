@@ -23,7 +23,7 @@ export function makeDomainErrorPageFilterByCode(
       const form: Record<string, any> = {};
       for (const key of handler.preserve ?? []) {
         if (Object.prototype.hasOwnProperty.call(req.body ?? {}, key)) {
-          form[key] = (req.body as any)[key];
+          form[key] = req.body[key];
         }
       }
 

@@ -15,7 +15,7 @@ export class UsersService {
       email: payload.email,
       hash: payload.hash,
     };
-    await this.prismaService.user.create({ data: data });
+    await this.prismaService.user.create({ data });
   }
 
   async findByEmail(email: string): Promise<UserModel | null> {
