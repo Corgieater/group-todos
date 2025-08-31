@@ -1,0 +1,22 @@
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '^src/.*\.(ts|tsx)$' \
+  | grep -vE '^(dist|node_modules)/' || true)
+
+if [ -n "$STAGED_TS" ]; then
+  echo "✅ TypeScript changes detected, running tests..."
+  npm run test:ci
+else
+  echo "ℹ️ No TypeScript changes, skipping tests."
+fi
+
+# Only run when TS/TSX in src/ are staged
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '^src/.*\.(ts|tsx)$' || true)
+
+if [ -n "$STAGED_TS" ]; then
+  echo "✅ TS changes detected → typecheck + related tests"
+  npm run typecheck
+  npx jest --bail --findRelatedTests $STAGED_TS
+else
+  echo "ℹ️ No TS changes → skipping tests"
+fi

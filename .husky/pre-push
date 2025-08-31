@@ -1,0 +1,3 @@
+echo "🔍 Full project check before push…"
+npm run typecheck
+npm run test:ci
