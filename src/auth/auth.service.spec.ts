@@ -470,7 +470,6 @@ describe('AuthService', () => {
       spyVerify.mockResolvedValueOnce(false);
       spyHash.mockResolvedValueOnce(HASH);
       tx.resetPasswordToken.updateMany.mockReturnValueOnce({ count: 0 });
-      console.log(newPassword, confirmPassword);
       await expect(
         authService.confirmResetPassword(
           tokenId,

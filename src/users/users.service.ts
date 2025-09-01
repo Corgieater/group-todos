@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma, User as UserModel } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
+import { UsersErrors } from 'src/errors';
 
 type tx = Prisma.TransactionClient;
 
@@ -48,7 +49,28 @@ export class UsersService {
         e?.name === 'PrismaClientKnownRequestError'
       ) {
         if (e.code === 'P2025') {
-          throw new UnauthorizedException();
+          throw UsersErrors.UserNotFoundError.byEmail(email);
+        }
+      }
+      throw e;
+    }
+  }
+
+  async findByIdOrThrow(id: number): Promise<UserModel> {
+    try {
+      const user = await this.prismaService.user.findUniqueOrThrow({
+        where: { id },
+      });
+      return user;
+    } catch (e) {
+      if (
+        // NOTE:
+        // this is for be more friendly to test
+        e instanceof Prisma.PrismaClientKnownRequestError ||
+        e?.name === 'PrismaClientKnownRequestError'
+      ) {
+        if (e.code === 'P2025') {
+          throw UsersErrors.UserNotFoundError.byId(id);
         }
       }
       throw e;

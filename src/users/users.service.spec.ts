@@ -11,6 +11,7 @@ import {
 import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
 import { Prisma, User } from '@prisma/client';
 import { AuthSigninDto, AuthSignupDto } from 'src/auth/dto/auth.dto';
+import { UsersErrors } from 'src/errors';
 
 describe('UsersService', () => {
   let usersService: UsersService;
@@ -111,13 +112,31 @@ describe('UsersService', () => {
       expect(result).toEqual(user);
     });
 
-    it('should throw unauthorizedException when email not found (P2025)', async () => {
+    it('should throw UsersNotFoundError when email not found (P2025)', async () => {
       mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(
         prismaError,
       );
       await expect(
         usersService.findByEmailOrThrow(signinDto.email),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+    });
+  });
+
+  describe('findByIdOrThrow', () => {
+    it('should return user object', async () => {
+      mockPrismaService.user.findUniqueOrThrow.mockResolvedValueOnce(user);
+      const result = await usersService.findByIdOrThrow(user.id);
+      expect(mockPrismaService.user.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(user);
+    });
+
+    it('should throw UsersNotFoundError when id not found (P2025)', async () => {
+      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(
+        prismaError,
+      );
+      await expect(
+        usersService.findByIdOrThrow(user.id),
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
     });
   });
 
