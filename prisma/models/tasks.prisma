@@ -4,18 +4,11 @@ enum Status {
   CANCELED
 }
 
-enum Priority {
-  URGENT
-  HIGH
-  MEDIUM
-  LOW
-}
-
 model Task {
   id          Int       @id @default(autoincrement())
   title       String
   status      Status    @default(UNFINISHED)
-  priority    Priority @default(MEDIUM)
+  priority    Int @default(3)
   description String?
   dueAt       DateTime?
   allDay      Boolean   @default(false)

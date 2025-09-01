@@ -5,19 +5,8 @@ import {
   IsEnum,
   IsOptional,
 } from 'class-validator';
-
-export enum TaskStatus {
-  UNFINISHED = 'UNFINISHED',
-  FINISHED = 'FINISHED',
-  CANCELED = 'CANCELED',
-}
-
-export enum Priority {
-  URGENT = 'URGENT',
-  HIGH = 'HIGH',
-  MEDIUM = 'MEDIUM',
-  LOW = 'LOW',
-}
+import { Status } from '@prisma/client';
+import { TaskPriority } from '../types/enum';
 
 export class TasksAddDto {
   @IsNotEmpty()
@@ -25,12 +14,12 @@ export class TasksAddDto {
   title: string;
 
   @IsOptional()
-  @IsEnum(TaskStatus)
-  status?: TaskStatus;
+  @IsEnum(Status)
+  status?: Status;
 
   @IsOptional()
-  @IsEnum(Priority)
-  priority?: Priority;
+  @IsEnum(TaskPriority)
+  priority?: TaskPriority;
 
   @IsOptional()
   @IsString()

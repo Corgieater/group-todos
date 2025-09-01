@@ -18,7 +18,7 @@ import { MailService } from 'src/mail/mail.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
-import { AuthErrors } from 'src/errors';
+import { AuthErrors, UsersErrors } from 'src/errors';
 
 describe('AuthService', () => {
   let authService: AuthService;
@@ -200,7 +200,7 @@ describe('AuthService', () => {
       mockUsersService.findById.mockResolvedValueOnce(null);
 
       await expect(authService.changePassword(payload)).rejects.toThrow(
-        AuthErrors.UserNotFoundError.byId(payload.userId),
+        UsersErrors.UserNotFoundError.byId(payload.userId),
       );
     });
 
@@ -439,7 +439,7 @@ describe('AuthService', () => {
           newPassword,
           confirmPassword,
         ),
-      ).rejects.toThrow(AuthErrors.UserNotFoundError.byId(999));
+      ).rejects.toThrow(UsersErrors.UserNotFoundError.byId(999));
     });
 
     it('should throw error if reset password and old password are the same', async () => {

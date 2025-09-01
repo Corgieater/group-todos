@@ -1,9 +1,10 @@
-import { Status, Priority } from '@prisma/client';
+import { Status } from '@prisma/client';
+import { TaskPriority } from './enum';
 
 export interface TasksAddPayload {
   title: string;
   status: Status | null;
-  priority: Priority | null;
+  priority: TaskPriority | null;
   description: string | null;
   dueAt: string | null;
   location: string | null;

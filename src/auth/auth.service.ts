@@ -18,6 +18,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 
 import { AuthErrors } from 'src/errors';
+import { UsersErrors } from 'src/errors';
 
 @Injectable()
 export class AuthService {
@@ -49,7 +50,7 @@ export class AuthService {
     let payload: NormalAccessTokenPayload;
     const user: UserModel | null = await this.usersService.findByEmail(email);
     if (!user) {
-      throw AuthErrors.UserNotFoundError.byEmail(email);
+      throw UsersErrors.UserNotFoundError.byEmail(email);
     }
     // TODO
     // is it possible to do 'forgot password <a> link </a> here?
@@ -86,7 +87,7 @@ export class AuthService {
     const user = await this.usersService.findById(payload.userId);
 
     if (!user) {
-      throw AuthErrors.UserNotFoundError.byId(payload.userId);
+      throw UsersErrors.UserNotFoundError.byId(payload.userId);
     }
 
     if (!(await this.verify(user.hash, payload.oldPassword))) {
@@ -177,7 +178,7 @@ export class AuthService {
   ) {
     const user: UserModel | null = await this.usersService.findById(userId);
     if (!user) {
-      throw AuthErrors.UserNotFoundError.byId(userId);
+      throw UsersErrors.UserNotFoundError.byId(userId);
     }
 
     if (await this.verify(user.hash, newPassword)) {

@@ -8,10 +8,7 @@ import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 export class UsersPageController {
   @UseGuards(AccessTokenGuard)
   @Get('home')
-  async userPage(
-    @CurrentUserDecorator() user: CurrentUser,
-    @Res() res: Response,
-  ) {
-    return res.render('users/user-page', { name: user.userName });
+  async home(@CurrentUserDecorator() user: CurrentUser, @Res() res: Response) {
+    return res.render('users/home', { name: user.userName });
   }
 }
