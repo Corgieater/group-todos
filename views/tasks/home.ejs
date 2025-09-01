@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>All Tasks</title>
+  </head>
+  <body>
+    <h1>Hi, <%= name%></h1>
+    <h2>this supposed to show all tasks</h2>
+    <% if (tasks) { %>
+     <ul>
+      <% for( const task of tasks ) { %>
+      <li><%= task.title %></li>
+      <% } %>
+     </ul>
+    <% } %>
+  </body>
+</html>

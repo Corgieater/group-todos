@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Task } from '@prisma/client';
 import { TasksController } from './tasks.controller';
 import { TasksAddDto } from './dto/tasks.dto';
 import { TasksService } from './tasks.service';
@@ -10,42 +11,49 @@ import {
 import { CurrentUser } from 'src/common/types/current-user';
 import { User as userModel } from '@prisma/client';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
+import { TaskPriority } from './types/enum';
 
 describe('TasksController', () => {
-  let taskController: TasksController;
+  let tasksController: TasksController;
+  let user: userModel;
+  let req: Request;
+  let res: Response;
+  let currentUser: CurrentUser;
 
-  const mockTasksSerivce = { addTask: jest.fn() };
+  const mockTasksSerivce = { addTask: jest.fn(), getAllTasks: jest.fn() };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+    user = createMockUser();
+    req = createMockReq();
+    res = createMockRes();
+
+    currentUser = {
+      userId: user.id,
+      userName: user.name,
+      email: user.email,
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TasksController],
       providers: [{ provide: TasksService, useValue: mockTasksSerivce }],
     }).compile();
 
-    taskController = module.get<TasksController>(TasksController);
+    tasksController = module.get<TasksController>(TasksController);
   });
 
   describe('add task', () => {
     let dto: TasksAddDto;
-    const req: Request = createMockReq();
-    const res: Response = createMockRes();
-    const user: userModel = createMockUser();
-    let currentUser: CurrentUser;
 
     beforeEach(() => {
       dto = {
         title: 'test',
         location: 'test',
       };
-      currentUser = {
-        userId: user.id,
-        userName: user.name,
-        email: user.email,
-      };
     });
 
     it('should add task and redirect with success message', async () => {
-      await taskController.addTask(req, currentUser, dto, res);
+      await tasksController.addTask(req, currentUser, dto, res);
       const payload = {
         title: dto.title,
         status: null,
@@ -63,10 +71,4 @@ describe('TasksController', () => {
       expect(res.redirect).toHaveBeenCalledWith('/');
     });
   });
-
-  // describe('getAllTasks', () => {
-  //   it('should get all tasks', () => {
-  //     await mockTasksSerivce.getAllTasks(user.id);
-  //   });
-  // });
 });

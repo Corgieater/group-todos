@@ -1,4 +1,12 @@
-import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
