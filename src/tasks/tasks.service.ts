@@ -44,7 +44,7 @@ export class TasksService {
     });
   }
 
-  async getTaskById(userId: number, taskId: number) {
+  async getTaskById(userId: number, taskId: number): Promise<TaskModel> {
     await this.usersService.findByIdOrThrow(userId);
 
     const task = await this.prismaService.task.findUnique({
@@ -56,4 +56,6 @@ export class TasksService {
 
     return task;
   }
+
+  async updateTaskById(userId: number, taskId: number) {}
 }

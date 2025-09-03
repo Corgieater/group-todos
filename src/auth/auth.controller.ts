@@ -68,7 +68,7 @@ export class AuthController {
       sameSite: 'lax',
       maxAge: this.config.get<number>('LOGIN_COOKIE_MAX_AGE'),
     });
-    return res.redirect('/users/home');
+    return res.redirect('/tasks/home');
   }
 
   @Post('signout')

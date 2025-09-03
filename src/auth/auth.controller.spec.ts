@@ -94,7 +94,7 @@ describe('AuthController', () => {
         sameSite: 'lax',
         maxAge: mockConfigService.mock.get<number>('LOGIN_COOKIE_MAX_AGE'),
       });
-      expect(res.redirect).toHaveBeenLastCalledWith('/users/home');
+      expect(res.redirect).toHaveBeenCalledWith('/tasks/home');
     });
   });
 
