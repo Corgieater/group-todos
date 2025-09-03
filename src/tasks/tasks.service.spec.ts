@@ -1,25 +1,37 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Status, Task } from '@prisma/client';
+import { Status, User as Usermodel, Task as TaskModel } from '@prisma/client';
 import { TasksService } from './tasks.service';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
-import { User as Usermodel } from '@prisma/client';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TasksAddPayload } from './types/tasks';
 import { TaskPriority } from './types/enum';
-import { UsersErrors } from 'src/errors';
+import { TasksErrors, UsersErrors } from 'src/errors';
+import { createMockTask } from 'src/test/factories/mock-task.factory';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
 
   const mockUsersService = { findByIdOrThrow: jest.fn() };
   const mockPrismaService = {
-    task: { create: jest.fn(), findMany: jest.fn() },
+    task: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
   };
   const user: Usermodel = createMockUser();
+  const lowTask: TaskModel = createMockTask();
+  const mediumTask: TaskModel = createMockTask({
+    id: 2,
+    title: 'medium test',
+    priority: 3,
+  });
+  const urgentTask: TaskModel = createMockTask({
+    id: 3,
+    title: 'urgent test',
+    priority: 1,
+  });
 
   beforeEach(async () => {
     jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TasksService,
@@ -101,41 +113,18 @@ describe('TasksService', () => {
   });
 
   describe('getAllTasks', () => {
-    let data: Task[];
+    let data: TaskModel[];
     beforeEach(() => {
-      data = [
-        {
-          id: 4,
-          title: 'test',
-          status: 'UNFINISHED',
-          priority: 1,
-          description: null,
-          dueAt: null,
-          allDay: false,
-          location: null,
-          userId: 1,
-          createdAt: new Date('2025-09-01T05:49:55.797Z'),
-          updatedAt: new Date('2025-09-01T05:49:55.797Z'),
-        },
-        {
-          id: 3,
-          title: 'test',
-          status: 'UNFINISHED',
-          priority: 3,
-          description: null,
-          dueAt: null,
-          allDay: false,
-          location: null,
-          userId: 1,
-          createdAt: new Date('2025-09-01T05:46:07.462Z'),
-          updatedAt: new Date('2025-09-01T05:46:07.462Z'),
-        },
-      ];
+      data = [urgentTask, mediumTask, lowTask];
     });
 
     it('should return all tesks', async () => {
       mockPrismaService.task.findMany.mockReturnValueOnce(data);
       const tasks = await tasksService.getAllTasks(user.id);
+      expect(mockPrismaService.task.findMany).toHaveBeenCalledWith({
+        where: { userId: user.id, status: Status.UNFINISHED },
+        orderBy: { priority: 'asc' },
+      });
       expect(tasks.length).toBeGreaterThan(0);
     });
 
@@ -153,6 +142,33 @@ describe('TasksService', () => {
       await expect(tasksService.getAllTasks(user.id)).rejects.toThrow(
         'User was not found',
       );
+    });
+
+    describe('getTaskById', () => {
+      it('should get taks details by id', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);
+        const task = await tasksService.getTaskById(user.id, lowTask.id);
+        expect(mockPrismaService.task.findUnique).toHaveBeenCalledWith({
+          where: { userId: user.id, id: lowTask.id },
+        });
+        expect(task).toMatchObject({
+          id: lowTask.id,
+          title: 'low test',
+          status: Status.UNFINISHED,
+          priority: TaskPriority.LOW,
+          location: 'test',
+          description: 'test',
+          dueAt: null,
+          createdAt: new Date('2025-09-01T05:49:55.797Z'),
+        });
+      });
+
+      it('should throw TaskNotFoundError', async () => {
+        mockPrismaService.task.findUnique.mockReturnValueOnce(null);
+        await expect(
+          tasksService.getTaskById(999, lowTask.id),
+        ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
+      });
     });
   });
 });

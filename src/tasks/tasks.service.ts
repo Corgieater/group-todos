@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
 import { TasksAddPayload } from './types/tasks';
-import { Status, User as UserModel } from '@prisma/client';
+import { Status, User as UserModel, Task as TaskModel } from '@prisma/client';
 import { UsersErrors } from 'src/errors';
 import { TaskPriority } from './types/enum';
-import { UserNotFoundError } from 'src/errors/auth';
+import { TasksErrors } from 'src/errors';
 
 @Injectable()
 export class TasksService {
@@ -35,12 +35,25 @@ export class TasksService {
     await this.prismaService.task.create({ data });
   }
 
-  async getAllTasks(userId: number) {
+  async getAllTasks(userId: number): Promise<TaskModel[]> {
     await this.usersService.findByIdOrThrow(userId);
 
     return this.prismaService.task.findMany({
       where: { userId, status: Status.UNFINISHED },
       orderBy: { priority: 'asc' },
     });
+  }
+
+  async getTaskById(userId: number, taskId: number) {
+    await this.usersService.findByIdOrThrow(userId);
+
+    const task = await this.prismaService.task.findUnique({
+      where: { userId, id: taskId },
+    });
+    if (!task) {
+      throw TasksErrors.TaskNotFoundError.byId(userId, taskId);
+    }
+
+    return task;
   }
 }

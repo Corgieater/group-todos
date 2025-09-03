@@ -5,7 +5,8 @@ export type DomainErrorCode =
   | 'CREDENTIAL_DUPLICATED'
   | 'INVALID_TOKEN'
   | 'PASSWORD_REUSE'
-  | 'PASSWORD_CONFIRMATION_MISMATCH';
+  | 'PASSWORD_CONFIRMATION_MISMATCH'
+  | 'TASK_NOT_FOUND';
 
 export interface DomainErrorParams<D = unknown> {
   message?: string; // developer-friendly default/override
