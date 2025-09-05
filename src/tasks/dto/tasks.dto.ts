@@ -33,3 +33,25 @@ export class TasksAddDto {
   @IsString()
   location?: string;
 }
+
+export class UpdateTaskDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  dueAt?: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsEnum(TaskPriority)
+  priority?: TaskPriority;
+}

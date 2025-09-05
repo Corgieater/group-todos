@@ -10,3 +10,11 @@ export interface TasksAddPayload {
   location: string | null;
   userId: number;
 }
+
+export interface TaskUpdatePayload {
+  title?: string;
+  priority?: TaskPriority;
+  description?: string;
+  dueAt?: string;
+  location?: string;
+}
