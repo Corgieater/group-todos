@@ -1,0 +1,21 @@
+header.site-header
+  // NAVBAR：淺色底 + 主色品牌字
+  nav.navbar.navbar-expand-md.bg-body.border-bottom.shadow-sm(data-bs-theme="light")
+    .container
+      a.navbar-brand.text-primary(href="/tasks/home") Group Todos
+
+      button.navbar-toggler(type="button", data-bs-toggle="collapse", data-bs-target="#mainNav", aria-controls="mainNav", aria-expanded="false", aria-label="Toggle navigation")
+        span.navbar-toggler-icon
+
+      #mainNav.collapse.navbar-collapse
+        // 左側
+        ul.navbar-nav.me-auto
+          li.nav-item
+            a.nav-link(href="/users/home") User Page
+          li.nav-item
+            a.nav-link(href="/tasks/create") Add New Task
+        // 右側
+        ul.navbar-nav.ms-auto
+          li.nav-item
+            a.nav-link(href="/tasks/list?status=FINISHED") Finished Tasks
+

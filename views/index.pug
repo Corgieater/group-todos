@@ -1,0 +1,50 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title Index
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+  body
+    // 提示訊息（若有 partial 就會顯示在最上方）
+    include partials/message
+
+    // 導覽列
+    nav.navbar.navbar-expand-md.bg-body.border-bottom
+      .container
+        a.navbar-brand(href="/") Group Todos
+        button.navbar-toggler(type="button", data-bs-toggle="collapse", data-bs-target="#mainNav", aria-controls="mainNav", aria-expanded="false", aria-label="Toggle navigation")
+          span.navbar-toggler-icon
+        #mainNav.collapse.navbar-collapse
+          ul.navbar-nav.ms-auto
+            li.nav-item
+              a.nav-link(href="/auth/signin") Sign In
+            li.nav-item
+              a.nav-link(href="/auth/signup") Sign Up
+
+    // Hero 區塊
+    header.bg-primary-subtle.py-5
+      .container
+        .row.justify-content-center
+          .col-lg-8.text-center
+            h1.display-5.fw-semibold.mb-3 Hi, this is Group-todo!
+            p.lead.text-body-emphasis Track todos for yourself or your group — simple, fast, and collaborative.
+            .d-inline-flex.gap-3.mt-3
+              a.btn.btn-primary.btn-lg(href="/auth/signup") Sign Up
+              a.btn.btn-outline-primary.btn-lg(href="/auth/signin") Sign In
+
+    // 主要內容（可依需要擴充）
+    main.container.py-5
+      h2.h5.mb-3 Quick Links
+      ul.list-unstyled
+        li.mb-2
+          a.link-primary(href="/auth/signup") Create your account
+        li
+          a.link-secondary(href="/auth/signin") Already a member? Sign in
+
+    // 頁尾
+    footer.border-top.py-3.mt-auto
+      .container.text-center.text-body-secondary
+        small © #{new Date().getFullYear()} Group Todos
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

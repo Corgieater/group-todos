@@ -1,0 +1,38 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title #{status} Tasks
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css")
+
+  body
+    .container.py-4
+      // flash 訊息（從 locals.flash 讀）
+      include ../partials/message
+
+      // 頁首（從 locals.name / totalTasks 讀）
+      include ../partials/header
+
+      // 狀態切籤
+      .card.shadow-sm.mb-4
+        .card-body.py-2
+          -
+            const all = (typeof statuses !== 'undefined' && Array.isArray(statuses) && statuses.length)
+              ? statuses
+              : ['UNFINISHED','FINISHED'];
+            const label = (s) => s.charAt(0) + s.slice(1).toLowerCase();
+          ul.nav.nav-pills.justify-content-center
+            each s in all
+              li.nav-item
+                a.nav-link(class=(status === s ? 'active' : ''), href=`/tasks/list?status=${s}`)
+                  | #{label(s)}
+
+      // 任務清單
+      -
+        var emptyHint = `No ${String(status).toLowerCase()} tasks.`;
+        var currentStatus = status;
+      include ./_tasks-list
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

@@ -1,0 +1,64 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title= task.title
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+  body
+    // 上方訊息（沿用你的 partial）
+    include ../partials/message
+
+    // 簡潔導覽列
+    nav.navbar.navbar-expand-md.bg-body.border-bottom
+      .container
+        a.navbar-brand(href="/tasks/home") Group Todos
+        #mainNav.collapse.navbar-collapse
+        ul.navbar-nav.ms-auto
+          li.nav-item
+            a.nav-link(href=`/tasks/${task.id}/edit`) Edit
+
+    // 內容
+    main.container.py-4
+      .row.align-items-center.mb-3
+        .col
+          h1.h3.mb-1= task.title
+          .d-flex.flex-wrap.gap-2.mt-2
+            span.badge.text-bg-secondary Priority: #{task.priorityLabel}
+            span.badge.text-bg-info Status: #{task.statusLabel}
+        .col-auto
+          a.btn.btn-primary(href=`/tasks/${task.id}/edit`) Edit
+
+      section.mt-3
+        .card.shadow-sm
+          .card-body
+            if task.description
+              p.mb-3= task.description
+            else
+              p.text-muted.fst-italic.mb-3 No description.
+
+            ul.list-group.list-group-flush
+              li.list-group-item
+                strong Due:&nbsp;
+                if task.dueAt
+                  | #{task.dueAtLocal} 
+                  if task.allDay
+                    span.badge.text-bg-warning.ms-2 All Day
+                else
+                  span.text-muted Not set
+              li.list-group-item
+                strong Location:&nbsp;
+                if task.location
+                  | #{task.location}
+                else
+                  span.text-muted Not set
+              li.list-group-item
+                strong Created:&nbsp; #{task.createdAt.toLocaleString()}
+              li.list-group-item
+                strong Updated:&nbsp; #{task.updatedAt.toLocaleString()}
+
+      // 返回連結（可選）
+      .mt-3
+        a.link-secondary(href="/tasks/home") ← Back to all tasks
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

@@ -1,0 +1,67 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title All Tasks
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+  body
+    // 你的提示訊息與導覽列（若已有 partial 就保留）
+    include ../partials/message
+    include ../partials/header
+
+    // 主要內容
+    main.container.py-4
+      // 右上角：Hi, name + 任務數
+      .row.mb-3
+        .col-auto.ms-auto.text-end
+          h1.h4.mb-1 Hi, #{name}
+          p.mb-0
+            span.badge.bg-primary-subtle.text-primary-emphasis.me-2 #{totalTasks}
+            | tasks
+
+      // Expired 區塊
+      section.mt-2
+        h2.h5.mb-3 Expired
+        if expiredTasks && expiredTasks.length
+          .row.g-3
+            each task in expiredTasks
+              .col-12.col-md-6
+                a.card.h-100.text-decoration-none(href=`/tasks/${task.id}`)
+                  .card-body
+                    h3.h6.card-title.mb-1= task.title
+                    if task.dueAt
+                      small.text-muted.d-block Due: #{task.dueAt}
+                    .row.mt-2.gx-2
+                      .col-6
+                        if task.location
+                          small.text-muted.d-block.text-truncate 📍 #{task.location}
+                      .col-6
+                        if task.description
+                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+        else
+          p.text-muted.fst-italic No expired tasks.
+
+      // Today & Undated 區塊（同 Expired）
+      section.mt-4
+        h2.h5.mb-3 Today & Undated
+        if todayUndatedTasks && todayUndatedTasks.length
+          .row.g-3
+            each task in todayUndatedTasks
+              .col-12.col-md-6
+                a.card.h-100.text-decoration-none(href=`/tasks/${task.id}`)
+                  .card-body
+                    h3.h6.card-title.mb-1= task.title
+                    if task.dueAt
+                      small.text-muted.d-block Due: #{task.dueAt}
+                    .row.mt-2.gx-2
+                      .col-6
+                        if task.location
+                          small.text-muted.d-block.text-truncate 📍 #{task.location}
+                      .col-6
+                        if task.description
+                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+        else
+          p.text-muted.fst-italic No tasks for today.
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

@@ -1,0 +1,71 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title Sign Up
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+  body
+    //- 上方全域訊息（成功/錯誤等）
+    include ../partials/message
+
+    //- 簡潔導覽列（可視需要移除或改品牌名）
+    nav.navbar.navbar-expand-md.bg-body.border-bottom
+      .container
+        a.navbar-brand(href="/") Group Todos
+        #nav.collapse.navbar-collapse
+        ul.navbar-nav.ms-auto
+          li.nav-item
+            a.nav-link(href="/auth/signin") Sign In
+
+    //- 置中卡片表單
+    main
+      .container.min-vh-100.d-flex.align-items-center.justify-content-center.py-5
+        .col-12.col-sm-10.col-md-7.col-lg-5
+          .card.shadow-sm
+            .card-body.p-4.p-md-5
+              h1.h4.text-center.mb-4 Join us!
+
+              //- 從 flash.form 回填欄位（若存在）
+              - var form = (typeof flash !== 'undefined' && flash && flash.form) ? flash.form : {}
+
+              form(action="/api/auth/signup", method="POST", novalidate)
+                .form-floating.mb-3
+                  input#name.form-control(
+                    type="text"
+                    name="name"
+                    placeholder="Your name"
+                    value=(form.name || '')
+                    autocomplete="name"
+                    required
+                  )
+                  label(for="name") Name
+                .form-floating.mb-3
+                  input#email.form-control(
+                    type="email"
+                    name="email"
+                    placeholder="name@example.com"
+                    value=(form.email || '')
+                    autocomplete="email"
+                    required
+                  )
+                  label(for="email") Email address
+                .form-floating.mb-3
+                  input#password.form-control(
+                    type="password"
+                    name="password"
+                    placeholder="Password"
+                    autocomplete="new-password"
+                    required
+                  )
+                  label(for="password") Password
+                button.btn.btn-primary.w-100(type="submit") Sign up
+
+              .text-center.mt-3
+                a(href="/") Home
+                span.mx-2 ·
+                span.text-body-secondary Already have an account?
+                | 
+                a(href="/auth/signin") Sign in
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

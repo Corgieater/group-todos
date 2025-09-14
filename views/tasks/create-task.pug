@@ -1,0 +1,123 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title Create Task
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+  body
+    // 上方訊息（沿用你的 partial）
+    include ../partials/message
+    include ../partials/header
+
+    // 內容
+    .container.py-4
+      h1.h3.mb-3 Create Task
+
+      .card.shadow-sm
+        .card-body
+          //- 後端傳入的 form（可選）用來在驗證失敗時回填
+          -
+            const F = typeof form === 'object' && form ? form : {};
+            const todayISO = new Date().toISOString().slice(0,10);
+            const allDayChecked = F.allDay === true || F.allDay === 'on' || F.allDay === 'true';
+
+          form(action="/api/tasks" method="POST" novalidate)
+            .row.g-3
+              .col-12
+                label.form-label(for="title") Title
+                input#title.form-control(
+                  type="text"
+                  name="title"
+                  required
+                  value=(F.title || 'walk cat')
+                  placeholder="e.g. Walk cat"
+                )
+
+              .col-12
+                label.form-label(for="description") Description
+                input#description.form-control(
+                  type="text"
+                  name="description"
+                  value=(F.description || '')
+                  placeholder="Optional notes"
+                )
+
+              .col-md-6
+                label.form-label(for="dueDate") Due date
+                input#dueDate.form-control(
+                  type="date"
+                  name="dueDate"
+                  value=(F.dueDate || '')
+                  min=todayISO
+                )
+
+              .col-md-6
+                .form-check.mt-4
+                  input#allDay.form-check-input(
+                    type="checkbox"
+                    name="allDay"
+                    checked=allDayChecked
+                  )
+                  label.form-check-label(for="allDay") All day
+
+              //- 時間（可被 All day 停用）
+              .col-md-6#timeRow
+                label.form-label(for="dueTime") Time
+                input#dueTime.form-control(
+                  type="time"
+                  name="dueTime"
+                  value=(F.dueTime || '')
+                )
+
+              .col-md-6
+                label.form-label(for="location") Location
+                input#location.form-control(
+                  type="text"
+                  name="location"
+                  value=(F.location || '')
+                  placeholder="Where is it?"
+                )
+
+              .col-md-6
+                label.form-label(for="priority") Priority
+                select#priority.form-select(name="priority")
+                  option(value="1" selected=(String(F.priority)==='1')) Urgent
+                  option(value="2" selected=(String(F.priority)==='2')) High
+                  option(value="3" selected=(!F.priority || String(F.priority)==='3')) Medium
+                  option(value="4" selected=(String(F.priority)==='4')) Low
+
+            .d-flex.gap-2.mt-3
+              button.btn.btn-primary(type="submit") Create
+              a.btn.btn-outline-secondary(href="/tasks/home") Cancel
+
+    // JS（維持你原本的互動行為）
+    script.
+      const allDay = document.getElementById('allDay');
+      const timeRow = document.getElementById('timeRow');
+      const dateInput = document.getElementById('dueDate');
+      const timeInput = document.getElementById('dueTime');
+
+      function updateTimeVisibility() {
+        timeRow.style.opacity = allDay.checked ? 0.4 : 1;
+        timeInput.disabled = allDay.checked;
+        if (allDay.checked) timeInput.value = '';
+      }
+
+      function updateTimeMin() {
+        const now = new Date();
+        const sel = dateInput.value ? new Date(dateInput.value + 'T00:00:00') : null;
+        if (sel && sel.toDateString() === now.toDateString()) {
+          const pad = (n)=>String(n).padStart(2,'0');
+          timeInput.min = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        } else {
+          timeInput.removeAttribute('min');
+        }
+      }
+
+      allDay?.addEventListener('change', updateTimeVisibility);
+      dateInput?.addEventListener('change', updateTimeMin);
+      updateTimeVisibility();
+      updateTimeMin();
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

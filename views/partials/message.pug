@@ -1,0 +1,63 @@
+//- Full-width fixed banner (Bootstrap alert)
+if flash
+  .position-fixed.top-0.start-0.w-100(style="z-index:1080;")
+    .alert.text-center.mb-0.rounded-0.alert-dismissible.fade.show(
+      role="alert"
+      class= flash.type === 'success'
+        ? 'alert-success'
+        : flash.type === 'error'
+          ? 'alert-danger'
+          : flash.type === 'warning'
+            ? 'alert-warning'
+            : 'alert-secondary'
+    )
+      .container.position-relative
+        //- 訊息內容（支援 HTML）
+        span !{flash.message}
+        //- 關閉按鈕
+        button.btn-close.position-absolute.end-0.top-50.translate-middle-y.me-2(
+          type="button"
+          data-bs-dismiss="alert"
+          aria-label="Close"
+        )
+
+  //- 自動補 padding-top + 預設自動關閉（4 秒）
+  script.
+    (function () {
+      var wrap = document.querySelector('.position-fixed.top-0.start-0.w-100');
+      if (!wrap) return;
+      var alertEl = wrap.querySelector('.alert');
+      if (!alertEl) return;
+
+      // 補上方間距，避免蓋住內容
+      var originalPad = parseInt(getComputedStyle(document.body).paddingTop, 10) || 0;
+      var h = wrap.offsetHeight || 56;
+      document.body.style.paddingTop = (originalPad + h) + 'px';
+
+      function restorePadding() {
+        document.body.style.paddingTop = originalPad ? (originalPad + 'px') : '';
+      }
+
+      // 手動關閉時還原 padding
+      alertEl.addEventListener('closed.bs.alert', restorePadding, { once: true });
+
+      // 預設自動關閉：4 秒
+      var DEFAULT_MS = 4000;
+      setTimeout(function () {
+        try {
+          if (window.bootstrap && window.bootstrap.Alert) {
+            var inst = window.bootstrap.Alert.getOrCreateInstance(alertEl);
+            // 再保險一次：若是自動關閉觸發，也在關閉後還原 padding
+            alertEl.addEventListener('closed.bs.alert', restorePadding, { once: true });
+            inst.close();
+          } else {
+            // 沒載入 bootstrap.js 的退場方案
+            alertEl.parentNode && alertEl.parentNode.removeChild(alertEl);
+            restorePadding();
+          }
+        } catch (e) {
+          alertEl.parentNode && alertEl.parentNode.removeChild(alertEl);
+          restorePadding();
+        }
+      }, DEFAULT_MS);
+    })();
