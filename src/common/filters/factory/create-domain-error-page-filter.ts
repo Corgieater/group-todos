@@ -1,11 +1,11 @@
 import { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { setSession } from '../helpers/flash-helper';
-import type { Handler } from '../types/domain-error-page.types';
+import { setSession } from '../../helpers/flash-helper';
+import type { Handler } from '../../types/domain-error-page.types';
 import { isDomainError } from 'src/errors/domain-error.base';
-import { makeRedirectHandler } from '../types/domain-error-page.types';
+import { makeRedirectHandler } from '../../types/domain-error-page.types';
 
-export function makeDomainErrorPageFilterByCode(
+export function createDomainErrorPageFilter(
   map: Partial<Record<string, Handler>>,
 ): ExceptionFilter {
   return {

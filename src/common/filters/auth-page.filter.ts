@@ -1,8 +1,8 @@
 import { HttpStatus } from '@nestjs/common';
-import { makeDomainErrorPageFilterByCode } from './domain-error-page-filter';
+import { createDomainErrorPageFilter } from './factory/create-domain-error-page-filter';
 import { makeRedirectHandler } from '../types/domain-error-page.types';
 
-export const AuthPageFilter = makeDomainErrorPageFilterByCode({
+export const AuthPageFilter = createDomainErrorPageFilter({
   PASSWORD_REUSE: makeRedirectHandler(
     '/auth/reset-password',
     'Please use a new password.',

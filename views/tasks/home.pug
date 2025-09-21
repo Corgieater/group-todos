@@ -30,8 +30,15 @@ html(lang="en")
                 a.card.h-100.text-decoration-none(href=`/tasks/${task.id}`)
                   .card-body
                     h3.h6.card-title.mb-1= task.title
-                    if task.dueAt
-                      small.text-muted.d-block Due: #{task.dueAt}
+
+                     // 時間顯示：全日 vs 非全日
+                    if task.allDay
+                      if task.dueLabel
+                        small.text-muted.d-block All-day: #{task.dueLabel}
+                    else
+                      if task.dueLabel
+                        small.text-muted.d-block Due: #{task.dueLabel}
+                        
                     .row.mt-2.gx-2
                       .col-6
                         if task.location
@@ -52,8 +59,15 @@ html(lang="en")
                 a.card.h-100.text-decoration-none(href=`/tasks/${task.id}`)
                   .card-body
                     h3.h6.card-title.mb-1= task.title
-                    if task.dueAt
-                      small.text-muted.d-block Due: #{task.dueAt}
+
+                    // 時間顯示：全日 vs 非全日
+                    if task.allDay
+                      if task.dueLabel
+                        small.text-muted.d-block All-day: #{task.dueLabel}
+                    else
+                      if task.dueLabel
+                        small.text-muted.d-block Due: #{task.dueLabel}
+
                     .row.mt-2.gx-2
                       .col-6
                         if task.location
@@ -61,6 +75,8 @@ html(lang="en")
                       .col-6
                         if task.description
                           small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+
+                    
         else
           p.text-muted.fst-italic No tasks for today.
 

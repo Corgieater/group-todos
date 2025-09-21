@@ -7,6 +7,7 @@ export function createMockSignupDto(overrides?: Partial<AuthSignupDto>) {
     name: 'test',
     email: 'test@test.com',
     password: 'test',
+    timeZone: 'Asia/Taipei',
     ...overrides,
   };
 }
@@ -26,6 +27,7 @@ export function createMockCreatePayload(
     name: 'test',
     email: 'test@test.com',
     hash: 'hashed',
+    timeZone: 'Asia/Taipei',
     ...overrides,
   };
 }
@@ -36,6 +38,7 @@ export function createMockUser(overrides?: Partial<UserModel>) {
     email: 'test@test.com',
     name: 'test',
     hash: 'hashed',
+    timeZone: 'Asia/Taipei',
     ...overrides,
   };
 }
@@ -45,6 +48,7 @@ export function createMockCurrentUser(overrides?: Partial<CurrentUser>) {
     userId: 1,
     userName: 'test',
     email: 'test@test.com',
+    timeZone: 'Asia/Taipei',
     ...overrides,
   };
 }

@@ -2,9 +2,14 @@ model User {
   id          Int                  @id @default(autoincrement())
   name        String               @db.VarChar(100)
   email       String               @unique @db.VarChar(254)
+  timeZone    String               @db.VarChar(64)
   hash        String
   resetTokens ResetPasswordToken[]
   Task        Task[]
 
-  @@map("users")
+  assignedTasks TaskAssignee[] @relation("AssigneeUser")
+
+  delegatedTasks TaskAssignee[] @relation("AssignerUser")
+
+  @@index([timeZone])
 }

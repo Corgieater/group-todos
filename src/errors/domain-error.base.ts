@@ -6,7 +6,9 @@ export type DomainErrorCode =
   | 'INVALID_TOKEN'
   | 'PASSWORD_REUSE'
   | 'PASSWORD_CONFIRMATION_MISMATCH'
-  | 'TASK_NOT_FOUND';
+  | 'TASK_NOT_FOUND'
+  | 'TASK_EMPTY_UPDATE'
+  | 'TASK_STATUS_INVALID';
 
 export interface DomainErrorParams<D = unknown> {
   message?: string; // developer-friendly default/override

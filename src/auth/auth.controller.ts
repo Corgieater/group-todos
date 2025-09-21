@@ -90,7 +90,7 @@ export class AuthController {
     @Body() dto: AuthUpdatePasswordDto,
     @Res() res: Response,
   ) {
-    const { userName: _, ...rest } = user;
+    const { userName: _userName, timeZone: _timeZone, ...rest } = user;
     const payload: AuthUpdatePasswordPayload = {
       ...rest,
       ...dto,

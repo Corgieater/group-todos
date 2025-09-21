@@ -6,6 +6,7 @@ export interface BaseAccessTokenPayload {
 
 export interface NormalAccessTokenPayload extends BaseAccessTokenPayload {
   tokenUse: 'access';
+  timeZone: string;
 }
 
 export interface ResetAccessTokenPayload extends BaseAccessTokenPayload {

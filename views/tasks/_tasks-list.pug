@@ -1,7 +1,7 @@
 //- views/tasks/_tasks-list.pug
 -
   // 安全防呆 + 小工具
-  const list = Array.isArray(tasks) ? tasks : [];
+  const list = Array.isArray(viewModel) ? viewModel : [];
   const listStatus= typeof currentStatus === 'string' ? currentStatus : 'FINISHED';
   const isDoneTab = status === 'FINISHED';
   const PRIORITY = { 1: 'Urgent', 2: 'High', 3: 'Medium', 4: 'Low' };
@@ -35,12 +35,11 @@ else
         span.fw-semibold #{list.length} task#{list.length > 1 ? 's' : ''} found
         //- 可加上分頁或排序控制區
         // .btn-group
-        //   a.btn.btn-sm.btn-outline-secondary(href="?sort=dueAt") Sort by due
+        //   a.btn.btn-sm.btn-outline-secondary(href="?sort=dueAtUtc") Sort by due
         //   a.btn.btn-sm.btn-outline-secondary(href="?sort=priority") Sort by priority
     ul.list-group.list-group-flush
       each t in list
         -
-          const dueText = fmtDate(t.dueAt || t.dueDate || null);
           const p = PRIORITY[String(t.priority)] || '—';
           const pb = P_BADGE[String(t.priority)] || 'secondary';
         li.list-group-item
@@ -65,10 +64,10 @@ else
 
               // 次資訊列：期限 / 地點
               .text-muted.small
-                if dueText
+                if t.dueLabel
                   span.me-3
                     i.bi.bi-calendar2-event.me-1
-                    | #{dueText}
+                    | #{t.dueLabel}
                 if t.location
                   span.me-3
                     i.bi.bi-geo-alt.me-1

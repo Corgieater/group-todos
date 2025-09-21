@@ -59,6 +59,19 @@ html(lang="en")
                     required
                   )
                   label(for="password") Password
+                .form-floating.mb-3
+                select#timeZone.form-select(
+                  name="timeZone"
+                  required
+                )
+                  option(value="Asia/Taipei" selected) Taipei (Asia/Taipei)
+                  option(value="Asia/Tokyo" selected=(form.timeZone === 'Asia/Tokyo')) Tokyo (Asia/Tokyo)
+                  option(value="Europe/London" selected=(form.timeZone === 'Europe/London')) London (Europe/London)
+                  option(value="America/New_York" selected=(form.timeZone === 'America/New_York')) New York (America/New_York)
+                  option(value="America/Los_Angeles" selected=(form.timeZone === 'America/Los_Angeles')) Los Angeles (America/Los_Angeles)
+                label(for="timeZone") Preferred Time Zone
+                br
+                br
                 button.btn.btn-primary.w-100(type="submit") Sign up
 
               .text-center.mt-3

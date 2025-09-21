@@ -6,7 +6,9 @@ export interface TasksAddPayload {
   status: Status | null;
   priority: TaskPriority | null;
   description: string | null;
-  dueAt: string | null;
+  allDay: boolean;
+  dueDate: string | null;
+  dueTime: string | null;
   location: string | null;
   userId: number;
 }
@@ -14,7 +16,9 @@ export interface TasksAddPayload {
 export interface TaskUpdatePayload {
   title?: string;
   priority?: TaskPriority;
-  description?: string;
-  dueAt?: string;
-  location?: string;
+  description?: string | null;
+  allDay?: boolean;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  location?: string | null;
 }

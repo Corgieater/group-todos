@@ -1,17 +1,17 @@
 import { HttpStatus } from '@nestjs/common';
+import { Response } from 'express';
 import {
   createMockReq,
   createMockRes,
   createMockHost,
 } from 'src/test/factories/mock-http.factory';
 
-import { makeDomainErrorPageFilterByCode } from './domain-error-page-filter';
-import { makeRedirectHandler } from '../types/domain-error-page.types';
+import { createDomainErrorPageFilter } from './create-domain-error-page-filter';
+import { makeRedirectHandler } from 'src/common/types/domain-error-page.types';
 import { AuthErrors } from 'src/errors';
 
-jest.mock('../helpers/flash-helper', () => ({ setSession: jest.fn() }));
-import { setSession } from '../helpers/flash-helper';
-import { Response } from 'express';
+jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
+import { setSession } from 'src/common/helpers/flash-helper';
 
 describe('domain page filter', () => {
   let filter;
@@ -19,7 +19,7 @@ describe('domain page filter', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     res = createMockRes();
-    filter = makeDomainErrorPageFilterByCode({
+    filter = createDomainErrorPageFilter({
       PASSWORD_REUSE: makeRedirectHandler(
         '/auth/reset-password',
         'Please use a new password.',
@@ -115,7 +115,7 @@ describe('domain page filter', () => {
 
   it('falls back to default redirect when code not mapped', () => {
     // intentionally cover the whole filter
-    filter = makeDomainErrorPageFilterByCode({
+    filter = createDomainErrorPageFilter({
       PASSWORD_REUSE: makeRedirectHandler(
         '/auth/reset-password',
         'Please use a new password.',

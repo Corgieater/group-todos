@@ -3,21 +3,11 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title= task.title
+    title= title
     link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
   body
     // 上方訊息（沿用你的 partial）
     include ../partials/message
-
-    // -- Helpers for prefilling date/time inputs (server-side in Pug) --
-    - const fmtDate = (d) => d ? new Date(d).toISOString().slice(0,10) : '';
-    - const fmtTime = (d) => {
-    -   if (!d) return '';
-    -   const dt = new Date(d);
-    -   const pad = (n) => String(n).padStart(2,'0');
-    -   return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    - };
-    - const todayISO = new Date().toISOString().slice(0,10);
 
     main.container.py-4
       .row.justify-content-center
@@ -26,16 +16,16 @@ html(lang="en")
             .card-body.p-4.p-md-5
               h1.h4.mb-4 Edit task
 
-              form(action=`/api/tasks/${task.id}/update`, method="POST")
+              form(action=`/api/tasks/${id}/update`, method="POST")
                 // Title
                 .mb-3
                   label.form-label(for="title") Title
-                  input#title.form-control(type="text", name="title", required, value=(task.title || ''))
+                  input#title.form-control(type="text", name="title", required, value=(title || ''))
 
                 // Description
                 .mb-3
                   label.form-label(for="description") Description
-                  input#description.form-control(type="text", name="description", value=(task.description || ''))
+                  input#description.form-control(type="text", name="description", value=(description || ''))
 
                 // Due date
                 .row.g-3
@@ -44,14 +34,14 @@ html(lang="en")
                     input#dueDate.form-control(
                       type="date"
                       name="dueDate"
-                      value=fmtDate(task.dueAt)
+                      value=(dueDateLocal || '')
                       min=todayISO
                     )
 
                   // All day
                   .col-sm-6.d-flex.align-items-end
                     .form-check
-                      input#allDay.form-check-input(type="checkbox", name="allDay", checked=!!task.allDay)
+                      input#allDay.form-check-input(type="checkbox", name="allDay", checked=!!allDay)
                       label.form-check-label(for="allDay") All day
 
                 // Time row (hidden when all-day)
@@ -60,23 +50,23 @@ html(lang="en")
                   input#dueTime.form-control(
                     type="time"
                     name="dueTime"
-                    value=(task.allDay ? '' : fmtTime(task.dueAt))
+                    value=(allDay ? '' : (dueTimeLocal || ''))
                   )
 
                 // Location
                 .mb-3
                   label.form-label(for="location") Location
-                  input#location.form-control(type="text", name="location", value=(task.location || ''))
+                  input#location.form-control(type="text", name="location", value=(location || ''))
 
                 // Priority
                 .mb-4
                   label.form-label(for="priority") Priority
                   select#priority.form-select(name="priority")
-                    option(value="", selected=!task.priority) — None —
-                    option(value="1", selected=(task.priority === 1)) Urgent
-                    option(value="2", selected=(task.priority === 2)) High
-                    option(value="3", selected=(task.priority === 3)) Medium
-                    option(value="4", selected=(task.priority === 4)) Low
+                    option(value="", selected=!priority) — None —
+                    option(value="1", selected=(priority === 1)) Urgent
+                    option(value="2", selected=(priority === 2)) High
+                    option(value="3", selected=(priority === 3)) Medium
+                    option(value="4", selected=(priority === 4)) Low
 
                 button.btn.btn-primary.w-100(type="submit") Submit
 

@@ -3,7 +3,7 @@ import { MailService } from './mail.service';
 import { ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
-import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
+import { PugAdapter } from '@nestjs-modules/mailer/dist/adapters/pug.adapter';
 
 @Module({
   imports: [
@@ -23,7 +23,7 @@ import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
         },
         template: {
           dir: join(__dirname, '..', 'views'),
-          adapter: new EjsAdapter(),
+          adapter: new PugAdapter(),
           options: {
             strict: false,
           },
