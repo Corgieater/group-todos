@@ -1,28 +1,140 @@
-import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseEnumPipe,
+  ParseIntPipe,
+  Query,
+  Req,
+  Res,
+  UseFilters,
+  UseGuards,
+} from '@nestjs/common';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { TasksService } from './tasks.service';
+import { TaskPriority } from './types/enum';
+import { Status } from '@prisma/client';
+import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
+import { ListTasksQueryDto } from './dto/tasks.dto';
+import { formatInTimeZone } from 'date-fns-tz';
+import { buildTaskVM, toCapital } from 'src/common/helpers/util';
+
+const taskPriorityLabel: Record<TaskPriority, string> = {
+  [TaskPriority.URGENT]: 'Urgent',
+  [TaskPriority.HIGH]: 'High',
+  [TaskPriority.MEDIUM]: 'Medium',
+  [TaskPriority.LOW]: 'Low',
+};
+const statusLabel: Record<Status, string> = {
+  [Status.UNFINISHED]: 'Unfinished',
+  [Status.FINISHED]: 'Finished',
+  [Status.ARCHIVED]: 'Archived',
+};
 
 @Controller('tasks')
+@UseGuards(AccessTokenGuard)
+@UseFilters(TasksPageFilter)
 export class TasksPageController {
   constructor(private tasksService: TasksService) {}
-  @UseGuards(AccessTokenGuard)
-  @Get('home')
-  async home(@CurrentUserDecorator() user: CurrentUser, @Res() res: Response) {
-    const tasks = await this.tasksService.getAllTasks(user.userId);
-    return res.render('tasks/home', { name: user.userName, tasks });
-  }
 
-  @UseGuards(AccessTokenGuard)
-  @Get(':id')
-  async getTaskById(
+  @Get('home')
+  async home(
+    @Req() req: Request,
     @CurrentUserDecorator() user: CurrentUser,
-    @Param('id') id: number,
     @Res() res: Response,
   ) {
-    const task = await this.tasksService.getTaskById(user.userId, id);
-    res.render('tasks/task-details', { task });
+    const [todayUndatedTasksRaw, expiredTasksRaw] = await Promise.all([
+      this.tasksService.getUnfinishedTasksTodayOrNoDueDate(user.userId),
+      this.tasksService.getExpiredTasks(user.userId),
+    ]);
+
+    const todayUndatedTasks = todayUndatedTasksRaw.map((t) =>
+      buildTaskVM(t, user.timeZone),
+    );
+    const expiredTasks = expiredTasksRaw.map((t) =>
+      buildTaskVM(t, user.timeZone),
+    );
+
+    return res.render('tasks/home', {
+      name: user.userName,
+      expiredTasks,
+      todayUndatedTasks,
+      totalTasks: todayUndatedTasks.length + expiredTasks.length,
+    });
+  }
+
+  @Get('create')
+  async create(@Res() res: Response) {
+    res.render('tasks/create-task');
+  }
+
+  // TODO: NOTE:
+  // I think this page need a pagination
+  @Get('status/:status')
+  async listByStatus(
+    @Param('status', new ParseEnumPipe(Status)) status: Status,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const tasks = await this.tasksService.getTasksByStatus(user.userId, status);
+    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone));
+    const totalTasks = tasks.length;
+
+    return res.render('tasks/list-by-status', {
+      totalTasks,
+      status: toCapital(status),
+      viewModel,
+    });
+  }
+
+  // TODO: NOTE:
+  // I think this page need a pagination
+  @Get('list/future')
+  async listFuture(
+    @Req() req: Request,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const tasks = await this.tasksService.getAllFutureTasks(
+      user.userId,
+      user.timeZone,
+    );
+    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone));
+    const totalTasks = tasks.length;
+    return res.render('tasks/list-by-status', {
+      totalTasks,
+      status: 'Future',
+      viewModel,
+    });
+  }
+
+  @Get(':id')
+  async detail(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const task = await this.tasksService.getTaskById(id, user.userId);
+    const viewModel = buildTaskVM(task, user.timeZone);
+    res.render('tasks/details', viewModel);
+  }
+
+  @Get(':id/edit')
+  async edit(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const task = await this.tasksService.getTaskById(id, user.userId);
+    const viewModel = buildTaskVM(task, user.timeZone);
+
+    res.render('tasks/details-edit', {
+      ...viewModel,
+      todayISO: new Date().toISOString().slice(0, 10),
+    });
   }
 }
