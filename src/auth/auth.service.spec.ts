@@ -80,6 +80,7 @@ describe('AuthService', () => {
       sub: user.id,
       email: user.email,
       userName: user.name,
+      timeZone: user.timeZone,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -104,19 +105,24 @@ describe('AuthService', () => {
       .mockResolvedValue(JWT_TOKEN);
   });
 
+  // ───────────────────────────────────────────────────────────────────────────────
+  // signup
+  // ───────────────────────────────────────────────────────────────────────────────
+
   describe('signup', () => {
     it('should create a new user with hashed password if email is available', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(null);
       await authService.signup(signupDto);
 
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
-        signupDto.email,
+        'test@test.com',
       );
       expect(spyHash).toHaveBeenCalledWith(signupDto.password);
       expect(mockUsersService.create).toHaveBeenCalledWith({
-        name: signupDto.name,
-        email: signupDto.email,
-        hash: HASH,
+        name: 'test',
+        email: 'test@test.com',
+        hash: 'hashed',
+        timeZone: 'Asia/Taipei',
       });
     });
 
@@ -131,6 +137,10 @@ describe('AuthService', () => {
       );
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // signin
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('signin', () => {
     it('should sign user in and issue token', async () => {
@@ -158,6 +168,10 @@ describe('AuthService', () => {
       ).rejects.toThrow(AuthErrors.InvalidCredentialError.password());
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // changePassword
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('changePassword', () => {
     let payload: AuthUpdatePasswordPayload;
@@ -223,6 +237,10 @@ describe('AuthService', () => {
     });
   });
 
+  // ───────────────────────────────────────────────────────────────────────────────
+  // resetPassword
+  // ───────────────────────────────────────────────────────────────────────────────
+
   describe('resetPassword', () => {
     let tokenId: number;
 
@@ -272,6 +290,10 @@ describe('AuthService', () => {
       expect(mockMailService.sendMail).not.toHaveBeenCalled();
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // verifyResetToken
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('verifyResetToken', () => {
     let tokenId: number;
@@ -357,6 +379,10 @@ describe('AuthService', () => {
       ).rejects.toThrow(AuthErrors.InvalidTokenError);
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // confirmResetPassword
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('confirmResetPassword', () => {
     let newPassword: string;

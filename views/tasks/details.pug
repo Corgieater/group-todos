@@ -5,6 +5,8 @@ html(lang="en")
     meta(name="viewport", content="width=device-width, initial-scale=1")
     title= title
     link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+    // 圖示（打勾、還原）
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css")
   body
     // 上方訊息（沿用你的 partial）
     include ../partials/message
@@ -34,7 +36,22 @@ html(lang="en")
             span.badge(class=priorityClass) Priority: #{priorityLabel}
             span.badge(class=statusClass) Status: #{statusLabel}
         .col-auto
-          a.btn.btn-primary(href=`/tasks/${id}/edit`) Edit
+          // 動作區：Done / Restore + Edit
+          .d-flex.gap-2
+            if status !== 'FINISHED'
+              form(action=`/api/tasks/${id}/update/status`, method="POST")
+                input(type="hidden", name="status", value="FINISHED")
+                button.btn.btn-success(type="submit" title="Mark as finished")
+                  i.bi.bi-check2-circle.me-1
+                  | Done
+            else
+              form(action=`/api/tasks/${id}/update/status`, method="POST")
+                input(type="hidden", name="status", value="UNFINISHED")
+                button.btn.btn-outline-secondary(type="submit" title="Restore")
+                  i.bi.bi-arrow-counterclockwise.me-1
+                  | Restore
+
+            a.btn.btn-primary(href=`/tasks/${id}/edit`) Edit
 
         .card.shadow-sm
           .card-body

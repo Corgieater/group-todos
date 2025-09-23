@@ -19,20 +19,50 @@ html(lang="en")
       .card.shadow-sm.mb-4
         .card-body.py-2
           -
+            // 既有的狀態清單（不含 Future）
             const all = (typeof statuses !== 'undefined' && Array.isArray(statuses) && statuses.length)
               ? statuses
               : ['UNFINISHED','FINISHED'];
-            const label = (s) => s.charAt(0) + s.slice(1).toLowerCase();
+
+            // 顯示用標籤
+            const pretty = (s) => {
+              if (!s) return '';
+              const up = String(s).toUpperCase();
+              if (up === 'UNFINISHED') return 'Unfinished';
+              if (up === 'FINISHED') return 'Finished';
+              return s.charAt(0) + s.slice(1).toLowerCase();
+            };
+
+            // 判斷目前 active：狀態分頁 or Future 分頁
+            const upStatus = String(status || '').toUpperCase();
+            // 從外部可傳 isFuture=true；若沒傳，就用 status === 'FUTURE' 當退路
+            const futureActive = typeof isFuture !== 'undefined' ? !!isFuture : (upStatus === 'FUTURE');
+
           ul.nav.nav-pills.justify-content-center
+            // 既有的狀態分頁（走 /tasks/status/:status）
             each s in all
               li.nav-item
-                a.nav-link(class=(status === s ? 'active' : ''), href=`/tasks/list?status=${s}`)
-                  | #{label(s)}
+                a.nav-link(
+                  class=(upStatus === String(s).toUpperCase() && !futureActive ? 'active' : '')
+                  href=`/tasks/status/${s}`
+                ) #{pretty(s)}
+
+            // 新增的 Future 分頁（獨立路由 /tasks/list/future）
+            li.nav-item
+              a.nav-link(
+                class=(futureActive ? 'active' : '')
+                href="/tasks/list/future"
+              ) Future
 
       // 任務清單
       -
-        var emptyHint = `No ${String(status).toLowerCase()} tasks.`;
-        var currentStatus = status;
+        // 空清單提示：依目前所選分頁切換
+        let emptyHint = 'No tasks.';
+        if (futureActive) emptyHint = 'No future tasks.';
+        else if (upStatus === 'UNFINISHED') emptyHint = 'No unfinished tasks.';
+        else if (upStatus === 'FINISHED') emptyHint = 'No finished tasks.';
+
+        var currentStatus = status; // _tasks-list 若需要可用
       include ./_tasks-list
 
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

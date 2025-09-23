@@ -5,13 +5,31 @@ html(lang="en")
     meta(name="viewport", content="width=device-width, initial-scale=1")
     title All Tasks
     link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css")
+    // Bootstrap Icons（給打勾圖示用）
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css")
   body
-    // 你的提示訊息與導覽列（若已有 partial 就保留）
+    // 訊息與導覽列（若已有 partial 就保留）
     include ../partials/message
     include ../partials/header
 
     // 主要內容
     main.container.py-4
+      // Priority 配色（subtle + 邊框）
+      -
+        const prioBgMap = {
+          1: 'bg-danger-subtle',   // URGENT
+          2: 'bg-warning-subtle',  // HIGH
+          3: 'bg-primary-subtle',  // MEDIUM
+          4: 'bg-secondary-subtle' // LOW
+        };
+        const prioBorderMap = {
+          1: 'border-danger',
+          2: 'border-warning',
+          3: 'border-primary',
+          4: 'border-secondary'
+        };
+        const cardClassForPrio = (p) => `${prioBgMap[p] || ''} ${prioBorderMap[p] || 'border-secondary'} border-2`;
+
       // 右上角：Hi, name + 任務數
       .row.mb-3
         .col-auto.ms-auto.text-end
@@ -27,38 +45,22 @@ html(lang="en")
           .row.g-3
             each task in expiredTasks
               .col-12.col-md-6
-                a.card.h-100.text-decoration-none(href=`/tasks/${task.id}`)
-                  .card-body
-                    h3.h6.card-title.mb-1= task.title
+                // 卡片（右上角完成按鈕；標題可點）＋ 依 priority 配色
+                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
+                  // 右上角「完成」按鈕（僅在未完成時顯示）
+                  if task.status !== 'FINISHED'
+                    form.position-absolute.top-0.end-0.m-2(
+                      action=`/api/tasks/${task.id}/update/status`
+                      method="POST"
+                    )
+                      input(type="hidden", name="status", value="FINISHED")
+                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
+                        i.bi.bi-check2-circle.me-1
+                        | Done
 
-                     // 時間顯示：全日 vs 非全日
-                    if task.allDay
-                      if task.dueLabel
-                        small.text-muted.d-block All-day: #{task.dueLabel}
-                    else
-                      if task.dueLabel
-                        small.text-muted.d-block Due: #{task.dueLabel}
-                        
-                    .row.mt-2.gx-2
-                      .col-6
-                        if task.location
-                          small.text-muted.d-block.text-truncate 📍 #{task.location}
-                      .col-6
-                        if task.description
-                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
-        else
-          p.text-muted.fst-italic No expired tasks.
-
-      // Today & Undated 區塊（同 Expired）
-      section.mt-4
-        h2.h5.mb-3 Today & Undated
-        if todayUndatedTasks && todayUndatedTasks.length
-          .row.g-3
-            each task in todayUndatedTasks
-              .col-12.col-md-6
-                a.card.h-100.text-decoration-none(href=`/tasks/${task.id}`)
                   .card-body
-                    h3.h6.card-title.mb-1= task.title
+                    h3.h6.card-title.mb-1
+                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title
 
                     // 時間顯示：全日 vs 非全日
                     if task.allDay
@@ -75,8 +77,46 @@ html(lang="en")
                       .col-6
                         if task.description
                           small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+        else
+          p.text-muted.fst-italic No expired tasks.
 
-                    
+      // Today & Undated 區塊
+      section.mt-4
+        h2.h5.mb-3 Today & Undated
+        if todayUndatedTasks && todayUndatedTasks.length
+          .row.g-3
+            each task in todayUndatedTasks
+              .col-12.col-md-6
+                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
+                  if task.status !== 'FINISHED'
+                    form.position-absolute.top-0.end-0.m-2(
+                      action=`/api/tasks/${task.id}/update/status`
+                      method="POST"
+                    )
+                      input(type="hidden", name="status", value="FINISHED")
+                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
+                        i.bi.bi-check2-circle.me-1
+                        | Done
+
+                  .card-body
+                    h3.h6.card-title.mb-1
+                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title
+
+                    // 時間顯示：全日 vs 非全日
+                    if task.allDay
+                      if task.dueLabel
+                        small.text-muted.d-block All-day: #{task.dueLabel}
+                    else
+                      if task.dueLabel
+                        small.text-muted.d-block Due: #{task.dueLabel}
+
+                    .row.mt-2.gx-2
+                      .col-6
+                        if task.location
+                          small.text-muted.d-block.text-truncate 📍 #{task.location}
+                      .col-6
+                        if task.description
+                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
         else
           p.text-muted.fst-italic No tasks for today.
 

@@ -3,6 +3,8 @@ import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { Status, Task } from '@prisma/client';
 import { TaskPriority } from 'src/tasks/types/enum';
 
+// TODO: NOTE:
+// I think stuff here is to messy, tidy it up
 export function dayBoundsUtc(tz: string, baseDate: Date = new Date()) {
   const zoned = toZonedTime(baseDate, tz);
   const startZoned = startOfDay(zoned);
@@ -21,7 +23,7 @@ export type TaskVM<T extends Task> = T & {
   updatedLabel: string;
 };
 
-export function toCatpital(str: string) {
+export function toCapital(str: string): string {
   const originalStr = str;
   return originalStr.charAt(0) + originalStr.slice(1).toLocaleLowerCase();
 }
@@ -47,7 +49,7 @@ export function buildTaskVM<T extends Task>(task: T, tz: string): TaskVM<T> {
       ? `${dueDateLocal} ${dueTimeLocal}`
       : null;
 
-  toCatpital(TaskPriority[task.priority]);
+  toCapital(TaskPriority[task.priority]);
   return {
     ...task,
     dueLabel,
@@ -55,7 +57,7 @@ export function buildTaskVM<T extends Task>(task: T, tz: string): TaskVM<T> {
     dueTimeLocal,
     createdLabel: formatInTimeZone(task.createdAt, tz, 'yyyy/MM/dd HH:mm:ss'),
     updatedLabel: formatInTimeZone(task.updatedAt, tz, 'yyyy/MM/dd HH:mm:ss'),
-    priorityLabel: toCatpital(TaskPriority[task.priority]),
-    statusLabel: toCatpital(Status[task.status]),
+    priorityLabel: toCapital(TaskPriority[task.priority]),
+    statusLabel: toCapital(Status[task.status]),
   };
 }

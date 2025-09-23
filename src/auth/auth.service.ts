@@ -34,10 +34,10 @@ export class AuthService {
     if (existUser) {
       throw new AuthErrors.CredentialDuplicatedError();
     }
-
     const createUserInput = {
       name: dto.name,
       email: dto.email,
+      timeZone: dto.timeZone,
       hash: await this.hash(dto.password),
     };
     await this.usersService.create(createUserInput);
@@ -62,6 +62,7 @@ export class AuthService {
       sub: user.id,
       userName: user.name,
       email: user.email,
+      timeZone: user.timeZone,
     };
     return {
       accessToken: await this.jwtService.signAsync(payload),
