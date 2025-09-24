@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import type { User as UserModel } from '@prisma/client';
 import { UsersService } from './users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
@@ -9,7 +10,6 @@ import {
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
 import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
-import { Prisma, User } from '@prisma/client';
 import { AuthSigninDto, AuthSignupDto } from 'src/auth/dto/auth.dto';
 import { UsersErrors } from 'src/errors';
 
@@ -18,7 +18,7 @@ describe('UsersService', () => {
   let signUpDto: AuthSignupDto;
   let signinDto: AuthSigninDto;
   let createUserPayload: UserCreatePayload;
-  let user: User;
+  let user: UserModel;
 
   const mockPrismaService = {
     user: {
@@ -35,8 +35,7 @@ describe('UsersService', () => {
     name: 'PrismaClientKnownRequestError',
   } as Prisma.PrismaClientKnownRequestError;
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
     signUpDto = createMockSignupDto();
     createUserPayload = createMockCreatePayload();
     signinDto = createMockSigninDto();
@@ -50,6 +49,10 @@ describe('UsersService', () => {
     }).compile();
 
     usersService = module.get<UsersService>(UsersService);
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   describe('create', () => {

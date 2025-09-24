@@ -1,4 +1,4 @@
-import { Task } from '@prisma/client';
+import type { Task } from '@prisma/client';
 import { createMockTask } from 'src/test/factories/mock-task.factory';
 import { buildTaskVM } from './util';
 

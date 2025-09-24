@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Status, Task as TaskModel } from '@prisma/client';
+import type { Task as TaskModel, User as UserModel } from '@prisma/client';
+import { TaskStatus } from './types/enum';
 import { TasksPageController } from './tasks.page.controller';
 import { TasksService } from './tasks.service';
 import { Request, Response } from 'express';
@@ -8,7 +9,6 @@ import {
   createMockRes,
 } from 'src/test/factories/mock-http.factory';
 import { CurrentUser } from 'src/common/types/current-user';
-import { User as userModel } from '@prisma/client';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { createMockTask } from 'src/test/factories/mock-task.factory';
 jest.mock('src/common/helpers/util', () => ({
@@ -25,7 +25,7 @@ import { buildTaskVM } from 'src/common/helpers/util';
 
 describe('TasksController', () => {
   let tasksPageController: TasksPageController;
-  let user: userModel;
+  let user: UserModel;
   let req: Request;
   let res: Response;
   let currentUser: CurrentUser;
@@ -50,8 +50,7 @@ describe('TasksController', () => {
     getAllFutureTasks: jest.fn(),
   };
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
     user = createMockUser();
     req = createMockReq();
     res = createMockRes();
@@ -69,6 +68,10 @@ describe('TasksController', () => {
     }).compile();
 
     tasksPageController = module.get<TasksPageController>(TasksPageController);
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -172,7 +175,11 @@ describe('TasksController', () => {
         urgentTask,
       ]);
 
-      await tasksPageController.listByStatus(Status.FINISHED, currentUser, res);
+      await tasksPageController.listByStatus(
+        TaskStatus.FINISHED,
+        currentUser,
+        res,
+      );
 
       expect(mockTasksSerivce.getTasksByStatus).toHaveBeenCalledWith(
         1,
@@ -234,7 +241,7 @@ describe('TasksController', () => {
       mockTasksSerivce.getTasksByStatus.mockResolvedValueOnce([]);
 
       await tasksPageController.listByStatus(
-        Status.UNFINISHED,
+        TaskStatus.UNFINISHED,
         currentUser,
         res,
       );

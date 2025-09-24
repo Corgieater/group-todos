@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TasksController } from './tasks.controller';
+import type { Task, User as UserModel } from '@prisma/client';
 import { TasksAddDto, UpdateTaskDto } from './dto/tasks.dto';
+import { TaskStatus } from './types/enum';
 import { TasksService } from './tasks.service';
 import { Request, Response } from 'express';
 import {
@@ -8,7 +10,6 @@ import {
   createMockRes,
 } from 'src/test/factories/mock-http.factory';
 import { CurrentUser } from 'src/common/types/current-user';
-import { Status, Task, User as userModel } from '@prisma/client';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
@@ -17,7 +18,7 @@ import { TaskPriority } from './types/enum';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
-  let user: userModel;
+  let user: UserModel;
   let req: Request;
   let res: Response;
   let currentUser: CurrentUser;
@@ -31,8 +32,7 @@ describe('TasksController', () => {
     deleteTask: jest.fn(),
   };
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
+  beforeAll(async () => {
     user = createMockUser();
     req = createMockReq();
     res = createMockRes();
@@ -48,7 +48,7 @@ describe('TasksController', () => {
       id: 1,
       ownerId: user.id,
       title: 'walk cat',
-      status: Status.UNFINISHED,
+      status: TaskStatus.UNFINISHED,
       priority: 1,
       description: null,
       location: null,
@@ -66,6 +66,10 @@ describe('TasksController', () => {
     }).compile();
 
     tasksController = module.get<TasksController>(TasksController);
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -90,7 +94,7 @@ describe('TasksController', () => {
 
       dto2 = {
         title: 'test2',
-        status: Status.UNFINISHED,
+        status: TaskStatus.UNFINISHED,
         priority: TaskPriority.HIGH,
         description: 'test2',
         dueDate: '2025-09-09',
@@ -124,7 +128,7 @@ describe('TasksController', () => {
       await tasksController.create(req, currentUser, dto2, res);
       const payload = {
         title: 'test2',
-        status: 'UNFINISHED',
+        status: TaskStatus.UNFINISHED,
         priority: 2,
         description: 'test2',
         dueDate: '2025-09-09',
@@ -185,7 +189,7 @@ describe('TasksController', () => {
     it('should update task status', async () => {
       await tasksController.updateStatus(
         req,
-        Status.FINISHED,
+        TaskStatus.FINISHED,
         currentUser,
         1,
         res,

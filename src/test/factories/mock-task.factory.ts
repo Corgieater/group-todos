@@ -1,4 +1,5 @@
-import { Status, Task as TaskModel } from '@prisma/client';
+import type { Task as TaskModel } from '@prisma/client';
+import { TaskStatus } from 'src/tasks/types/enum';
 import { TaskPriority } from 'src/tasks/types/enum';
 
 export function createMockTask(overrides: Partial<TaskModel> = {}): TaskModel {
@@ -6,7 +7,7 @@ export function createMockTask(overrides: Partial<TaskModel> = {}): TaskModel {
     id: 1,
     ownerId: 1,
     title: 'low test',
-    status: Status.UNFINISHED,
+    status: TaskStatus.UNFINISHED,
     priority: TaskPriority.LOW,
     description: 'test',
     location: 'test',

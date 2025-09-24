@@ -1,10 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  Prisma,
-  Status,
-  User as Usermodel,
-  Task as TaskModel,
-} from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { User as Usermodel, Task as TaskModel } from '@prisma/client';
+import { TaskStatus } from './types/enum';
 import { TasksService } from './tasks.service';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -49,9 +46,7 @@ describe('TasksService', () => {
     priority: TaskPriority.URGENT,
   });
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
-
+  beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TasksService,
@@ -61,6 +56,10 @@ describe('TasksService', () => {
     }).compile();
 
     tasksService = module.get<TasksService>(TasksService);
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
     mockUsersService.findByIdOrThrow.mockResolvedValue(user);
   });
 
@@ -124,7 +123,7 @@ describe('TasksService', () => {
     it('creates a timed task (dueDate+dueTime→dueAtUtc) and applies status/priority', async () => {
       payload.allDay = false;
       payload.dueTime = '10:10';
-      payload.status = Status.FINISHED;
+      payload.status = TaskStatus.FINISHED;
       payload.priority = TaskPriority.HIGH;
 
       await tasksService.createTask(payload);
@@ -137,7 +136,7 @@ describe('TasksService', () => {
       );
 
       expect(data).toMatchObject({
-        status: Status.FINISHED,
+        status: TaskStatus.FINISHED,
         priority: TaskPriority.HIGH,
         allDay: false,
         dueAtUtc: new Date('2025-09-09T02:10:00.000Z'),
@@ -210,7 +209,7 @@ describe('TasksService', () => {
       expect(task).toMatchObject({
         id: lowTask.id,
         title: 'low test',
-        status: Status.UNFINISHED,
+        status: TaskStatus.UNFINISHED,
         priority: TaskPriority.LOW,
         location: 'test',
         description: 'test',
@@ -258,8 +257,8 @@ describe('TasksService', () => {
     let finishedTask2: TaskModel;
 
     beforeEach(() => {
-      finishedTask1 = { ...lowTask, status: Status.FINISHED };
-      finishedTask2 = { ...mediumTask, status: Status.FINISHED };
+      finishedTask1 = { ...lowTask, status: TaskStatus.FINISHED };
+      finishedTask2 = { ...mediumTask, status: TaskStatus.FINISHED };
     });
 
     it('returns tasks by status', async () => {
@@ -270,24 +269,24 @@ describe('TasksService', () => {
 
       const tasks = await tasksService.getTasksByStatus(
         user.id,
-        Status.FINISHED,
+        TaskStatus.FINISHED,
       );
 
       expect(mockPrismaService.task.findMany).toHaveBeenCalledWith({
-        where: { ownerId: 1, status: Status.FINISHED },
+        where: { ownerId: 1, status: TaskStatus.FINISHED },
       });
       expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(1);
 
       expect(tasks).toHaveLength(2);
       expect(tasks.every((t) => t.ownerId === 1)).toBe(true);
-      expect(tasks.every((t) => t.status === Status.FINISHED)).toBe(true);
+      expect(tasks.every((t) => t.status === TaskStatus.FINISHED)).toBe(true);
     });
 
     it('returns empty array if none', async () => {
       mockPrismaService.task.findMany.mockResolvedValueOnce([]);
       const tasks = await tasksService.getTasksByStatus(
         user.id,
-        Status.FINISHED,
+        TaskStatus.FINISHED,
       );
       expect(tasks).toEqual([]);
     });
@@ -459,14 +458,18 @@ describe('TasksService', () => {
     it('updates task status', async () => {
       mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);
 
-      await tasksService.updateTaskStatus(lowTask.id, user.id, Status.FINISHED);
+      await tasksService.updateTaskStatus(
+        lowTask.id,
+        user.id,
+        TaskStatus.FINISHED,
+      );
 
       expect(mockPrismaService.task.findUnique).toHaveBeenCalledWith({
         where: { id: 1, ownerId: 1 },
       });
       expect(mockPrismaService.task.update).toHaveBeenCalledWith({
         where: { id: 1, ownerId: 1 },
-        data: { status: Status.FINISHED },
+        data: { status: TaskStatus.FINISHED },
       });
     });
 
@@ -476,7 +479,7 @@ describe('TasksService', () => {
       );
 
       await expect(
-        tasksService.updateTaskStatus(999, user.id, Status.FINISHED),
+        tasksService.updateTaskStatus(999, user.id, TaskStatus.FINISHED),
       ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
     });
   });

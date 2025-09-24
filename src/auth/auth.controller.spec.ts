@@ -29,7 +29,7 @@ describe('AuthController', () => {
   let req: Request;
   let res: Response;
   let currentUser: CurrentUser;
-  let accessToken: { accessToken: string };
+  const ACCESS_TOKEN = { accessToken: 'jwtToken' };
 
   const mockAuthService = {
     signup: jest.fn(),
@@ -42,14 +42,8 @@ describe('AuthController', () => {
 
   const mockConfigService = createMockConfig();
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    req = createMockReq();
-    res = createMockRes();
-    currentUser = createMockCurrentUser();
-    accessToken = { accessToken: 'jwtToken' };
-
-    const module: TestingModule = await Test.createTestingModule({
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
@@ -57,7 +51,16 @@ describe('AuthController', () => {
       ],
     }).compile();
 
-    authController = module.get<AuthController>(AuthController);
+    authController = module.get(AuthController);
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    req = createMockReq();
+    res = createMockRes();
+    currentUser = createMockCurrentUser();
+
+    mockAuthService.signin.mockResolvedValue(ACCESS_TOKEN);
   });
 
   describe('signup', () => {
@@ -87,7 +90,7 @@ describe('AuthController', () => {
     });
 
     it('should sign in user and redirect with token', async () => {
-      mockAuthService.signin.mockResolvedValueOnce(accessToken);
+      mockAuthService.signin.mockResolvedValueOnce(ACCESS_TOKEN);
       await authController.signin(req, dto, res);
       expect(res.cookie).toHaveBeenCalledWith('grouptodo_login', 'jwtToken', {
         httpOnly: true,
@@ -167,7 +170,7 @@ describe('AuthController', () => {
     });
 
     it('should return reset password form page after token verified', async () => {
-      mockAuthService.verifyResetToken.mockResolvedValueOnce(accessToken);
+      mockAuthService.verifyResetToken.mockResolvedValueOnce(ACCESS_TOKEN);
       await authController.verifyResetToken(
         req,
         tokenId,

@@ -1,9 +1,8 @@
-import * as argon from 'argon2';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { User as UserModel } from '@prisma/client';
+import type { User as UserModel } from '@prisma/client';
 import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
 import {
   createMockSignupDto,
@@ -20,18 +19,22 @@ import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { AuthErrors, UsersErrors } from 'src/errors';
 
+jest.mock('argon2', () => ({
+  hash: jest.fn().mockResolvedValue('hashed'),
+  verify: jest.fn().mockResolvedValue(true),
+}));
+import * as argon from 'argon2';
+
+const mockArgon = argon as jest.Mocked<typeof argon>;
+
 describe('AuthService', () => {
   let authService: AuthService;
-  let jwtService: JwtService;
 
+  const mockJwt = { signAsync: jest.fn() };
   let signupDto: AuthSignupDto;
   let signinDto: AuthSigninDto;
   let user: UserModel;
   let accessPayload: NormalAccessTokenPayload;
-
-  let spyHash: jest.SpiedFunction<AuthService['hash']>;
-  let spyVerify: jest.SpiedFunction<AuthService['verify']>;
-  let spySignAsync: jest.SpiedFunction<JwtService['signAsync']>;
 
   const mockUsersService = {
     findByEmail: jest.fn(),
@@ -69,9 +72,7 @@ describe('AuthService', () => {
   const JWT_TOKEN = 'jwtToken';
   const HASH = 'hashed';
 
-  beforeEach(async () => {
-    jest.clearAllMocks();
-
+  beforeAll(async () => {
     signupDto = createMockSignupDto();
     signinDto = createMockSigninDto();
     user = createMockUser();
@@ -91,18 +92,21 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: MailService, useValue: mockMailService },
         { provide: ConfigService, useValue: mockConfigService.mock },
+        {
+          provide: JwtService,
+          useValue: mockJwt,
+        },
       ],
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
-    jwtService = module.get<JwtService>(JwtService);
+  });
 
-    // token hashing uses argon2id options
-    spyHash = jest.spyOn(authService, 'hash').mockResolvedValue(HASH);
-    spyVerify = jest.spyOn(authService, 'verify');
-    spySignAsync = jest
-      .spyOn(jwtService, 'signAsync')
-      .mockResolvedValue(JWT_TOKEN);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockArgon.hash.mockResolvedValue('hashed');
+    mockArgon.verify.mockResolvedValue(true);
+    mockJwt.signAsync.mockResolvedValue(JWT_TOKEN);
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -117,7 +121,10 @@ describe('AuthService', () => {
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         'test@test.com',
       );
-      expect(spyHash).toHaveBeenCalledWith(signupDto.password);
+      expect(mockArgon.hash).toHaveBeenCalledWith(
+        signupDto.password,
+        undefined,
+      );
       expect(mockUsersService.create).toHaveBeenCalledWith({
         name: 'test',
         email: 'test@test.com',
@@ -145,7 +152,6 @@ describe('AuthService', () => {
   describe('signin', () => {
     it('should sign user in and issue token', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(true);
       const result = await authService.signin(
         signinDto.email,
         signinDto.password,
@@ -154,14 +160,14 @@ describe('AuthService', () => {
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         signinDto.email,
       );
-      expect(spyVerify).toHaveBeenCalledWith(user.hash, signinDto.password);
-      expect(spySignAsync).toHaveBeenCalledWith(accessPayload);
+      expect(argon.verify).toHaveBeenCalledWith(user.hash, signinDto.password);
+      expect(mockJwt.signAsync).toHaveBeenCalledWith(accessPayload);
       expect(result).toEqual({ accessToken: JWT_TOKEN });
     });
 
     it('should throw UnauthorizedException when password does not match', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(false);
+      mockArgon.verify.mockResolvedValueOnce(false);
 
       await expect(
         authService.signin(signinDto.email, signinDto.password),
@@ -187,16 +193,16 @@ describe('AuthService', () => {
 
     it('should change password if old password is correct and new one is different', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      mockArgon.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
       await authService.changePassword(payload);
       expect(mockUsersService.findById).toHaveBeenCalledWith(payload.userId);
-      expect(spyVerify).toHaveBeenNthCalledWith(
+      expect(mockArgon.verify).toHaveBeenNthCalledWith(
         1,
         user.hash,
         payload.oldPassword,
       );
-      expect(spyVerify).toHaveBeenNthCalledWith(
+      expect(mockArgon.verify).toHaveBeenNthCalledWith(
         2,
         user.hash,
         payload.newPassword,
@@ -220,7 +226,7 @@ describe('AuthService', () => {
 
     it('should throw error if old password is incorrect', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(false);
+      mockArgon.verify.mockResolvedValueOnce(false);
 
       await expect(authService.changePassword(payload)).rejects.toThrow(
         AuthErrors.InvalidOldPasswordError,
@@ -229,7 +235,7 @@ describe('AuthService', () => {
 
     it('should throw error if old and new password are the same', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      mockArgon.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
 
       await expect(authService.changePassword(payload)).rejects.toThrow(
         new AuthErrors.PasswordReuseError(),
@@ -261,7 +267,7 @@ describe('AuthService', () => {
 
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(user.email);
 
-      expect(spyHash).toHaveBeenCalledWith(RAW_TOKEN, {
+      expect(argon.hash).toHaveBeenCalledWith(RAW_TOKEN, {
         type: argon.argon2id,
       });
       expect(mockPrismaService.resetPasswordToken.create).toHaveBeenCalledWith({
@@ -317,8 +323,8 @@ describe('AuthService', () => {
       mockPrismaService.resetPasswordToken.findFirst.mockResolvedValueOnce(
         resetTokenRow,
       );
-      spyVerify.mockResolvedValueOnce(true);
-      spyHash.mockResolvedValueOnce(HASH);
+      mockArgon.verify.mockResolvedValueOnce(true);
+      mockArgon.hash.mockResolvedValueOnce(HASH);
 
       const token = await authService.verifyResetToken(
         tokenId,
@@ -351,11 +357,11 @@ describe('AuthService', () => {
           user: { select: { id: true, name: true, email: true } },
         },
       });
-      expect(spyVerify).toHaveBeenCalledWith(
+      expect(mockArgon.verify).toHaveBeenCalledWith(
         resetTokenRow.tokenHash,
         resetPasswordToken,
       );
-      expect(spySignAsync).toHaveBeenCalledWith(payload);
+      expect(mockJwt.signAsync).toHaveBeenCalledWith(payload);
       expect(token).toEqual({ accessToken: JWT_TOKEN });
     });
 
@@ -372,7 +378,7 @@ describe('AuthService', () => {
       mockPrismaService.resetPasswordToken.findFirst.mockResolvedValueOnce(
         resetTokenRow,
       );
-      spyVerify.mockResolvedValueOnce(false);
+      mockArgon.verify.mockResolvedValueOnce(false);
 
       await expect(
         authService.verifyResetToken(1, 'fakeToken'),
@@ -405,8 +411,8 @@ describe('AuthService', () => {
       userId = user.id;
 
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(false);
-      spyHash.mockResolvedValueOnce(HASH);
+      mockArgon.verify.mockResolvedValueOnce(false);
+      mockArgon.hash.mockResolvedValueOnce(HASH);
 
       tx.resetPasswordToken.updateMany.mockResolvedValue({ count: 1 });
 
@@ -418,8 +424,8 @@ describe('AuthService', () => {
       );
 
       expect(mockUsersService.findById).toHaveBeenCalledWith(userId);
-      expect(spyVerify).toHaveBeenCalledWith(user.hash, newPassword);
-      expect(spyHash).toHaveBeenCalledWith(newPassword);
+      expect(mockArgon.verify).toHaveBeenCalledWith(user.hash, newPassword);
+      expect(mockArgon.hash).toHaveBeenCalledWith(newPassword, undefined);
 
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
 
@@ -470,7 +476,7 @@ describe('AuthService', () => {
 
     it('should throw error if reset password and old password are the same', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(true);
+      mockArgon.verify.mockResolvedValueOnce(true);
 
       await expect(
         authService.confirmResetPassword(
@@ -484,7 +490,7 @@ describe('AuthService', () => {
 
     it('should throw error if new password and confirm mismatch', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(false);
+      mockArgon.verify.mockResolvedValueOnce(false);
 
       await expect(
         authService.confirmResetPassword(tokenId, user.id, newPassword, 'foo'),
@@ -493,8 +499,7 @@ describe('AuthService', () => {
 
     it('should throw InvalidTokenError if count !== 1', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      spyVerify.mockResolvedValueOnce(false);
-      spyHash.mockResolvedValueOnce(HASH);
+      mockArgon.verify.mockResolvedValueOnce(false);
       tx.resetPasswordToken.updateMany.mockReturnValueOnce({ count: 0 });
       await expect(
         authService.confirmResetPassword(
