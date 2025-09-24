@@ -16,24 +16,24 @@ model Task {
   owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   title       String
-  status      Status    @default(UNFINISHED)
-  priority    Int       @default(3)
+  status      Status  @default(UNFINISHED)
+  priority    Int     @default(3)
   description String?
   location    String?
 
   // 時間欄位（關鍵）
   // 1) 一般事件/截止時間 -> 存 UTC
-  dueAtUtc        DateTime?     // 以 UTC 儲存的絕對時間點（nullable）
+  dueAtUtc        DateTime? // 以 UTC 儲存的絕對時間點（nullable）
   // 2) All-day 事件 -> 用當地的「日期」表示
-  allDay          Boolean       @default(false)
-  allDayLocalDate DateTime?     @db.Date  // 僅日期；若 allDay=true，則這欄必有值
+  allDay          Boolean   @default(false)
+  allDayLocalDate DateTime? @db.Date // 僅日期；若 allDay=true，則這欄必有值
   // 3) 來源時區（輸入時的時區），IANA
-  sourceTimeZone  String?       @db.VarChar(64)
+  sourceTimeZone  String?   @db.VarChar(64)
 
   assignees TaskAssignee[]
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   @@index([ownerId, status, priority])
   @@index([dueAtUtc])

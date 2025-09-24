@@ -10,6 +10,8 @@ model User {
   assignedTasks TaskAssignee[] @relation("AssigneeUser")
 
   delegatedTasks TaskAssignee[] @relation("AssignerUser")
+  Group          Group[]
+  GroupMember    GroupMember[]
 
   @@index([timeZone])
 }
