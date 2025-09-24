@@ -21,5 +21,14 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "overrides": [
+    {
+      "files": ["**/*.spec.ts", "**/__tests__/**/*.ts"],
+      "parserOptions": {
+        "project": ["./tsconfig.spec.json"],
+        "tsconfigRootDir": "__dirname"
+      }
+    }
+  ]
 }
