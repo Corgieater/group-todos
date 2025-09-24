@@ -4,7 +4,6 @@ import {
   Param,
   ParseEnumPipe,
   ParseIntPipe,
-  Query,
   Req,
   Res,
   UseFilters,
@@ -15,24 +14,9 @@ import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { Request, Response } from 'express';
 import { TasksService } from './tasks.service';
-import { TaskPriority } from './types/enum';
-import { Status } from '@prisma/client';
+import { TaskStatus } from './types/enum';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
-import { ListTasksQueryDto } from './dto/tasks.dto';
-import { formatInTimeZone } from 'date-fns-tz';
 import { buildTaskVM, toCapital } from 'src/common/helpers/util';
-
-const taskPriorityLabel: Record<TaskPriority, string> = {
-  [TaskPriority.URGENT]: 'Urgent',
-  [TaskPriority.HIGH]: 'High',
-  [TaskPriority.MEDIUM]: 'Medium',
-  [TaskPriority.LOW]: 'Low',
-};
-const statusLabel: Record<Status, string> = {
-  [Status.UNFINISHED]: 'Unfinished',
-  [Status.FINISHED]: 'Finished',
-  [Status.ARCHIVED]: 'Archived',
-};
 
 @Controller('tasks')
 @UseGuards(AccessTokenGuard)
@@ -75,7 +59,7 @@ export class TasksPageController {
   // I think this page need a pagination
   @Get('status/:status')
   async listByStatus(
-    @Param('status', new ParseEnumPipe(Status)) status: Status,
+    @Param('status', new ParseEnumPipe(TaskStatus)) status: TaskStatus,
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {

@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
 import { TasksAddPayload, TaskUpdatePayload } from './types/tasks';
-import { Prisma, Status, Task as TaskModel } from '@prisma/client';
+import { Prisma, Task as TaskModel } from '@prisma/client';
+import { TaskStatus } from './types/enum';
 import { TasksErrors } from 'src/errors';
 import { dayBoundsUtc } from 'src/common/helpers/util';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
@@ -95,7 +96,7 @@ export class TasksService {
 
   async getTasksByStatus(
     ownerId: number,
-    status: Status,
+    status: TaskStatus,
   ): Promise<TaskModel[]> {
     return this.prismaService.task.findMany({
       where: { ownerId, status },
@@ -111,7 +112,7 @@ export class TasksService {
     return this.prismaService.task.findMany({
       where: {
         ownerId,
-        status: Status.UNFINISHED,
+        status: TaskStatus.UNFINISHED,
         OR: [
           { dueAtUtc: null, allDayLocalDate: null },
           { dueAtUtc: { gte: startUtc, lte: endUtc } },
@@ -134,7 +135,7 @@ export class TasksService {
     return this.prismaService.task.findMany({
       where: {
         ownerId: userId,
-        status: Status.UNFINISHED,
+        status: TaskStatus.UNFINISHED,
 
         OR: [
           { dueAtUtc: { not: null, lt: startOfTodayUtc } },
@@ -209,7 +210,7 @@ export class TasksService {
     }
   }
 
-  async updateTaskStatus(id: number, userId: number, nextStatus: Status) {
+  async updateTaskStatus(id: number, userId: number, nextStatus: TaskStatus) {
     await this.getTaskById(id, userId);
 
     return await this.prismaService.task.update({

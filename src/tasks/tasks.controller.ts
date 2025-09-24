@@ -19,7 +19,7 @@ import { TasksService } from './tasks.service';
 import { TasksAddPayload } from './types/tasks';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
-import { Status } from '@prisma/client';
+import { TaskStatus } from './types/enum';
 
 @Controller('api/tasks')
 @UseFilters(TasksPageFilter)
@@ -74,7 +74,7 @@ export class TasksController {
   @Post(':id/update/status')
   async updateStatus(
     @Req() req: Request,
-    @Body('status', new ParseEnumPipe(Status)) status: Status,
+    @Body('status', new ParseEnumPipe(TaskStatus)) status: TaskStatus,
     @CurrentUserDecorator() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,

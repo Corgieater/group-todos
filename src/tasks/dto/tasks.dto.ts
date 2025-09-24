@@ -10,7 +10,7 @@ import {
   IsDefined,
   IsEmpty,
 } from 'class-validator';
-import { Status } from '@prisma/client';
+import { TaskStatus, TaskStatusValues } from '../types/enum';
 import { TaskPriority } from '../types/enum';
 import { Transform } from 'class-transformer';
 
@@ -29,8 +29,8 @@ export class TasksAddDto {
   title: string;
 
   @IsOptional()
-  @IsEnum(Status)
-  status?: Status;
+  @IsEnum(TaskStatus)
+  status?: TaskStatus;
 
   @IsOptional()
   @IsEnum(TaskPriority)
@@ -124,12 +124,17 @@ export class UpdateTaskDto {
 
 export class UpdateTaskStatusDto {
   @IsNotEmpty()
-  @IsEnum(Status)
-  @Transform(({ value }) => String(value).toUpperCase())
-  status: Status;
+  @IsEnum(TaskStatus, {
+    message: `status must be one of: ${TaskStatusValues.join(', ')}`,
+  })
+  @Transform(
+    ({ value }) => (value == null ? value : String(value).trim().toUpperCase()),
+    { toClassOnly: true },
+  )
+  status!: TaskStatus;
 }
 
 export class ListTasksQueryDto {
-  @IsEnum(Status)
-  status: Status;
+  @IsEnum(TaskStatus)
+  status: TaskStatus;
 }
