@@ -1,9 +1,9 @@
-import { Status } from '@prisma/client';
+import { TaskStatus } from './enum';
 import { TaskPriority } from './enum';
 
 export interface TasksAddPayload {
   title: string;
-  status: Status | null;
+  status: TaskStatus | null;
   priority: TaskPriority | null;
   description: string | null;
   allDay: boolean;

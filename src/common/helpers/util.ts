@@ -1,7 +1,8 @@
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
-import { Status, Task } from '@prisma/client';
+import type { Task } from '@prisma/client';
 import { TaskPriority } from 'src/tasks/types/enum';
+import { TaskStatus } from 'src/tasks/types/enum';
 
 // TODO: NOTE:
 // I think stuff here is to messy, tidy it up
@@ -58,6 +59,6 @@ export function buildTaskVM<T extends Task>(task: T, tz: string): TaskVM<T> {
     createdLabel: formatInTimeZone(task.createdAt, tz, 'yyyy/MM/dd HH:mm:ss'),
     updatedLabel: formatInTimeZone(task.updatedAt, tz, 'yyyy/MM/dd HH:mm:ss'),
     priorityLabel: toCapital(TaskPriority[task.priority]),
-    statusLabel: toCapital(Status[task.status]),
+    statusLabel: toCapital(TaskStatus[task.status]),
   };
 }
