@@ -1,0 +1,31 @@
+enum GroupRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+model Group {
+  id        Int           @id @default(autoincrement())
+  name      String
+  ownerId   Int
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members   GroupMember[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([ownerId])
+}
+
+model GroupMember {
+  groupId  Int
+  userId   Int
+  role     GroupRole @default(MEMBER)
+  joinedAt DateTime  @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
