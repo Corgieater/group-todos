@@ -9,6 +9,8 @@ import { AuthModule } from './auth/auth.module';
 import { MailService } from './mail/mail.service';
 import { MailModule } from './mail/mail.module';
 import { TasksModule } from './tasks/tasks.module';
+import { GroupsModule } from './groups/groups.module';
+import { PagesModule } from './pages/pages.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { TasksModule } from './tasks/tasks.module';
     AuthModule,
     MailModule,
     TasksModule,
+    GroupsModule,
+    PagesModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService, MailService],

@@ -8,7 +8,10 @@ export type DomainErrorCode =
   | 'PASSWORD_CONFIRMATION_MISMATCH'
   | 'TASK_NOT_FOUND'
   | 'TASK_EMPTY_UPDATE'
-  | 'TASK_STATUS_INVALID';
+  | 'TASK_STATUS_INVALID'
+  | 'GROUP_NOT_FOUND'
+  | 'CANNOT_INVITE_SELF_ERROR'
+  | 'ALREADY_MEMBER_ERROR';
 
 export interface DomainErrorParams<D = unknown> {
   message?: string; // developer-friendly default/override
