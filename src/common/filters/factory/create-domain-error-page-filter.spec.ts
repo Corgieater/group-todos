@@ -63,7 +63,7 @@ describe('domain page filter', () => {
       ),
 
       INVALID_OLD_PASSWORD: makeRedirectHandler(
-        '/users/home',
+        '/users-home',
         'Old password invalid',
         {
           status: HttpStatus.FORBIDDEN,

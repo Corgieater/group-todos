@@ -46,6 +46,14 @@ describe('AuthService', () => {
     updatePasswordHash: jest.fn(),
   };
 
+  const tx = {
+    resetPasswordToken: {
+      updateMany: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    user: { update: jest.fn() },
+  };
+
   const mockPrismaService = {
     resetPasswordToken: {
       create: jest.fn(),
@@ -55,14 +63,6 @@ describe('AuthService', () => {
       return fn(tx);
     }),
   };
-
-  const tx = {
-    resetPasswordToken: {
-      updateMany: jest.fn(),
-      deleteMany: jest.fn(),
-    },
-    user: { update: jest.fn() },
-  } as any;
 
   const mockMailService = {
     sendMail: jest.fn(),
@@ -404,6 +404,7 @@ describe('AuthService', () => {
       mockPrismaService.$transaction.mockClear();
       mockPrismaService.$transaction.mockImplementation(async (fn) => fn(tx));
     });
+
     it('should reset password, mark token as used, delete other unused tokens', async () => {
       newPassword = 'newPassword';
       confirmPassword = 'newPassword';

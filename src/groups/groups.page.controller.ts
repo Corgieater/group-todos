@@ -14,7 +14,7 @@ import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { GroupsService } from './groups.service';
 import { buildGroupVM } from 'src/common/helpers/util';
-import { GroupsPageFilter } from 'src/common/filters/factory/group-page.filter';
+import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 
 @Controller('groups')
 @UseGuards(AccessTokenGuard)

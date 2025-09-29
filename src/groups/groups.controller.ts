@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import { GroupsService } from './groups.service';
@@ -16,13 +17,15 @@ import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { createGroupDto, inviteGroupMemberDto } from './dto/groups.dto';
 import { setSession } from 'src/common/helpers/flash-helper';
+import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 
 @Controller('/api/groups')
 @UseGuards(AccessTokenGuard)
+@UseFilters(GroupsPageFilter)
 export class GroupsController {
   constructor(private groupsService: GroupsService) {}
 
-  @Post()
+  @Post('new')
   async create(
     @Req() req: Request,
     @CurrentUserDecorator() user: CurrentUser,
@@ -31,7 +34,7 @@ export class GroupsController {
   ) {
     await this.groupsService.createGroup(user.userId, dto.name);
     setSession(req, 'success', 'Group created');
-    res.redirect('/users/home');
+    res.redirect('/users-home');
   }
 
   @Post(':id/invitations')

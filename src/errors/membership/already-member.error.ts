@@ -10,6 +10,9 @@ export class AlreadyMemberError extends DomainError {
       code: 'ALREADY_MEMBER_ERROR',
       message: 'This user is already a group member',
       cause: opts?.cause,
+      data: opts
+        ? { inviteeId: opts.inviteeId, groupId: opts.groupId }
+        : undefined,
     });
   }
 

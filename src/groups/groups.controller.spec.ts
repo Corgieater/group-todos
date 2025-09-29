@@ -58,7 +58,7 @@ describe('GroupsController', () => {
         'test group',
       );
       expect(setSession).toHaveBeenCalledWith(req, 'success', 'Group created');
-      expect(res.redirect).toHaveBeenCalledWith('/users/home');
+      expect(res.redirect).toHaveBeenCalledWith('/users-home');
     });
   });
 

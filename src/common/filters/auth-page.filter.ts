@@ -12,7 +12,7 @@ export const AuthPageFilter = createDomainErrorPageFilter({
 
   INVALID_CREDENTIAL: makeRedirectHandler('/auth/signin'),
 
-  INVALID_OLD_PASSWORD: makeRedirectHandler('/users/home'),
+  INVALID_OLD_PASSWORD: makeRedirectHandler('/users-home'),
 
   USER_NOT_FOUND: makeRedirectHandler('/auth/signin'),
 });
