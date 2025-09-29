@@ -196,14 +196,10 @@ export class TasksService {
       return task;
     } catch (e) {
       if (
-        // NOTE:
-        // this is for be more friendly to test
-        e instanceof Prisma.PrismaClientKnownRequestError ||
-        e?.name === 'PrismaClientKnownRequestError'
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
       ) {
-        if (e.code === 'P2025') {
-          throw TasksErrors.TaskNotFoundError.byId(userId, id);
-        }
+        throw TasksErrors.TaskNotFoundError.byId(userId, id);
       }
 
       throw e;

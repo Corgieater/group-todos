@@ -27,12 +27,6 @@ describe('TasksService', () => {
     },
   };
 
-  const prismaError = {
-    code: 'P2025',
-    message: 'No record found',
-    name: 'PrismaClientKnownRequestError',
-  } as unknown as Prisma.PrismaClientKnownRequestError;
-
   const user: Usermodel = createMockUser();
   const lowTask: TaskModel = createMockTask();
   const mediumTask: TaskModel = createMockTask({
@@ -441,7 +435,12 @@ describe('TasksService', () => {
     });
 
     it('throws TaskNotFoundError', async () => {
-      mockPrismaService.task.update.mockRejectedValueOnce(prismaError);
+      const e = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['id', 'userId'] },
+      });
+      mockPrismaService.task.update.mockRejectedValueOnce(e);
 
       await expect(
         tasksService.updateTask(999, user.id, payload),

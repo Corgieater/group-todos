@@ -13,6 +13,7 @@ export class UsersService {
     const data = {
       name: payload.name,
       email: payload.email,
+      timeZone: payload.timeZone,
       hash: payload.hash,
     };
     await this.prismaService.user.create({ data });
@@ -41,16 +42,10 @@ export class UsersService {
       return user;
     } catch (e) {
       if (
-        // NOTE:
-        // this is for be more friendly to test
-        // TODO:
-        // I wonder if this should change to domain error
-        e instanceof Prisma.PrismaClientKnownRequestError ||
-        e?.name === 'PrismaClientKnownRequestError'
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
       ) {
-        if (e.code === 'P2025') {
-          throw UsersErrors.UserNotFoundError.byEmail(email);
-        }
+        throw UsersErrors.UserNotFoundError.byEmail(email);
       }
       throw e;
     }
@@ -64,14 +59,10 @@ export class UsersService {
       return user;
     } catch (e) {
       if (
-        // NOTE:
-        // this is for be more friendly to test
-        e instanceof Prisma.PrismaClientKnownRequestError ||
-        e?.name === 'PrismaClientKnownRequestError'
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
       ) {
-        if (e.code === 'P2025') {
-          throw UsersErrors.UserNotFoundError.byId(id);
-        }
+        throw UsersErrors.UserNotFoundError.byId(id);
       }
       throw e;
     }
@@ -97,8 +88,4 @@ export class UsersService {
       data: { hash },
     });
   }
-
-  // remove(id: number) {
-  //   return `This action removes a #${id} user`;
-  // }
 }

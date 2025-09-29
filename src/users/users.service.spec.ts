@@ -29,12 +29,6 @@ describe('UsersService', () => {
     },
   };
 
-  const prismaError = {
-    code: 'P2025',
-    message: 'No record found',
-    name: 'PrismaClientKnownRequestError',
-  } as Prisma.PrismaClientKnownRequestError;
-
   beforeAll(async () => {
     signUpDto = createMockSignupDto();
     createUserPayload = createMockCreatePayload();
@@ -115,10 +109,13 @@ describe('UsersService', () => {
       expect(result).toEqual(user);
     });
 
-    it('should throw UsersNotFoundError when email not found (P2025)', async () => {
-      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(
-        prismaError,
-      );
+    it('should throw UsersNotFoundError', async () => {
+      const e = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['email'] },
+      });
+      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(e);
       await expect(
         usersService.findByEmailOrThrow(signinDto.email),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
@@ -133,10 +130,13 @@ describe('UsersService', () => {
       expect(result).toEqual(user);
     });
 
-    it('should throw UsersNotFoundError when id not found (P2025)', async () => {
-      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(
-        prismaError,
-      );
+    it('should throw UsersNotFoundError', async () => {
+      const e = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['id'] },
+      });
+      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(e);
       await expect(
         usersService.findByIdOrThrow(user.id),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
