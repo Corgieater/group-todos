@@ -19,6 +19,12 @@ describe('GroupService', () => {
     findByIdOrThrow: jest.fn(),
     findByEmail: jest.fn(),
   };
+
+  const tx = {
+    group: { create: jest.fn() },
+    groupMember: { create: jest.fn() },
+  };
+
   const mockPrismaService = {
     group: {
       create: jest.fn(),
@@ -32,6 +38,7 @@ describe('GroupService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
     },
+    $transaction: jest.fn().mockImplementation(async (fn: any) => fn(tx)),
   };
 
   const group: GroupModel = {
@@ -61,16 +68,36 @@ describe('GroupService', () => {
 
   describe('createGroup', () => {
     it('should create group', async () => {
-      const data = {
-        ownerId: 1,
-        name: 'test group',
-      };
+      const ownerId = 1;
+      const name = 'test group';
       mockUsersService.findByIdOrThrow.mockResolvedValueOnce(user);
-      await groupsService.createGroup(user.id, 'test group');
+      tx.group.create.mockResolvedValueOnce({ id: 1, ownerId, name });
+
+      await expect(
+        groupsService.createGroup(ownerId, name),
+      ).resolves.toBeUndefined();
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(1);
-      expect(mockPrismaService.group.create).toHaveBeenCalledWith({ data });
-      expect(mockPrismaService.group.create).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.group.create).toHaveBeenCalledWith({ data: { ownerId, name } });
+      expect(mockPrismaService.group.create).not.toHaveBeenCalled();
+
+      expect(tx.groupMember.create).toHaveBeenCalledWith({
+        data: { groupId: 1, userId: ownerId, role: 'OWNER' },
+      });
+    });
+
+    it('should not create group if user not found', async () => {
+      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+        UsersErrors.UserNotFoundError.byId(999),
+      );
+      await expect(
+        groupsService.createGroup(999, 'test'),
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(0);
+      expect(tx.group.create).toHaveBeenCalledTimes(0);
+      expect(tx.groupMember.create).toHaveBeenCalledTimes(0);
     });
   });
 

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
-import { type Group as GroupModel, Prisma } from '@prisma/client';
+import { type Group as GroupModel, GroupRole, Prisma } from '@prisma/client';
 import { GroupsErrors, MembershipErrors, UsersErrors } from 'src/errors';
 
 type GroupListItem = Prisma.GroupMemberGetPayload<{
@@ -28,10 +28,15 @@ export class GroupsService {
   // 1. create group easily
   // 2. develop invite code
   // 3. create group with member inviting
-  async createGroup(ownerId: number, name: string): Promise<GroupModel> {
+  async createGroup(ownerId: number, name: string): Promise<void> {
     await this.usersService.findByIdOrThrow(ownerId);
 
-    return await this.prismaService.group.create({ data: { ownerId, name } });
+    return this.prismaService.$transaction(async (tx) => {
+      const group = await tx.group.create({ data: { ownerId, name } });
+      await tx.groupMember.create({
+        data: { groupId: group.id, userId: ownerId, role: GroupRole.OWNER },
+      });
+    });
   }
 
   // TODO: NOTE:
