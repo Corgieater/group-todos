@@ -135,9 +135,9 @@ describe('AuthService', () => {
 
     it('should throw ConflictException when email is already taken', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
-      await expect(authService.signup(signupDto)).rejects.toMatchObject({
-        code: 'CREDENTIAL_DUPLICATED',
-      });
+      await expect(authService.signup(signupDto)).rejects.toBeInstanceOf(
+        AuthErrors.CredentialDuplicatedError,
+      );
 
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         signupDto.email,
@@ -228,7 +228,7 @@ describe('AuthService', () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
       mockArgon.verify.mockResolvedValueOnce(false);
 
-      await expect(authService.changePassword(payload)).rejects.toThrow(
+      await expect(authService.changePassword(payload)).rejects.toBeInstanceOf(
         AuthErrors.InvalidOldPasswordError,
       );
     });
@@ -371,7 +371,7 @@ describe('AuthService', () => {
       );
       await expect(
         authService.verifyResetToken(1, 'fakeToken'),
-      ).rejects.toThrow(AuthErrors.InvalidTokenError);
+      ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
     });
 
     it('should raise InvalidTokenException if token not matched', async () => {
@@ -382,7 +382,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.verifyResetToken(1, 'fakeToken'),
-      ).rejects.toThrow(AuthErrors.InvalidTokenError);
+      ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
     });
   });
 
@@ -495,7 +495,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.confirmResetPassword(tokenId, user.id, newPassword, 'foo'),
-      ).rejects.toThrow(AuthErrors.PasswordConfirmationMismatchError);
+      ).rejects.toBeInstanceOf(AuthErrors.PasswordConfirmationMismatchError);
     });
 
     it('should throw InvalidTokenError if count !== 1', async () => {
@@ -509,7 +509,7 @@ describe('AuthService', () => {
           newPassword,
           confirmPassword,
         ),
-      ).rejects.toThrow(AuthErrors.InvalidTokenError);
+      ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
     });
   });
 });

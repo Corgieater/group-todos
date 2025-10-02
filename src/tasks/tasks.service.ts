@@ -17,8 +17,6 @@ export class TasksService {
 
   async createTask(payload: TasksAddPayload): Promise<void> {
     const user = await this.usersService.findByIdOrThrow(payload.userId);
-    // 組dueAtUtc
-    // check if it pass
     let dueAtUtc: Date | null = null;
     let allDayLocalDate: Date | null = null;
 

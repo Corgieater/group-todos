@@ -60,6 +60,7 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   // createTask
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('createTask', () => {
     let payload: TasksAddPayload;
 
@@ -137,20 +138,28 @@ describe('TasksService', () => {
       });
     });
 
-    it('throws UserNotFoundError when user does not exist', async () => {
+    it('should not hit database when user not found', async () => {
+      payload = {
+        ...payload,
+        userId: 999,
+      };
       mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(user.id),
+        UsersErrors.UserNotFoundError.byId(999),
       );
 
       await expect(tasksService.createTask(payload)).rejects.toBeInstanceOf(
         UsersErrors.UserNotFoundError,
       );
+
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.task.create).toHaveBeenCalledTimes(0);
     });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
   // getAllFutureTasks
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('getAllFutureTasks', () => {
     const startUtc = new Date('2025-09-01T00:00:00.000Z');
     const endUtc = new Date('2025-09-01T23:59:59.999Z');
@@ -174,22 +183,24 @@ describe('TasksService', () => {
       expect(tasks).toBe(rows);
     });
 
-    // it('throws UserNotFoundError when user does not exist', async () => {
-    //   mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-    //     UsersErrors.UserNotFoundError.byId(user.id),
-    //   );
+    it('should not hit database when user not found', async () => {
+      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+        UsersErrors.UserNotFoundError.byId(999),
+      );
 
-    //   await expect(tasksService.getAllTasks(user.id)).rejects.toBeInstanceOf(
-    //     UsersErrors.UserNotFoundError,
-    //   );
+      await expect(
+        tasksService.getAllFutureTasks(999, 'Asia/Taipei'),
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
-    //   expect(mockPrismaService.task.findMany).not.toHaveBeenCalled();
-    // });
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(0);
+    });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
   // getTaskById
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('getTaskById', () => {
     it('returns task details by id', async () => {
       mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);
@@ -222,30 +233,24 @@ describe('TasksService', () => {
       ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
     });
 
-    it('throws UserNotFoundError if user does not exist', async () => {
+    it('should not hit database if user not found', async () => {
       mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(user.id),
+        UsersErrors.UserNotFoundError.byId(999),
       );
 
       await expect(
         tasksService.getTaskById(lowTask.id, 999),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
-      expect(mockPrismaService.task.findUnique).not.toHaveBeenCalled();
-    });
-
-    it('throws TaskNotFoundError if task belongs to another user', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
-
-      await expect(
-        tasksService.getTaskById(lowTask.id, 2),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.task.findUnique).toHaveBeenCalledTimes(0);
     });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
   // getTasksByStatus
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('getTasksByStatus', () => {
     let finishedTask1: TaskModel;
     let finishedTask2: TaskModel;
@@ -289,6 +294,7 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   // getUnfinishedTasksTodayOrNoDueDate
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('getUnfinishedTasksTodayOrNoDueDate', () => {
     const startUtc = new Date('2025-02-01T00:00:00.000Z');
     const endUtc = new Date('2025-02-01T23:59:59.999Z');
@@ -305,7 +311,7 @@ describe('TasksService', () => {
       jest.restoreAllMocks();
     });
 
-    it('queries unfinished tasks due today OR undated, ordered by dueAtUtc asc then createdAt', async () => {
+    it('should queries unfinished tasks due today OR undated, ordered by dueAtUtc asc then createdAt', async () => {
       const prismaReturn = [today, lowTask];
       mockPrismaService.task.findMany.mockResolvedValueOnce(prismaReturn);
 
@@ -336,11 +342,25 @@ describe('TasksService', () => {
 
       expect(result).toBe(prismaReturn);
     });
+
+    it('should not hit database if user not found', async () => {
+      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+        UsersErrors.UserNotFoundError.byId(999),
+      );
+
+      await expect(
+        tasksService.getUnfinishedTasksTodayOrNoDueDate(999),
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(0);
+    });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
   // getExpiredTasks
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('getExpiredTasks', () => {
     beforeAll(() => {
       jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
@@ -349,7 +369,7 @@ describe('TasksService', () => {
       jest.useRealTimers();
     });
 
-    it('returns expired tasks with expected cutoffs', async () => {
+    it('should returns expired tasks with expected cutoffs', async () => {
       await tasksService.getExpiredTasks(user.id);
 
       const { where } = mockPrismaService.task.findMany.mock.calls[0][0];
@@ -361,11 +381,25 @@ describe('TasksService', () => {
       expect(instantCutoff.getTime()).toBeLessThan(now.getTime());
       expect(dateOnlyCutoff.toISOString()).toBe('2026-01-01T00:00:00.000Z');
     });
+
+    it('should not hit database if user not found', async () => {
+      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+        UsersErrors.UserNotFoundError.byId(999),
+      );
+
+      await expect(tasksService.getExpiredTasks(999)).rejects.toBeInstanceOf(
+        UsersErrors.UserNotFoundError,
+      );
+
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(0);
+    });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
   // updateTask
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('updateTask', () => {
     const payload: TaskUpdatePayload = {
       title: 'walk cat',
@@ -377,7 +411,7 @@ describe('TasksService', () => {
       dueTime: '13:50',
     };
 
-    it('updates a non all-day task', async () => {
+    it('should updates a non all-day task', async () => {
       mockUsersService.findByIdOrThrow.mockResolvedValueOnce(user);
 
       await tasksService.updateTask(lowTask.id, user.id, payload);
@@ -401,7 +435,7 @@ describe('TasksService', () => {
       );
     });
 
-    it('updates an all-day task', async () => {
+    it('should updates an all-day task', async () => {
       const allDayPayload: TaskUpdatePayload = { ...payload, allDay: true };
 
       mockUsersService.findByIdOrThrow.mockResolvedValueOnce(user);
@@ -422,19 +456,20 @@ describe('TasksService', () => {
       });
     });
 
-    it('throws UserNotFoundError', async () => {
+    it('should not hit database when user not found', async () => {
       mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(user.id),
+        UsersErrors.UserNotFoundError.byId(999),
       );
 
       await expect(
-        tasksService.updateTask(lowTask.id, user.id, payload),
+        tasksService.updateTask(lowTask.id, 999, payload),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
-      expect(mockPrismaService.task.update).not.toHaveBeenCalled();
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.task.update).toHaveBeenCalledTimes(0);
     });
 
-    it('throws TaskNotFoundError', async () => {
+    it('should throws TaskNotFoundError', async () => {
       const e = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
         code: 'P2002',
         clientVersion: 'test',
@@ -453,6 +488,7 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   // updateTaskStatus
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('updateTaskStatus', () => {
     it('updates task status', async () => {
       mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);

@@ -32,7 +32,7 @@ export class AuthService {
   async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.usersService.findByEmail(dto.email);
     if (existUser) {
-      throw new AuthErrors.CredentialDuplicatedError();
+      throw AuthErrors.CredentialDuplicatedError.email(dto.email);
     }
     const createUserInput = {
       name: dto.name,
