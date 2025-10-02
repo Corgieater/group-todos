@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Get,
   Param,
   ParseIntPipe,
   Post,
@@ -15,7 +14,11 @@ import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { Request, Response } from 'express';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
-import { createGroupDto, inviteGroupMemberDto } from './dto/groups.dto';
+import {
+  createGroupDto,
+  inviteGroupMemberDto,
+  kickOutMemberFromGroupDto,
+} from './dto/groups.dto';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 
@@ -49,5 +52,29 @@ export class GroupsController {
 
     setSession(req, 'success', 'Invitation suceed.');
     res.redirect(`/groups/${id}`);
+  }
+
+  @Post(':id/disband')
+  async disband(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    await this.groupsService.disbandGroupById(id, user.userId);
+
+    setSession(req, 'success', 'Group has been disbanded');
+    res.redirect('/users-home');
+  }
+
+  @Post(':id/kick-out')
+  async kickOutMember(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Body() dto: kickOutMemberFromGroupDto,
+    @Res() res: Response,
+  ) {
+    await this.groupsService.kickOutMember(id, dto.memberId, user.userId);
   }
 }

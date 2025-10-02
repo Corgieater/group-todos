@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsNumber, IsString } from 'class-validator';
 
 export class createGroupDto {
   @IsNotEmpty()
@@ -10,4 +10,10 @@ export class inviteGroupMemberDto {
   @IsNotEmpty()
   @IsEmail()
   email: string;
+}
+
+export class kickOutMemberFromGroupDto {
+  @IsNotEmpty()
+  @IsNumber()
+  memberId: number;
 }

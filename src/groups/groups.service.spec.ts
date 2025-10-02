@@ -23,8 +23,8 @@ describe('GroupService', () => {
   };
 
   const tx = {
-    group: { create: jest.fn() },
-    groupMember: { create: jest.fn() },
+    group: { create: jest.fn(), findUnique: jest.fn() },
+    groupMember: { create: jest.fn(), findMany: jest.fn(), delete: jest.fn() },
   };
 
   const mockPrismaService = {
@@ -102,9 +102,9 @@ describe('GroupService', () => {
         groupsService.createGroup(999, 'test'),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
-      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(0);
-      expect(tx.group.create).toHaveBeenCalledTimes(0);
-      expect(tx.groupMember.create).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(tx.group.create).not.toHaveBeenCalled();
+      expect(tx.groupMember.create).not.toHaveBeenCalled();
     });
   });
 
@@ -160,7 +160,7 @@ describe('GroupService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.groupMember.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -230,7 +230,7 @@ describe('GroupService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.group.findFirst).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.group.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -340,6 +340,124 @@ describe('GroupService', () => {
       expect(mockPrismaService.groupMember.create).toHaveBeenCalledWith({
         data: { groupId: 1, userId: 2 },
       });
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // kickOutMember
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('kickOutMember', () => {
+    const actor = { id: 1, role: GroupRole.OWNER };
+    const target = { id: 2, role: GroupRole.ADMIN };
+
+    beforeEach(() => {
+      tx.group.findUnique.mockResolvedValue({ id: group.id });
+    });
+
+    it('should removes target when group exists, actor is OWNER/ADMIN, target is member', async () => {
+      tx.groupMember.findMany.mockReturnValueOnce([
+        {
+          id: group.id,
+          userId: actor.id,
+          role: actor.role,
+        },
+        {
+          id: group.id,
+          userId: target.id,
+          role: target.role,
+        },
+      ]);
+
+      await groupsService.kickOutMember(group.id, target.id, actor.id);
+
+      expect(tx.group.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+        select: { id: true },
+      });
+
+      expect(tx.groupMember.findMany).toHaveBeenCalledWith({
+        where: { groupId: 1, userId: { in: [1, 2] } },
+        select: { userId: true, role: true },
+      });
+
+      expect(tx.groupMember.delete).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 1, userId: 2 } },
+      });
+
+      expect(tx.groupMember.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw GroupNotFoundError', async () => {
+      tx.group.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        groupsService.kickOutMember(group.id, target.id, actor.id),
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
+
+      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.groupMember.findMany).not.toHaveBeenCalled();
+      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotAuthorizedToRemoveMemberError', async () => {
+      const member1 = { id: 3, role: GroupRole.MEMBER };
+      const member2 = { id: 4, role: GroupRole.MEMBER };
+
+      tx.groupMember.findMany.mockReturnValueOnce([
+        {
+          id: group.id,
+          userId: member1.id,
+          role: member1.role,
+        },
+        {
+          id: group.id,
+          userId: member2.id,
+          role: member2.role,
+        },
+      ]);
+
+      await expect(
+        groupsService.kickOutMember(group.id, member1.id, member2.id),
+      ).rejects.toBeInstanceOf(GroupsErrors.NotAuthorizedToRemoveMemberError);
+
+      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+    });
+
+    it('should throw GroupMemberNotFound', async () => {
+      tx.groupMember.findMany.mockReturnValueOnce([
+        {
+          id: group.id,
+          userId: actor.id,
+          role: actor.role,
+        },
+      ]);
+
+      await expect(
+        groupsService.kickOutMember(group.id, 99, actor.id),
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupMemberNotFoundError);
+
+      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.groupMember.findMany).toHaveBeenCalledTimes(1);
+      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+    });
+
+    it('should throw OwnerCanNotRemoveSelf error', async () => {
+      const owner = {
+        id: group.id,
+        userId: 6,
+        role: GroupRole.OWNER,
+      };
+      tx.groupMember.findMany.mockReturnValueOnce([owner]);
+
+      await expect(
+        groupsService.kickOutMember(group.id, owner.userId, owner.userId),
+      ).rejects.toBeInstanceOf(GroupsErrors.OwnerCanNotRemoveSelfFromGroup);
+
+      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.groupMember.findMany).toHaveBeenCalledTimes(1);
+      expect(tx.groupMember.delete).not.toHaveBeenCalled();
     });
   });
 });

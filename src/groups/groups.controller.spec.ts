@@ -19,9 +19,11 @@ describe('GroupsController', () => {
   let req: Request;
   let res: Response;
   let currentUser: CurrentUser;
+
   const mockGroupsService = {
     createGroup: jest.fn(),
     inviteGroupMember: jest.fn(),
+    disbandGroupById: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -47,6 +49,10 @@ describe('GroupsController', () => {
     jest.clearAllMocks();
   });
 
+  // ───────────────────────────────────────────────────────────────────────────────
+  // create
+  // ───────────────────────────────────────────────────────────────────────────────
+
   describe('create', () => {
     it('should create a group', async () => {
       const dto = {
@@ -61,6 +67,10 @@ describe('GroupsController', () => {
       expect(res.redirect).toHaveBeenCalledWith('/users-home');
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // invite
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('invite', () => {
     const dto: inviteGroupMemberDto = { email: 'test2@test.com' };
@@ -78,6 +88,24 @@ describe('GroupsController', () => {
         'Invitation suceed.',
       );
       expect(res.redirect).toHaveBeenCalledWith(`/groups/1`);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // disband
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('disband', () => {
+    it('should disband a group', async () => {
+      await groupsController.disband(req, 1, currentUser, res);
+
+      expect(mockGroupsService.disbandGroupById).toHaveBeenCalledWith(1, 1);
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'success',
+        'Group has been disbanded',
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/users-home');
     });
   });
 });
