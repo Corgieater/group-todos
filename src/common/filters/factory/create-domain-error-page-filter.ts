@@ -122,12 +122,6 @@ export function createDomainErrorPageFilter(
         }
       }
 
-      // 可選：把錯誤代碼/語義狀態回在 Header（僅這次回應；方便邊界設備/代理串查）
-      if ((err as any).code)
-        res.setHeader('X-Error-Code', String((err as any).code));
-      if (semanticStatus)
-        res.setHeader('X-Error-Status', String(semanticStatus));
-
       // ---- preserve：回填 form 欄位 ----
       const form: Record<string, any> = {};
       for (const key of handler.preserve ?? []) {

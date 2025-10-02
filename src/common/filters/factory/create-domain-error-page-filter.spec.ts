@@ -1,131 +1,69 @@
 import { HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import { createDomainErrorPageFilter } from './create-domain-error-page-filter';
+import {
+  makeRedirectHandler,
+  makeRenderHandler,
+} from 'src/common/types/domain-error-page.types';
 import {
   createMockReq,
   createMockRes,
   createMockHost,
 } from 'src/test/factories/mock-http.factory';
-
-import { createDomainErrorPageFilter } from './create-domain-error-page-filter';
-import { makeRedirectHandler } from 'src/common/types/domain-error-page.types';
-import { AuthErrors } from 'src/errors';
+import { DomainError } from 'src/errors/domain-error.base';
 
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
+import { dataAs } from 'src/errors/utils/error-data';
 
-describe('domain page filter', () => {
-  let filter;
-  let res: Response;
-  beforeEach(() => {
-    jest.clearAllMocks();
-    res = createMockRes();
-    filter = createDomainErrorPageFilter({
-      PASSWORD_REUSE: makeRedirectHandler(
-        '/auth/reset-password',
-        'Please use a new password.',
-        {
-          status: HttpStatus.BAD_REQUEST,
-        },
-      ),
+class DummyError extends DomainError<{ x?: number }> {
+  constructor(code: 'PASSWORD_REUSE', msg = 'oops', data?: { x?: number }) {
+    super('DummyError', { code, message: msg, data });
+  }
+}
 
-      PASSWORD_CONFIRMATION_MISMATCH: makeRedirectHandler(
-        '/auth/reset-password',
-        'Password confirmation does not match.',
-        {
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-        },
-      ),
+describe('createDomainErrorPageFilter (factory behavior)', () => {
+  beforeEach(() => jest.clearAllMocks());
 
-      INVALID_TOKEN: makeRedirectHandler(
-        '/',
-        'Reset link is invalid or expired. Please get a new one.',
-        {
-          status: HttpStatus.FORBIDDEN,
-        },
-      ),
-
-      CREDENTIAL_DUPLICATED: makeRedirectHandler(
-        '/auth/signup',
-        'Email already taken.',
-        {
-          status: HttpStatus.CONFLICT,
-          preserve: ['email', 'name'],
-          fieldErrors: { email: 'Already registered.' },
-        },
-      ),
-
-      INVALID_CREDENTIAL: makeRedirectHandler(
-        '/auth/signin',
-        'Invalid credential',
-        {
-          status: HttpStatus.FORBIDDEN,
-        },
-      ),
-
-      INVALID_OLD_PASSWORD: makeRedirectHandler(
-        '/users-home',
-        'Old password invalid',
-        {
-          status: HttpStatus.FORBIDDEN,
-        },
-      ),
-
-      USER_NOT_FOUND: makeRedirectHandler(
-        '/auth/signin',
-        'Invalid credential',
-        {
-          status: HttpStatus.FORBIDDEN,
-        },
-      ),
+  it('redirect: sets flash and 303 redirect', () => {
+    // ✅ 用與下面 DummyError 一致的 key：'PASSWORD_REUSE'
+    const filter = createDomainErrorPageFilter({
+      PASSWORD_REUSE: makeRedirectHandler('/somewhere', {
+        semanticStatus: HttpStatus.BAD_REQUEST,
+        preserve: ['email'], // ✅ 要回填 email
+        // ✅ 用 dataAs 取得強型別 data
+        msg: (err) => `hi:${dataAs<{ x?: number }>(err)?.x ?? 'n/a'}`,
+      }),
     });
+
+    const req = createMockReq({
+      body: { email: 'a@b.com', pwd: 'xxx' },
+      method: 'POST',
+      url: '/test',
+    });
+    const res = createMockRes();
+    const host = createMockHost(req, res);
+
+    // ✅ code 與 map key 完全一致
+    filter.catch(new DummyError('PASSWORD_REUSE', 'ignored', { x: 7 }), host);
+
+    expect(setSession).toHaveBeenCalledWith(req, 'error', 'hi:7', {
+      form: { email: 'a@b.com' },
+      fieldErrors: undefined,
+    });
+    expect(res.status).toHaveBeenCalledWith(303);
+    expect(res.redirect).toHaveBeenCalledWith('/somewhere');
   });
 
-  it('redirect with flash', () => {
-    const req = createMockReq({
-      body: { email: 'test@test.com', password: 'test' },
+  it('fallback: unknown code → redirect "/" with default message', () => {
+    const filter = createDomainErrorPageFilter({
+      KNOWN: makeRedirectHandler('/ok'),
     });
+    const req = createMockReq();
+    const res = createMockRes();
     const host = createMockHost(req, res);
-    filter.catch(AuthErrors.InvalidCredentialError.password(), host);
-    expect(setSession).toHaveBeenCalledWith(
-      req,
-      'error',
-      'Invalid credential',
-      { form: {}, fieldErrors: undefined },
-    );
-    expect(res.redirect).toHaveBeenCalledWith('/auth/signin');
-  });
 
-  it('should redirect and set form and filedErrors', () => {
-    const req = createMockReq({
-      body: { email: 'test@test.com', name: 'test', password: 'test' },
-    });
-    const host = createMockHost(req, res);
-    filter.catch(new AuthErrors.CredentialDuplicatedError(), host);
-    expect(setSession).toHaveBeenCalledWith(
-      req,
-      'error',
-      'Email already taken.',
-      {
-        form: { email: 'test@test.com', name: 'test' },
-        fieldErrors: { email: 'Already registered.' },
-      },
-    );
-    expect(res.redirect).toHaveBeenCalledWith('/auth/signup');
-  });
+    filter.catch(new DummyError('PASSWORD_REUSE'), host);
 
-  it('falls back to default redirect when code not mapped', () => {
-    // intentionally cover the whole filter
-    filter = createDomainErrorPageFilter({
-      PASSWORD_REUSE: makeRedirectHandler(
-        '/auth/reset-password',
-        'Please use a new password.',
-      ),
-    });
-    const req = createMockReq({
-      body: { email: 'test@test.com', password: 'test' },
-    });
-    const host = createMockHost(req, res);
-    filter.catch(AuthErrors.InvalidCredentialError.password(), host);
     expect(setSession).toHaveBeenCalledWith(
       req,
       'error',
