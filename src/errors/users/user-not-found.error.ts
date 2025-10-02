@@ -1,15 +1,22 @@
 import { DomainError } from '../domain-error.base';
 
-type UserLookup = { by: 'email'; email: string } | { by: 'id'; id: number };
+export type UserLookup =
+  | { by: 'email'; email: string }
+  | { by: 'id'; id: number };
 
 export class UserNotFoundError extends DomainError<UserLookup> {
+  readonly email?: string;
+  readonly id?: number;
+
   private constructor(data: UserLookup, opts?: { cause?: unknown }) {
     super('UserNotFoundError', {
       code: 'USER_NOT_FOUND',
-      message: 'User was not found',
+      message: `User not found.`,
       data,
-      cause: opts?.cause, // <- forward cause
+      cause: opts?.cause,
     });
+    if (data.by === 'email') this.email = data.email;
+    else this.id = data.id;
   }
 
   static byEmail(email: string, opts?: { cause?: unknown }) {

@@ -11,7 +11,10 @@ export type DomainErrorCode =
   | 'TASK_STATUS_INVALID'
   | 'GROUP_NOT_FOUND'
   | 'CANNOT_INVITE_SELF_ERROR'
-  | 'ALREADY_MEMBER_ERROR';
+  | 'ALREADY_MEMBER_ERROR'
+  | 'NOT_AUTHORIZED_TO_REMOVE_MEMBER'
+  | 'GROUP_MEMBER_NOT_FOUND'
+  | 'OWNER_CAN_NOT_REMOVE_SELF_FROM_GROUP';
 
 export interface DomainErrorParams<D = unknown> {
   message?: string; // developer-friendly default/override
