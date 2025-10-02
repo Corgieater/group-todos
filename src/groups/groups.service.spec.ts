@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GroupsService } from './groups.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
+  GroupRole,
   Prisma,
   type Group as GroupModel,
   type User as UsersModel,
@@ -15,6 +16,7 @@ describe('GroupService', () => {
   let groupsService: GroupsService;
 
   const user: UsersModel = createMockUser();
+
   const mockUsersService = {
     findByIdOrThrow: jest.fn(),
     findByEmail: jest.fn(),
@@ -37,6 +39,7 @@ describe('GroupService', () => {
     groupMember: {
       create: jest.fn(),
       findMany: jest.fn(),
+      delete: jest.fn(),
     },
     $transaction: jest.fn().mockImplementation(async (fn: any) => fn(tx)),
   };
@@ -65,6 +68,10 @@ describe('GroupService', () => {
     jest.clearAllMocks();
     mockPrismaService.group.findUnique.mockResolvedValue(group);
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // createGroup
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('createGroup', () => {
     it('should create group', async () => {
@@ -100,6 +107,10 @@ describe('GroupService', () => {
       expect(tx.groupMember.create).toHaveBeenCalledTimes(0);
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // getGroupListByUserId
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('getGroupListByUserId', () => {
     it('should return a list of groups', async () => {
@@ -139,7 +150,23 @@ describe('GroupService', () => {
 
       expect(groupList).toEqual([]);
     });
+
+    it('should not hit database when user not found', async () => {
+      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+        UsersErrors.UserNotFoundError.byId(999),
+      );
+      await expect(
+        groupsService.getGroupListByUserId(999),
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(0);
+    });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // getGroupDetailsByMemberId
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('getGroupDetailsByMemberId', () => {
     it('returns group details when requester is owner or member', async () => {
@@ -193,13 +220,29 @@ describe('GroupService', () => {
         groupsService.getGroupDetailsByMemberId(99, user.id),
       ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
     });
+
+    it('should not hit database when user not found', async () => {
+      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+        UsersErrors.UserNotFoundError.byId(999),
+      );
+      await expect(
+        groupsService.getGroupDetailsByMemberId(1, 999),
+      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+      expect(mockPrismaService.group.findFirst).toHaveBeenCalledTimes(0);
+    });
   });
 
-  describe('deleteGroupById', () => {
+  // ───────────────────────────────────────────────────────────────────────────────
+  // disbandGroupById
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('disbandGroupById', () => {
     it('should delete group when owner matches (count=1)', async () => {
       mockPrismaService.group.deleteMany.mockResolvedValueOnce({ count: 1 });
       await expect(
-        groupsService.deleteGroupById(group.id, user.id),
+        groupsService.disbandGroupById(group.id, user.id),
       ).resolves.toBeUndefined();
       expect(mockPrismaService.group.deleteMany).toHaveBeenCalledWith({
         where: {
@@ -212,13 +255,17 @@ describe('GroupService', () => {
     it('should throw GroupNotFoundError when no row deleted (count=0)', async () => {
       mockPrismaService.group.deleteMany.mockResolvedValueOnce({ count: 0 });
       await expect(
-        groupsService.deleteGroupById(group.id, 2),
+        groupsService.disbandGroupById(group.id, 2),
       ).rejects.toBeInstanceOf(GroupNotFoundError);
       expect(mockPrismaService.group.deleteMany).toHaveBeenCalledWith({
         where: { id: 1, ownerId: 2 },
       });
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // inviteGroupMember
+  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('inviteGroupMember', () => {
     const invitee = { id: 2, name: 'test2', email: 'test2@test.com' };

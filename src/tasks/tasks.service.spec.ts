@@ -152,7 +152,7 @@ describe('TasksService', () => {
       );
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.create).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.task.create).not.toHaveBeenCalled();
     });
   });
 
@@ -193,7 +193,7 @@ describe('TasksService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.task.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -243,7 +243,7 @@ describe('TasksService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.findUnique).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.task.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -353,7 +353,7 @@ describe('TasksService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.task.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -392,7 +392,7 @@ describe('TasksService', () => {
       );
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.task.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -466,7 +466,7 @@ describe('TasksService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.update).toHaveBeenCalledTimes(0);
+      expect(mockPrismaService.task.update).not.toHaveBeenCalled();
     });
 
     it('should throws TaskNotFoundError', async () => {
