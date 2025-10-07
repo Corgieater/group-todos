@@ -1,11 +1,12 @@
 model User {
-  id          Int                  @id @default(autoincrement())
-  name        String               @db.VarChar(100)
-  email       String               @unique @db.VarChar(254)
-  timeZone    String               @db.VarChar(64)
-  hash        String
-  resetTokens ResetPasswordToken[]
-  Task        Task[]
+  id           Int           @id @default(autoincrement())
+  name         String        @db.VarChar(100)
+  email        String        @unique @db.VarChar(254)
+  timeZone     String        @db.VarChar(64)
+  hash         String
+  actionTokens ActionToken[] @relation("UserActionTokens")
+  issuedTokens ActionToken[] @relation("IssuedTokens")
+  Task         Task[]
 
   assignedTasks TaskAssignee[] @relation("AssigneeUser")
 

@@ -6,13 +6,15 @@ enum GroupRole {
 }
 
 model Group {
-  id        Int           @id @default(autoincrement())
-  name      String
-  ownerId   Int
-  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members   GroupMember[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id           Int           @id @default(autoincrement())
+  name         String
+  ownerId      Int
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members      GroupMember[]
+  actionTokens ActionToken[] 
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([ownerId])
 }
