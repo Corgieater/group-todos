@@ -1,7 +1,7 @@
-import { Prisma } from '@prisma/client';
+import { ActionTokenType, Prisma } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
 import * as argon from 'argon2';
-import crypto from 'crypto';
+import crypto, { createHmac, timingSafeEqual } from 'crypto';
 import { User as UserModel } from '@prisma/client';
 
 import { AuthSignupDto } from './dto/auth.dto';
@@ -19,6 +19,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { AuthErrors } from 'src/errors';
 import { UsersErrors } from 'src/errors';
+import { addTime } from 'src/common/helpers/util';
 
 @Injectable()
 export class AuthService {
@@ -84,6 +85,16 @@ export class AuthService {
     return crypto.randomBytes(bytes).toString('base64url');
   }
 
+  hmacToken(raw: string, secret: string): string {
+    return createHmac('sha256', secret).update(raw).digest('base64url');
+  }
+
+  safeEqualB64url(aB64: string, bB64: string): boolean {
+    const a = Buffer.from(aB64, 'base64url');
+    const b = Buffer.from(bB64, 'base64url');
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
   async changePassword(payload: AuthUpdatePasswordPayload): Promise<void> {
     const user = await this.usersService.findById(payload.userId);
 
@@ -106,55 +117,99 @@ export class AuthService {
     });
   }
 
+  // TODO: fix this after change resetpasswordToken to actiontoken
   async resetPassword(email: string): Promise<void> {
     /**
-     * Initiates the password reset flow for a given email address.
+     * Starts the password-reset flow for a given email.
      *
-     * This method is intentionally silent: if no user account is found for the
-     * provided email, the function simply resolves without error. This prevents
-     * leaking which emails are registered (credential enumeration).
+     * - Silently no-ops if the email is not registered (prevents credential enumeration).
+     * - Generates a high-entropy URL-safe token, computes an HMAC-SHA-256 hash,
+     *   and upserts an ActionToken row identified by a unique `subjectKey`
+     *   (`RESET_PASSWORD:user:{userId}`) so there is at most one active reset token
+     *   per user at a time.
+     * - Sets a short expiration window (currently 15 minutes).
+     * - After DB commit, sends the reset email containing the one-time URL
+     *   `.../api/verify-reset-token/:tokenId/:rawToken`.
      *
-     * @param email User email address
-     * @returns Promise<void> – resolves after creating a reset token and sending
-     *          an email if a matching user exists; resolves silently otherwise.
-     * @throws Prisma errors if database insert fails; Mailer errors if sending fails.
+     * Side effects:
+     * - Writes/updates an ActionToken row.
+     * - Sends an email to the user (out-of-transaction).
+     *
+     * Security notes:
+     * - Only the token *hash* is stored (HMAC-SHA-256 with server secret).
+     * - The function is intentionally silent for unknown emails.
+     *
+     * @param email - The user's email address.
+     * @returns Promise<void> Resolves whether or not a user exists for the email.
+     * @throws Prisma.PrismaClientKnownRequestError If the DB write/upsert fails.
+     * @throws Error If configuration (e.g., TOKEN_HMAC_SECRET or BASE_URL) is missing.
+     * @throws Mailer errors If sending the email fails.
      */
     const user = await this.usersService.findByEmail(email);
 
     if (!user) return;
 
     const rawToken = this.generateUrlFriendlySecret(32);
-    const hashedToken = await this.hash(rawToken, { type: argon.argon2id });
-    const row = await this.prismaService.resetPasswordToken.create({
-      data: {
+    const expiresAt = addTime(new Date(), 15, 'm');
+
+    const serverSecret = this.config.get<string>('TOKEN_HMAC_SECRET');
+    const tokenHash = this.hmacToken(rawToken, serverSecret!);
+
+    const subjectKey = `RESET_PASSWORD:user:${user.id}`;
+    const { id: tokenId } = await this.prismaService.actionToken.upsert({
+      where: { subjectKey },
+      update: {
+        tokenHash,
+        expiresAt,
+        consumedAt: null,
+        revokedAt: null,
+      },
+      create: {
+        type: ActionTokenType.RESET_PASSWORD,
+        subjectKey,
+        tokenHash,
         userId: user.id,
-        tokenHash: hashedToken,
+        issuedById: user.id,
+        expiresAt,
       },
       select: { id: true },
     });
 
-    const link = `${this.config.get<string>('BASE_URL')}api/auth/verify-reset-token/${row.id}/${rawToken}`;
-    await this.mailService.sendMail(user, link);
+    const baseUrl = this.config.get<string>('BASE_URL')!;
+    const link = new URL(
+      `api/auth/verify-reset-token/${tokenId}/${rawToken}`,
+      baseUrl,
+    ).toString();
+
+    await this.mailService.sendPasswordReset(user, link);
   }
 
   async verifyResetToken(
     id: number,
     token: string,
   ): Promise<{ accessToken: string }> {
-    const result = await this.prismaService.resetPasswordToken.findFirst({
-      where: { id, usedAt: null, expiredAt: { gt: new Date() } },
+    const result = await this.prismaService.actionToken.findFirst({
+      where: {
+        id,
+        type: ActionTokenType.RESET_PASSWORD,
+        userId: { not: null },
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
       select: {
         id: true,
         tokenHash: true,
         user: { select: { id: true, name: true, email: true } },
       },
     });
-    if (!result) {
+
+    if (!result || !result.user) {
       throw AuthErrors.InvalidTokenError.reset();
     }
+    const serverSecret = this.config.get<string>('TOKEN_HMAC_SECRET');
+    const candidate = this.hmacToken(token, serverSecret!);
 
-    const isMatched = await this.verify(result['tokenHash'], token);
-    if (!isMatched) {
+    if (!this.safeEqualB64url(result.tokenHash, candidate)) {
       throw AuthErrors.InvalidTokenError.verify();
     }
 
@@ -196,14 +251,14 @@ export class AuthService {
     await this.prismaService.$transaction(
       async (tx) => {
         // Use updateMany, since we need to make sure there is no duplicated token
-        const { count } = await tx.resetPasswordToken.updateMany({
+        const { count } = await tx.actionToken.updateMany({
           where: {
             id: tokenId,
             userId,
-            usedAt: null,
-            expiredAt: { gt: now },
+            consumedAt: null,
+            expiresAt: { gt: now },
           },
-          data: { usedAt: now },
+          data: { consumedAt: now },
         });
 
         if (count !== 1) {
@@ -213,8 +268,8 @@ export class AuthService {
         await this.usersService.updatePasswordHash(userId, newHash, tx);
 
         // delete unused token, save used token for audit/traceability
-        await tx.resetPasswordToken.deleteMany({
-          where: { userId, usedAt: null },
+        await tx.actionToken.deleteMany({
+          where: { userId, consumedAt: null },
         });
       },
       {
