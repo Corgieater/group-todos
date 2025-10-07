@@ -1,0 +1,75 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title New Group
+    include ../partials/bootstrap
+  body
+  include ../partials/message
+  include ../partials/header
+  block content
+    .container.py-5
+      // Flash messages
+      if flash
+        .row.justify-content-center.mb-3
+          .col-12.col-md-8.col-lg-6
+            each f in flash
+              .alert.alert-dismissible.fade.show(
+                class=`alert-${f.type || 'info'}`
+                role="alert"
+              )
+                i.bi.me-2(
+                  class= f.type === 'success' ? 'bi-check-circle-fill'
+                      : f.type === 'warning' ? 'bi-exclamation-triangle-fill'
+                      : f.type === 'error'   ? 'bi-x-circle-fill'
+                      : 'bi-info-circle-fill'
+                )
+                = f.message
+                button.btn-close(type="button" data-bs-dismiss="alert" aria-label="Close")
+
+      .row.justify-content-center
+        .col-12.col-md-8.col-lg-6
+          .card.shadow-sm.border-0
+            .card-header.bg-primary.text-white.py-3
+              .d-flex.align-items-center.gap-2
+                i.bi.bi-people-fill.fs-5
+                h1.h5.mb-0 Create a new group
+            .card-body.p-4
+              p.text-muted.mb-4
+                | Give your group a short, friendly name. You can invite members after creation.
+
+              // Form
+              form(method="post", action="/api/groups/new", novalidate)
+                //- 如果有 CSRF：
+                //- input(type="hidden", name="_csrf", value=csrfToken)
+
+                .mb-3
+                  label.form-label(for="name")
+                    | Group name
+                    span.text-danger.ms-1 *
+                  .input-group
+                    span.input-group-text
+                      i.bi.bi-tag
+                    input#name.form-control(
+                      type="text"
+                      name="name"
+                      required
+                      maxlength="100"
+                      placeholder="e.g. Frontend Team"
+                      autofocus
+                      value=(form && form.name ? form.name : '')
+                      class=(fieldErrors && fieldErrors.name ? 'is-invalid' : '')
+                    )
+                    if fieldErrors && fieldErrors.name
+                      .invalid-feedback= fieldErrors.name
+                  .form-text.text-muted
+                    | Up to 100 characters.
+
+                .d-grid.gap-2.mt-4
+                  button.btn.btn-primary.btn-lg(type="submit")
+                    i.bi.bi-plus-lg.me-2
+                    | Create group
+                  a.btn.btn-outline-secondary(href="/users-home")
+                    i.bi.bi-arrow-left.me-2
+                    | Cancel

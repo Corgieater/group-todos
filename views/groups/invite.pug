@@ -1,0 +1,71 @@
+doctype html
+html(lang="en" data-bs-theme="light")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title Invite to Group
+    include ../partials/bootstrap
+    style.
+      /* 小小強化：柔和背景與卡片陰影 */
+      body {
+        background:
+          radial-gradient(1200px 600px at 10% -10%, rgba(13,110,253,.06), transparent 60%),
+          radial-gradient(1200px 600px at 110% 110%, rgba(32,201,151,.08), transparent 60%),
+          #f8f9fa;
+      }
+  body
+    include ../partials/message
+    include ../partials/header
+
+    // Main container
+    .container.py-5
+      .row.justify-content-center
+        .col-12.col-md-10.col-lg-7.col-xxl-5
+
+          // Card
+          .card.shadow-lg.border-0.rounded-4
+            .card-body.p-4.p-md-5
+              // Title + Subtitle
+              .d-flex.align-items-center.mb-3
+                .ratio.ratio-1x1.me-3(style="width:48px;")
+                  .d-flex.align-items-center.justify-content-center.rounded-circle.bg-primary-subtle
+                    i.bi.bi-people-fill.fs-4.text-primary
+                .flex-grow-1
+                  h1.h4.mb-1 Invite a member
+                  p.text-secondary.mb-0
+                    | Send an invitation to join
+                    if typeof groupName !== 'undefined' && groupName
+                      |  “#{groupName}”
+                    else
+                      |  this group.
+
+              // Form
+              form(method="post", action=`/api/groups/${id}/invitations`, novalidate)
+                //- CSRF（如果有）
+                if csrfToken
+                  input(type="hidden", name="_csrf", value=csrfToken)
+
+                // Email field
+                .mb-3
+                  label.form-label(for="email") Email address
+                  .input-group.input-group-lg
+                    span.input-group-text
+                      i.bi.bi-at
+                    - const emailInvalid = (fieldErrors && fieldErrors.email) ? 'is-invalid' : ''
+                    input#email.form-control(class=[emailInvalid], type="email", name="email", autocomplete="email", placeholder="e.g. teammate@example.com", required, autofocus)
+                    if fieldErrors && fieldErrors.email
+                      .invalid-feedback= fieldErrors.email
+                  .form-text.text-secondary
+                    | We’ll send an email with a secure invite link.
+
+                // Actions
+                .d-flex.flex-column.flex-sm-row.gap-2.mt-4
+                  button.btn.btn-primary.btn-lg(type="submit")
+                    i.bi.bi-send-fill.me-2
+                    | Send invite
+                  a.btn.btn-outline-secondary.btn-lg(href=`/groups/${id}`)
+                    i.bi.bi-arrow-left.me-2
+                    | Back to group
+
+                // Divider
+                hr.my-4

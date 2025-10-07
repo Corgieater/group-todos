@@ -1,0 +1,61 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title You're invited to join #{groupName}
+    include ../partials/bootstrap
+    style.
+      body {
+        background-color: #f8f9fa;
+      }
+  body
+    main
+      .container.py-5
+        .row.justify-content-center
+          .col-12.col-md-8.col-lg-6
+            .card.shadow-sm
+              .card-body.p-4
+                // Header
+                h1.h4.mb-2 Hello, #{name}
+                p.text-muted.mb-4
+                  | #{inviterName} invited you to join 
+                  strong #{groupName}
+                  | . 
+
+                // Optional personal message from inviter
+                if typeof inviteMessage !== 'undefined' && inviteMessage
+                  .alert.alert-info
+                    small.text-uppercase.fw-semibold.d-block.mb-1 Personal message
+                    p.mb-0= inviteMessage
+
+                // Core copy
+                p.mb-3
+                  | Click the button below to accept the invitation and join the group.
+                  if typeof expiresAt !== 'undefined' && expiresAt
+                    |  
+                    span.text-danger.fw-semibold Note:
+                    |  This invite expires on #{expiresAt}.
+
+                // Primary CTA
+                a.btn.btn-primary(href=link, target="_blank" rel="noopener") Accept Invitation
+
+                // Secondary info
+                p.mt-3.mb-0.text-muted
+                  | If you didn’t expect this invitation, you can safely ignore this message.
+
+                // Optional: fallback plain link
+                .mt-2
+                  small.text-body-secondary
+                    | Or copy and paste this link into your browser:
+                    br
+                    code #{link}
+
+                // Optional: contact
+                if typeof supportEmail !== 'undefined' && supportEmail
+                  hr.my-4
+                  p.mb-0.text-muted
+                    | Need help? Contact us at 
+                    a(href=`mailto:${supportEmail}`)= supportEmail
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

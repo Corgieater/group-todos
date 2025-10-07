@@ -1,5 +1,3 @@
-//- 通用群組清單 mixin
-//- items = [{id,name}] 或 [{group:{id,name}, role, joinedAt}]
 mixin GroupList(items)
   - const rows = (items || []).map(it => it?.group ? it.group : it)
 
@@ -7,7 +5,6 @@ mixin GroupList(items)
     .border.border-2.border-dashed.rounded-3.p-5.text-center.text-muted
       i.bi.bi-people.fs-1.d-block.mb-2
       div.mb-2 No groups yet.
-      a.btn.btn-sm.btn-primary.mt-2(href="/groups/new") + Create Group
   else
     .table-responsive
       table.table.table-hover.align-middle
