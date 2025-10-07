@@ -3,6 +3,7 @@ import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import type { Task, Prisma } from '@prisma/client';
 import { TaskPriority } from 'src/tasks/types/enum';
 import { TaskStatus } from 'src/tasks/types/enum';
+import { time } from 'console';
 
 // TODO: NOTE:
 // I think stuff here is to messy, tidy it up
@@ -29,6 +30,24 @@ export type TaskVM<T extends Task> = T & {
 export function toCapital(str: string): string {
   if (!str) return str;
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+type timeUnit = 'm' | 'h' | 'd';
+
+export function addTime(
+  date: Date | number,
+  amount: number,
+  unit: timeUnit,
+): Date {
+  const d = new Date(date);
+  switch (unit) {
+    case 'm':
+      return new Date(d.getTime() + amount * 60_000);
+    case 'h':
+      return new Date(d.getTime() + amount * 3_600_000);
+    case 'd':
+      return new Date(d.getTime() + amount * 86_400_000);
+  }
 }
 
 export function buildTaskVM<T extends Task>(task: T, tz: string): TaskVM<T> {
