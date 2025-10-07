@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GroupsService } from './groups.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
+  ActionTokenType,
   GroupRole,
   Prisma,
   type Group as GroupModel,
@@ -11,10 +12,16 @@ import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { UsersService } from 'src/users/users.service';
 import { GroupNotFoundError } from 'src/errors/groups/group-not-found.error';
 import { GroupsErrors, MembershipErrors, UsersErrors } from 'src/errors';
+import { MailService } from 'src/mail/mail.service';
+import { AuthService } from 'src/auth/auth.service';
+import { ConfigService } from '@nestjs/config';
+import { createMockConfig } from 'src/test/factories/mock-config.factory';
+import { Action } from 'rxjs/internal/scheduler/Action';
 
 describe('GroupService', () => {
   let groupsService: GroupsService;
 
+  const mockConfigService = createMockConfig();
   const user: UsersModel = createMockUser();
 
   const mockUsersService = {
@@ -40,10 +47,26 @@ describe('GroupService', () => {
       create: jest.fn(),
       findMany: jest.fn(),
       delete: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    actionToken: {
+      create: jest.fn(),
+      upsert: jest.fn(),
     },
     $transaction: jest.fn().mockImplementation(async (fn: any) => fn(tx)),
   };
 
+  const mockMailService = {
+    sendPasswordReset: jest.fn(),
+    sendGroupInvite: jest.fn(),
+  };
+
+  const mockAuthService = {
+    hash: jest.fn(),
+    verify: jest.fn(),
+    generateUrlFriendlySecret: jest.fn(),
+    hmacToken: jest.fn(),
+  };
   const group: GroupModel = {
     id: 1,
     name: 'test group',
@@ -58,6 +81,9 @@ describe('GroupService', () => {
         GroupsService,
         { provide: UsersService, useValue: mockUsersService },
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: MailService, useValue: mockMailService },
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: ConfigService, useValue: mockConfigService.mock },
       ],
     }).compile();
 
@@ -268,78 +294,182 @@ describe('GroupService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('inviteGroupMember', () => {
+    const actor = {
+      role: GroupRole.ADMIN,
+      user: { id: 1, name: 'test' },
+      group: { name: 'test group' },
+    };
     const invitee = { id: 2, name: 'test2', email: 'test2@test.com' };
+    const RAW_TOKEN = 'rawUrlFriendlySecret';
+    const HASHED_TOKEN = 'hashed';
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockPrismaService.groupMember.findUnique.mockReset();
+      mockUsersService.findByEmail.mockResolvedValue(invitee);
+      mockAuthService.generateUrlFriendlySecret.mockReturnValue(RAW_TOKEN);
+      mockAuthService.hash.mockResolvedValue(HASHED_TOKEN);
+    });
+
     it('should invite user by Email if group belongs to the inviter (count=1) and invitee is not in the group', async () => {
-      mockPrismaService.group.count.mockResolvedValueOnce(1);
-      mockUsersService.findByEmail.mockResolvedValueOnce(invitee);
-
-      await groupsService.inviteGroupMember(group.id, user.id, invitee.email);
-
-      expect(mockPrismaService.group.count).toHaveBeenCalledWith({
-        where: { id: group.id, ownerId: user.id },
+      // NOTE: in this case, invitee already using my app
+      // TODO: wrtie a email case, user not using my app
+      mockPrismaService.groupMember.findUnique
+        .mockResolvedValueOnce(actor)
+        .mockResolvedValueOnce(null);
+      mockAuthService.generateUrlFriendlySecret.mockReturnValueOnce(
+        'rawUrlFriendlySecret',
+      );
+      mockAuthService.hmacToken.mockReturnValueOnce('hashed');
+      mockPrismaService.actionToken.upsert.mockResolvedValueOnce({
+        id: 5,
       });
+
+      await groupsService.inviteGroupMember(
+        group.id,
+        actor.user.id,
+        invitee.email,
+      );
+
+      // 1. check if group pair with ownerId really exists
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 1, userId: 1 } },
+        select: {
+          role: true,
+          user: { select: { id: true, name: true } },
+          group: { select: { id: true, name: true } },
+        },
+      });
+
+      // 2. check if ivitee email inside our db, or we need to switch to another service
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         'test2@test.com',
       );
-      expect(mockPrismaService.groupMember.create).toHaveBeenCalledWith({
-        data: {
-          groupId: 1,
-          userId: 2,
+
+      // 3. get invitee userId(if exists), and check if they already in the group
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledWith({
+        where: {
+          groupId_userId: { groupId: 1, userId: 2 },
         },
+        select: { userId: true },
       });
-      expect(mockPrismaService.groupMember.create).toHaveBeenCalledTimes(1);
+
+      // 4. generate url friendly secret
+      expect(mockAuthService.generateUrlFriendlySecret).toHaveBeenCalledWith(
+        32,
+      );
+
+      // 5. hash secret
+      expect(mockAuthService.hmacToken).toHaveBeenCalledWith(
+        'rawUrlFriendlySecret',
+        expect.any(String),
+      );
+
+      const subjectKey = `GROUP_INVITE:group:${group.id}|email:${invitee.email.toLowerCase()}`;
+
+      // 6. save hashed token in db with info that we can use for getting token again
+      expect(mockPrismaService.actionToken.upsert).toHaveBeenCalledWith({
+        where: { subjectKey },
+        update: {
+          tokenHash: 'hashed',
+          expiresAt: expect.any(Date),
+          consumedAt: null,
+          revokedAt: null,
+        },
+        create: {
+          type: ActionTokenType.GROUP_INVITE,
+          subjectKey,
+          tokenHash: 'hashed',
+          userId: invitee.id,
+          issuedById: 1,
+          expiresAt: expect.any(Date),
+        },
+        select: { id: true },
+      });
+
+      // 7. send mail
+      expect(mockMailService.sendGroupInvite).toHaveBeenCalledWith(
+        'test2@test.com',
+        'test2',
+        expect.stringContaining(
+          `/api/groups/invitation/5/rawUrlFriendlySecret`,
+        ),
+        'test',
+        'test group',
+      );
     });
 
-    it('should throw GroupNotFoundError if the inviter is not the owner (count=0)', async () => {
-      mockPrismaService.group.count.mockResolvedValueOnce(0);
+    it('should throw NotAuthorizedToInviteMember if can not find group with member', async () => {
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
 
       await expect(
-        groupsService.inviteGroupMember(group.id, user.id, invitee.email),
-      ).rejects.toBeInstanceOf(GroupNotFoundError);
+        groupsService.inviteGroupMember(group.id, actor.user.id, invitee.email),
+      ).rejects.toBeInstanceOf(GroupsErrors.NotAuthorizedToInviteMember);
 
-      expect(mockPrismaService.groupMember.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockUsersService.findByEmail).not.toHaveBeenCalled();
+      expect(mockPrismaService.actionToken.upsert).not.toHaveBeenCalled();
+      expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
 
     it('should throw UserNotExistError if the email not exists', async () => {
-      mockPrismaService.group.count.mockResolvedValueOnce(1);
+      // TODO: i guess here we can call another service to deal with new user
+      // this will be nexy phase
+      mockPrismaService.groupMember.findUnique
+        .mockResolvedValueOnce(actor)
+        .mockResolvedValueOnce(null);
       mockUsersService.findByEmail.mockResolvedValueOnce(null);
 
       await expect(
-        groupsService.inviteGroupMember(group.id, user.id, invitee.email),
+        groupsService.inviteGroupMember(group.id, actor.user.id, invitee.email),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
-      expect(mockPrismaService.groupMember.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockUsersService.findByEmail).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.actionToken.upsert).not.toHaveBeenCalled();
+      expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
 
-    it('should throw CannotInviteSelfError if owners invite themselves', async () => {
-      mockPrismaService.group.count.mockResolvedValueOnce(1);
-      mockUsersService.findByEmail.mockResolvedValueOnce(user);
+    it('should throw CannotInviteSelfError if members invite themselves', async () => {
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
+        userId: 1,
+        role: GroupRole.ADMIN,
+      });
+
+      mockUsersService.findByEmail.mockResolvedValueOnce({
+        id: 1,
+        name: 'test',
+        email: 'test@test.com',
+      });
 
       await expect(
-        groupsService.inviteGroupMember(group.id, user.id, invitee.email),
+        groupsService.inviteGroupMember(group.id, 1, 'test@test.com'),
       ).rejects.toBeInstanceOf(MembershipErrors.CannotInviteSelfError);
 
-      expect(mockPrismaService.groupMember.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockUsersService.findByEmail).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.actionToken.upsert).not.toHaveBeenCalled();
+      expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
 
-    it('should throw AlreadyMemberError when unique constraint (P2002) is hit', async () => {
-      mockPrismaService.group.count.mockResolvedValueOnce(1);
-      mockUsersService.findByEmail.mockResolvedValueOnce(invitee);
-      const e = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-        code: 'P2002',
-        clientVersion: 'test',
-        meta: { target: ['groupId', 'userId'] },
+    // fix this
+    it('should throw AlreadyMemberError when invitee has already in group', async () => {
+      // NOTE: I think check if member after getting user by email
+      mockPrismaService.groupMember.findUnique
+        .mockResolvedValueOnce(actor)
+        .mockResolvedValueOnce(invitee);
+      mockPrismaService.groupMember.findUnique.mockReturnValueOnce({
+        userId: invitee.id,
       });
-      mockPrismaService.groupMember.create.mockRejectedValueOnce(e);
 
       await expect(
         groupsService.inviteGroupMember(group.id, user.id, invitee.email),
       ).rejects.toBeInstanceOf(MembershipErrors.AlreadyMemberError);
 
-      expect(mockPrismaService.groupMember.create).toHaveBeenCalledTimes(1);
-      expect(mockPrismaService.groupMember.create).toHaveBeenCalledWith({
-        data: { groupId: 1, userId: 2 },
-      });
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledTimes(2);
+      expect(mockUsersService.findByEmail).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.actionToken.create).not.toHaveBeenCalled();
+      expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
   });
 

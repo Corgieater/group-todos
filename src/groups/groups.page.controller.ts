@@ -22,6 +22,20 @@ import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 export class GroupsPageController {
   constructor(private groupsService: GroupsService) {}
 
+  @Get('new')
+  async getCreateForm(@Req() req: Request, @Res() res: Response) {
+    return res.render('groups/new');
+  }
+
+  @Get(':id/invitation')
+  async getInviteForm(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    return res.render('groups/invite', { id });
+  }
+
   @Get(':id')
   async detail(
     @Req() req: Request,
