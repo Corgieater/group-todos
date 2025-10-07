@@ -7,6 +7,7 @@ type AppConfig = {
   COOKIE_SECRET: string;
   LOGIN_COOKIE_MAX_AGE: number; // ms
   RESET_PASSWORD_COOKIE_MAX_AGE: number; // ms
+  TOKEN_HMAC_SECRET: string;
 };
 
 const baseMap: AppConfig = {
@@ -16,6 +17,7 @@ const baseMap: AppConfig = {
   COOKIE_SECRET: 'cookie-secret',
   LOGIN_COOKIE_MAX_AGE: 1_440_000,
   RESET_PASSWORD_COOKIE_MAX_AGE: 900_000,
+  TOKEN_HMAC_SECRET: 'HMAC-secret',
 };
 
 // NOTE:
