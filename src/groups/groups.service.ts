@@ -3,11 +3,16 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
 import {
   $Enums,
+  ActionTokenType,
   type Group as GroupModel,
   GroupRole,
   Prisma,
 } from '@prisma/client';
 import { GroupsErrors, MembershipErrors, UsersErrors } from 'src/errors';
+import { AuthService } from 'src/auth/auth.service';
+import { MailService } from 'src/mail/mail.service';
+import { ConfigService } from '@nestjs/config';
+import { addTime } from 'src/common/helpers/util';
 
 type GroupListItem = Prisma.GroupMemberGetPayload<{
   include: { group: { select: { id: true; name: true } } };
@@ -25,8 +30,11 @@ type GroupDetailsItem = Prisma.GroupGetPayload<{
 @Injectable()
 export class GroupsService {
   constructor(
+    private readonly config: ConfigService,
     private readonly prismaService: PrismaService,
     private readonly usersService: UsersService,
+    private readonly authService: AuthService,
+    private readonly mailService: MailService,
   ) {}
 
   // TODO:
@@ -94,44 +102,136 @@ export class GroupsService {
 
   async inviteGroupMember(
     id: number,
-    ownerId: number,
+    actorId: number,
     email: string,
   ): Promise<void> {
-    const exists = await this.prismaService.group.count({
-      where: { id, ownerId },
+    /**
+     * Invites a user to join a group by email.
+     *
+     * Flow:
+     * - Verify the actor is a member of the group and has permission (ADMIN/OWNER).
+     * - Look up the invitee by email (must already be an app user).
+     * - Prevent self-invite and duplicate membership.
+     * - Generate a high-entropy URL-safe token, compute an HMAC-SHA-256 hash,
+     *   and UPSERT an ActionToken row using a unique `subjectKey`
+     *   (`GROUP_INVITE:group:${id}|email:${email.toLowerCase()}`) so there is
+     *   at most one active invite per (group, email).
+     * - Set a 3-day expiration.
+     * - After the DB write, send the invitation email with one-time URL:
+     *   `.../api/groups/invitation/:tokenId/:rawToken`.
+     *
+     * Side effects:
+     * - Writes/updates an ActionToken row.
+     * - Sends an email to the invitee (out of transaction).
+     *
+     * Security:
+     * - Only the token hash is stored (HMAC-SHA-256 with a server secret).
+     *
+     * @param id       Group ID
+     * @param actorId  Inviter (actor) user ID
+     * @param email    Invitee email
+     * @returns Promise<void> Resolves after the token is persisted and the email send is attempted.
+     *
+     * @throws GroupsErrors.NotAuthorizedToInviteMember  If the actor is not in the group or lacks permission.
+     * @throws UsersErrors.UserNotFoundError             If the email is not associated with an app user.
+     * @throws MembershipErrors.CannotInviteSelfError    If the actor invites themself.
+     * @throws MembershipErrors.AlreadyMemberError       If the invitee is already a member.
+     * @throws Prisma.PrismaClientKnownRequestError      If the upsert fails.
+     * @throws Error                                     If required config (e.g., TOKEN_HMAC_SECRET or BASE_URL) is missing.
+     * @throws Mailer errors If sending the email fails. */
+
+    const actor = await this.prismaService.groupMember.findUnique({
+      where: { groupId_userId: { groupId: id, userId: actorId } },
+      select: {
+        role: true,
+        user: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true } },
+      },
     });
-    if (exists !== 1) {
-      throw GroupsErrors.GroupNotFoundError.byId(ownerId, id);
+
+    if (!actor) {
+      throw GroupsErrors.NotAuthorizedToInviteMember.byId(actorId, id);
+    }
+
+    const CAN_INVITE = new Set<GroupRole>([
+      GroupRole.ADMIN,
+      GroupRole.OWNER,
+    ] as const);
+
+    if (!CAN_INVITE.has(actor.role)) {
+      throw GroupsErrors.NotAuthorizedToInviteMember.byId(actorId, id);
     }
 
     const invitee = await this.usersService.findByEmail(email);
     if (!invitee) {
+      // TODO: NOTE:
+      // if email not in our db, call another service to deal with
       throw UsersErrors.UserNotFoundError.byEmail(email);
     }
-    if (ownerId === invitee.id) {
-      throw MembershipErrors.CannotInviteSelfError.byOwner(ownerId, id);
+
+    if (actorId === invitee.id) {
+      throw MembershipErrors.CannotInviteSelfError.byOwner(actorId, id);
     }
-    try {
-      await this.prismaService.groupMember.create({
-        data: {
-          groupId: id,
-          userId: invitee.id,
-        },
-      });
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002'
-      ) {
-        throw MembershipErrors.AlreadyMemberError.byId(invitee.id, id);
-      }
-      throw e;
+
+    const existsInGroup = await this.prismaService.groupMember.findUnique({
+      where: { groupId_userId: { groupId: id, userId: invitee.id } },
+      select: { userId: true },
+    });
+
+    if (existsInGroup) {
+      throw MembershipErrors.AlreadyMemberError.byId(invitee.id, id);
     }
+
+    const rawToken = this.authService.generateUrlFriendlySecret(32);
+    const expiresAt = addTime(new Date(), 3, 'd');
+    const serverSecret = this.config.get<string>('TOKEN_HMAC_SECRET');
+    const tokenHash = this.authService.hmacToken(rawToken, serverSecret!);
+
+    const subjectKey = `GROUP_INVITE:group:${id}|email:${email.toLowerCase()}`;
+
+    const { id: tokenId } = await this.prismaService.actionToken.upsert({
+      where: { subjectKey },
+      update: {
+        tokenHash,
+        expiresAt,
+        consumedAt: null,
+        revokedAt: null,
+      },
+      create: {
+        type: ActionTokenType.GROUP_INVITE,
+        subjectKey,
+        tokenHash,
+        userId: invitee.id,
+        issuedById: actor.user.id,
+        expiresAt,
+      },
+      select: { id: true },
+    });
+
+    const baseUrl = this.config.get<string>('BASE_URL');
+    const link = new URL(
+      `api/groups/invitation/${tokenId}/${rawToken}`,
+      baseUrl,
+    ).toString();
+
+    await this.mailService.sendGroupInvite(
+      invitee.email,
+      invitee.name,
+      link,
+      actor.user.name,
+      actor.group.name,
+    );
   }
+
+  async verifyInvitation() {}
 
   // NOTE:
   // Come back and refactor if the roles get more complicated or i need to compare roles in other function
-  async kickOutMember(id: number, targetId: number, actorId: number) {
+  async kickOutMember(
+    id: number,
+    targetId: number,
+    actorId: number,
+  ): Promise<void> {
     type GroupRole = $Enums.GroupRole;
     const CAN_REMOVE: ReadonlySet<GroupRole> = new Set([
       GroupRole.OWNER,
@@ -162,7 +262,6 @@ export class GroupsService {
       }
 
       if (!CAN_REMOVE.has(actor.role)) {
-        console.log('can not remove');
         throw GroupsErrors.NotAuthorizedToRemoveMemberError.byRole(
           id,
           actorId,
