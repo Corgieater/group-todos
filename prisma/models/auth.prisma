@@ -4,10 +4,10 @@ enum ActionTokenType {
 }
 
 model ActionToken {
-  id        Int             @id @default(autoincrement())
-  type      ActionTokenType
-  tokenHash String          @unique
-  subjectKey  String @unique
+  id         Int             @id @default(autoincrement())
+  type       ActionTokenType
+  tokenHash  String          @unique
+  subjectKey String          @unique
 
   userId     Int?
   user       User?   @relation("UserActionTokens", fields: [userId], references: [id], onDelete: SetNull)
