@@ -8,11 +8,17 @@ import {
   GroupRole,
   Prisma,
 } from '@prisma/client';
-import { GroupsErrors, MembershipErrors, UsersErrors } from 'src/errors';
+import {
+  AuthErrors,
+  GroupsErrors,
+  MembershipErrors,
+  UsersErrors,
+} from 'src/errors';
 import { AuthService } from 'src/auth/auth.service';
 import { MailService } from 'src/mail/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { addTime } from 'src/common/helpers/util';
+import { assertInviteRow } from './type/invite';
 
 type GroupListItem = Prisma.GroupMemberGetPayload<{
   include: { group: { select: { id: true; name: true } } };
@@ -184,8 +190,8 @@ export class GroupsService {
 
     const rawToken = this.authService.generateUrlFriendlySecret(32);
     const expiresAt = addTime(new Date(), 3, 'd');
-    const serverSecret = this.config.get<string>('TOKEN_HMAC_SECRET');
-    const tokenHash = this.authService.hmacToken(rawToken, serverSecret!);
+    const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
+    const tokenHash = this.authService.hmacToken(rawToken, serverSecret);
 
     const subjectKey = `GROUP_INVITE:group:${id}|email:${email.toLowerCase()}`;
 
@@ -193,6 +199,7 @@ export class GroupsService {
       where: { subjectKey },
       update: {
         tokenHash,
+        groupId: id,
         expiresAt,
         consumedAt: null,
         revokedAt: null,
@@ -201,6 +208,7 @@ export class GroupsService {
         type: ActionTokenType.GROUP_INVITE,
         subjectKey,
         tokenHash,
+        groupId: id,
         userId: invitee.id,
         issuedById: actor.user.id,
         expiresAt,
@@ -208,7 +216,7 @@ export class GroupsService {
       select: { id: true },
     });
 
-    const baseUrl = this.config.get<string>('BASE_URL');
+    const baseUrl = this.config.getOrThrow<string>('BASE_URL');
     const link = new URL(
       `api/groups/invitation/${tokenId}/${rawToken}`,
       baseUrl,
@@ -223,7 +231,64 @@ export class GroupsService {
     );
   }
 
-  async verifyInvitation() {}
+  async verifyInvitation(id: number, token: string) {
+    const now = new Date();
+    const row = await this.prismaService.actionToken.findFirst({
+      where: {
+        id,
+        type: ActionTokenType.GROUP_INVITE,
+        consumedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: now },
+        groupId: { not: null },
+        userId: { not: null },
+      },
+      select: {
+        id: true,
+        type: true,
+        tokenHash: true,
+        userId: true,
+        groupId: true,
+      },
+    });
+
+    if (!row) {
+      throw AuthErrors.InvalidTokenError.invite();
+    }
+    assertInviteRow(row);
+
+    const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
+    const candidate = this.authService.hmacToken(token, serverSecret);
+
+    if (!this.authService.safeEqualB64url(row.tokenHash, candidate)) {
+      throw AuthErrors.InvalidTokenError.verify();
+    }
+
+    await this.prismaService.$transaction(async (tx) => {
+      const { count } = await tx.actionToken.updateMany({
+        where: {
+          id: row.id,
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { consumedAt: now },
+      });
+      if (count !== 1) {
+        throw AuthErrors.InvalidTokenError.invite();
+      }
+
+      await tx.groupMember.upsert({
+        where: { groupId_userId: { groupId: row.groupId, userId: row.userId } },
+        create: {
+          groupId: row.groupId,
+          userId: row.userId,
+          role: GroupRole.MEMBER,
+        },
+        update: {},
+      });
+    });
+  }
 
   // NOTE:
   // Come back and refactor if the roles get more complicated or i need to compare roles in other function
