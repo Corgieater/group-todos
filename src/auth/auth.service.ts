@@ -30,6 +30,32 @@ export class AuthService {
     private jwtService: JwtService,
     private mailService: MailService,
   ) {}
+
+  async hash(
+    raw: string,
+    options?: argon.Options & { type?: number },
+  ): Promise<string> {
+    return await argon.hash(raw, options);
+  }
+
+  async verify(hash: string, origin: string): Promise<boolean> {
+    return await argon.verify(hash, origin);
+  }
+
+  generateUrlFriendlySecret(bytes: number): string {
+    return crypto.randomBytes(bytes).toString('base64url');
+  }
+
+  hmacToken(raw: string, secret: string): string {
+    return createHmac('sha256', secret).update(raw).digest('base64url');
+  }
+
+  safeEqualB64url(aB64: string, bB64: string): boolean {
+    const a = Buffer.from(aB64, 'base64url');
+    const b = Buffer.from(bB64, 'base64url');
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
   async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.usersService.findByEmail(dto.email);
     if (existUser) {
@@ -70,31 +96,6 @@ export class AuthService {
     };
   }
 
-  async hash(
-    raw: string,
-    options?: argon.Options & { type?: number },
-  ): Promise<string> {
-    return await argon.hash(raw, options);
-  }
-
-  async verify(hash: string, origin: string): Promise<boolean> {
-    return await argon.verify(hash, origin);
-  }
-
-  generateUrlFriendlySecret(bytes: number): string {
-    return crypto.randomBytes(bytes).toString('base64url');
-  }
-
-  hmacToken(raw: string, secret: string): string {
-    return createHmac('sha256', secret).update(raw).digest('base64url');
-  }
-
-  safeEqualB64url(aB64: string, bB64: string): boolean {
-    const a = Buffer.from(aB64, 'base64url');
-    const b = Buffer.from(bB64, 'base64url');
-    return a.length === b.length && timingSafeEqual(a, b);
-  }
-
   async changePassword(payload: AuthUpdatePasswordPayload): Promise<void> {
     const user = await this.usersService.findById(payload.userId);
 
@@ -117,7 +118,6 @@ export class AuthService {
     });
   }
 
-  // TODO: fix this after change resetpasswordToken to actiontoken
   async resetPassword(email: string): Promise<void> {
     /**
      * Starts the password-reset flow for a given email.
@@ -152,8 +152,8 @@ export class AuthService {
     const rawToken = this.generateUrlFriendlySecret(32);
     const expiresAt = addTime(new Date(), 15, 'm');
 
-    const serverSecret = this.config.get<string>('TOKEN_HMAC_SECRET');
-    const tokenHash = this.hmacToken(rawToken, serverSecret!);
+    const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
+    const tokenHash = this.hmacToken(rawToken, serverSecret);
 
     const subjectKey = `RESET_PASSWORD:user:${user.id}`;
     const { id: tokenId } = await this.prismaService.actionToken.upsert({
@@ -175,7 +175,7 @@ export class AuthService {
       select: { id: true },
     });
 
-    const baseUrl = this.config.get<string>('BASE_URL')!;
+    const baseUrl = this.config.getOrThrow<string>('BASE_URL');
     const link = new URL(
       `api/auth/verify-reset-token/${tokenId}/${rawToken}`,
       baseUrl,
@@ -188,13 +188,15 @@ export class AuthService {
     id: number,
     token: string,
   ): Promise<{ accessToken: string }> {
+    const NOW = new Date();
     const result = await this.prismaService.actionToken.findFirst({
       where: {
         id,
         type: ActionTokenType.RESET_PASSWORD,
         userId: { not: null },
         consumedAt: null,
-        expiresAt: { gt: new Date() },
+        revokedAt: null,
+        expiresAt: { gt: NOW },
       },
       select: {
         id: true,
@@ -206,8 +208,8 @@ export class AuthService {
     if (!result || !result.user) {
       throw AuthErrors.InvalidTokenError.reset();
     }
-    const serverSecret = this.config.get<string>('TOKEN_HMAC_SECRET');
-    const candidate = this.hmacToken(token, serverSecret!);
+    const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
+    const candidate = this.hmacToken(token, serverSecret);
 
     if (!this.safeEqualB64url(result.tokenHash, candidate)) {
       throw AuthErrors.InvalidTokenError.verify();
@@ -222,7 +224,9 @@ export class AuthService {
     };
 
     return {
-      accessToken: await this.jwtService.signAsync(accessTokenPayload),
+      accessToken: await this.jwtService.signAsync(accessTokenPayload, {
+        expiresIn: '10m',
+      }),
     };
   }
 
@@ -246,35 +250,25 @@ export class AuthService {
     }
 
     const newHash = await this.hash(newPassword);
-    const now = new Date();
+    const NOW = new Date();
 
-    await this.prismaService.$transaction(
-      async (tx) => {
-        // Use updateMany, since we need to make sure there is no duplicated token
-        const { count } = await tx.actionToken.updateMany({
-          where: {
-            id: tokenId,
-            userId,
-            consumedAt: null,
-            expiresAt: { gt: now },
-          },
-          data: { consumedAt: now },
-        });
+    await this.prismaService.$transaction(async (tx) => {
+      // Use updateMany, since we need to make sure there is no duplicated token
+      const { count } = await tx.actionToken.updateMany({
+        where: {
+          id: tokenId,
+          userId,
+          consumedAt: null,
+          expiresAt: { gt: NOW },
+        },
+        data: { consumedAt: NOW },
+      });
 
-        if (count !== 1) {
-          throw AuthErrors.InvalidTokenError.reset();
-        }
+      if (count !== 1) {
+        throw AuthErrors.InvalidTokenError.reset();
+      }
 
-        await this.usersService.updatePasswordHash(userId, newHash, tx);
-
-        // delete unused token, save used token for audit/traceability
-        await tx.actionToken.deleteMany({
-          where: { userId, consumedAt: null },
-        });
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      },
-    );
+      await this.usersService.updatePasswordHash(userId, newHash, tx);
+    });
   }
 }

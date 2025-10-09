@@ -11,15 +11,15 @@ import { PugAdapter } from '@nestjs-modules/mailer/dist/adapters/pug.adapter';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         transport: {
-          host: config.get<string>('MAIL_HOST'),
-          port: config.get<number>('MAIL_PORT'),
+          host: config.getOrThrow<string>('MAIL_HOST'),
+          port: config.getOrThrow<number>('MAIL_PORT'),
           auth: {
-            user: config.get<string>('MAIL_USER'),
-            pass: config.get<string>('MAIL_PASS'),
+            user: config.getOrThrow<string>('MAIL_USER'),
+            pass: config.getOrThrow<string>('MAIL_PASS'),
           },
         },
         defaults: {
-          from: config.get<string>('MAIL_FROM'),
+          from: config.getOrThrow<string>('MAIL_FROM'),
         },
         template: {
           dir: join(__dirname, '..', 'views'),

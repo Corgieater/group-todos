@@ -19,6 +19,7 @@ import { ResetPasswordTokenStrategy } from './strategies/reset-password-token.st
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
+        // this default is for signin token
         secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
           expiresIn: config.getOrThrow<number>('TOKEN_EXPIRE_TIME'),

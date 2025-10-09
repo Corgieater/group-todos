@@ -66,7 +66,7 @@ export class AuthController {
     res.cookie('grouptodo_login', accessToken, {
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: this.config.get<number>('LOGIN_COOKIE_MAX_AGE'),
+      maxAge: this.config.getOrThrow<number>('LOGIN_COOKIE_MAX_AGE'),
     });
     return res.redirect('/tasks/home');
   }
@@ -128,7 +128,7 @@ export class AuthController {
     res.cookie('grouptodo_reset_password', result?.accessToken, {
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: this.config.get<number>('RESET_PASSWORD_COOKIE_MAX_AGE'),
+      maxAge: this.config.getOrThrow<number>('RESET_PASSWORD_COOKIE_MAX_AGE'),
     });
     setSession(req, 'success', 'Token valid, please reset your password!');
     return res.redirect('/auth/reset-password');

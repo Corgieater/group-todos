@@ -26,7 +26,7 @@ async function bootstrap() {
   app.use(
     session({
       name: 'group_flash_message',
-      secret: config.get<string>('SESSION_SECRET')!,
+      secret: config.getOrThrow<string>('SESSION_SECRET'),
       resave: false,
       saveUninitialized: false,
       rolling: false,

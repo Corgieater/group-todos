@@ -26,7 +26,7 @@ const baseMap: AppConfig = {
 export function createMockConfig(overrides: Partial<AppConfig> = {}) {
   const map: AppConfig = { ...baseMap, ...overrides };
 
-  const get = jest.fn(
+  const getOrThrow = jest.fn(
     <K extends keyof AppConfig>(
       key: K,
       defaultValue?: AppConfig[K],
@@ -35,13 +35,13 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}) {
     },
   );
 
-  const mock: Pick<ConfigService, 'get'> = { get } as any;
+  const mock: Pick<ConfigService, 'getOrThrow'> = { getOrThrow } as any;
 
   return {
     mock,
     map,
     clear: () => {
-      get.mockClear();
+      getOrThrow.mockClear();
     },
   };
 }
