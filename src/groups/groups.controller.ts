@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   ParseIntPipe,
   Post,
@@ -52,6 +53,18 @@ export class GroupsController {
 
     setSession(req, 'success', 'Invitation suceed.');
     res.redirect(`/groups/${id}`);
+  }
+
+  @Get('invitation/:id/:token')
+  async verifyInvitation(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('token') token: string,
+    @Res() res: Response,
+  ) {
+    await this.groupsService.verifyInvitation(id, token);
+    setSession(req, 'success', 'You have been invited to a group!');
+    res.redirect('/users-home');
   }
 
   @Post(':id/disband')
