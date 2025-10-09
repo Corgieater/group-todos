@@ -24,6 +24,7 @@ describe('GroupsController', () => {
     createGroup: jest.fn(),
     inviteGroupMember: jest.fn(),
     disbandGroupById: jest.fn(),
+    verifyInvitation: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -88,6 +89,27 @@ describe('GroupsController', () => {
         'Invitation suceed.',
       );
       expect(res.redirect).toHaveBeenCalledWith(`/groups/1`);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // verifyInvitation
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('verifyInvitation', () => {
+    it('should verify user invitation', async () => {
+      await groupsController.verifyInvitation(req, 1, 'rawToken', res);
+
+      expect(mockGroupsService.verifyInvitation).toHaveBeenCalledWith(
+        1,
+        'rawToken',
+      );
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'success',
+        'You have been invited to a group!',
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/users-home');
     });
   });
 

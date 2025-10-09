@@ -11,12 +11,16 @@ import {
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { UsersService } from 'src/users/users.service';
 import { GroupNotFoundError } from 'src/errors/groups/group-not-found.error';
-import { GroupsErrors, MembershipErrors, UsersErrors } from 'src/errors';
+import {
+  AuthErrors,
+  GroupsErrors,
+  MembershipErrors,
+  UsersErrors,
+} from 'src/errors';
 import { MailService } from 'src/mail/mail.service';
 import { AuthService } from 'src/auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
-import { Action } from 'rxjs/internal/scheduler/Action';
 
 describe('GroupService', () => {
   let groupsService: GroupsService;
@@ -27,11 +31,6 @@ describe('GroupService', () => {
   const mockUsersService = {
     findByIdOrThrow: jest.fn(),
     findByEmail: jest.fn(),
-  };
-
-  const tx = {
-    group: { create: jest.fn(), findUnique: jest.fn() },
-    groupMember: { create: jest.fn(), findMany: jest.fn(), delete: jest.fn() },
   };
 
   const mockPrismaService = {
@@ -48,12 +47,22 @@ describe('GroupService', () => {
       findMany: jest.fn(),
       delete: jest.fn(),
       findUnique: jest.fn(),
+      upsert: jest.fn(),
     },
     actionToken: {
       create: jest.fn(),
       upsert: jest.fn(),
+      findFirst: jest.fn(),
+      updateMany: jest.fn(),
     },
-    $transaction: jest.fn().mockImplementation(async (fn: any) => fn(tx)),
+    $transaction: jest.fn().mockImplementation(async (cb: any) => {
+      const tx = {
+        group: mockPrismaService.group,
+        actionToken: mockPrismaService.actionToken,
+        groupMember: mockPrismaService.groupMember,
+      };
+      return cb(tx);
+    }),
   };
 
   const mockMailService = {
@@ -66,6 +75,7 @@ describe('GroupService', () => {
     verify: jest.fn(),
     generateUrlFriendlySecret: jest.fn(),
     hmacToken: jest.fn(),
+    safeEqualB64url: jest.fn(),
   };
   const group: GroupModel = {
     id: 1,
@@ -101,10 +111,15 @@ describe('GroupService', () => {
 
   describe('createGroup', () => {
     it('should create group', async () => {
+      // TODO: this is odd, fix this
       const ownerId = 1;
       const name = 'test group';
       mockUsersService.findByIdOrThrow.mockResolvedValueOnce(user);
-      tx.group.create.mockResolvedValueOnce({ id: 1, ownerId, name });
+      mockPrismaService.group.create.mockResolvedValueOnce({
+        id: 1,
+        ownerId,
+        name,
+      });
 
       await expect(
         groupsService.createGroup(ownerId, name),
@@ -112,10 +127,12 @@ describe('GroupService', () => {
 
       expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(1);
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
-      expect(tx.group.create).toHaveBeenCalledWith({ data: { ownerId, name } });
-      expect(mockPrismaService.group.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.group.create).toHaveBeenCalledWith({
+        data: { ownerId, name },
+      });
+      expect(mockPrismaService.group.create).toHaveBeenCalledTimes(1);
 
-      expect(tx.groupMember.create).toHaveBeenCalledWith({
+      expect(mockPrismaService.groupMember.create).toHaveBeenCalledWith({
         data: { groupId: 1, userId: ownerId, role: 'OWNER' },
       });
     });
@@ -129,8 +146,8 @@ describe('GroupService', () => {
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
       expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
-      expect(tx.group.create).not.toHaveBeenCalled();
-      expect(tx.groupMember.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.group.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.groupMember.create).not.toHaveBeenCalled();
     });
   });
 
@@ -372,6 +389,7 @@ describe('GroupService', () => {
         where: { subjectKey },
         update: {
           tokenHash: 'hashed',
+          groupId: 1,
           expiresAt: expect.any(Date),
           consumedAt: null,
           revokedAt: null,
@@ -380,6 +398,7 @@ describe('GroupService', () => {
           type: ActionTokenType.GROUP_INVITE,
           subjectKey,
           tokenHash: 'hashed',
+          groupId: 1,
           userId: invitee.id,
           issuedById: 1,
           expiresAt: expect.any(Date),
@@ -474,6 +493,113 @@ describe('GroupService', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
+  // virifyInvitation
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('verifyInvitation', () => {
+    const NOW = new Date('2025-01-01T00:00:00Z');
+    const STORED_HASH = 'base64urlHash';
+    const RAW_TOKEN = 'rawToken';
+    const token = {
+      id: 3,
+      type: ActionTokenType.GROUP_INVITE,
+      tokenHash: STORED_HASH,
+      subjectKey: 'GROUP_INVITE:group1|email:test2@test.com',
+      groupId: group.id,
+      userId: 2,
+      issuedById: 1,
+      expiresAt: new Date('2099-01-01T00:00:00Z'),
+      consumedAt: null,
+      revokedAt: null,
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(NOW);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.clearAllMocks();
+    });
+
+    it('should pass the email verification and add user to group', async () => {
+      mockPrismaService.actionToken.findFirst.mockResolvedValueOnce(token);
+      mockAuthService.hmacToken.mockReturnValueOnce(STORED_HASH);
+      mockAuthService.safeEqualB64url.mockReturnValueOnce(true);
+      mockPrismaService.actionToken.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
+
+      await groupsService.verifyInvitation(token.id, RAW_TOKEN);
+
+      expect(mockPrismaService.actionToken.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 3,
+          type: 'GROUP_INVITE',
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: NOW },
+          groupId: { not: null },
+          userId: { not: null },
+        },
+        select: {
+          id: true,
+          type: true,
+          tokenHash: true,
+          userId: true,
+          groupId: true,
+        },
+      });
+      expect(mockAuthService.hmacToken).toHaveBeenCalledWith(
+        RAW_TOKEN,
+        expect.any(String),
+      );
+      expect(mockAuthService.safeEqualB64url).toHaveBeenCalledWith(
+        STORED_HASH,
+        STORED_HASH,
+      );
+
+      expect(mockPrismaService.actionToken.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 3,
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: NOW },
+        },
+        data: { consumedAt: NOW },
+      });
+
+      expect(mockPrismaService.groupMember.upsert).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 1, userId: 2 } },
+        create: { groupId: 1, userId: 2, role: GroupRole.MEMBER },
+        update: {},
+      });
+    });
+
+    it('should throw invalidTokenError.invite if token not found', async () => {
+      mockPrismaService.actionToken.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        groupsService.verifyInvitation(token.id, RAW_TOKEN),
+      ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
+
+      expect(mockAuthService.hmacToken).not.toHaveBeenCalled();
+      expect(mockAuthService.safeEqualB64url).not.toHaveBeenCalled();
+      expect(mockPrismaService.groupMember.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should throw InvalidTokenError.verify if token comparing invalid', async () => {
+      mockPrismaService.actionToken.findFirst.mockResolvedValueOnce(null);
+      mockAuthService.hmacToken.mockReturnValueOnce('different hash');
+      mockAuthService.safeEqualB64url.mockReturnValueOnce(false);
+
+      await expect(
+        groupsService.verifyInvitation(token.id, RAW_TOKEN),
+      ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
   // kickOutMember
   // ───────────────────────────────────────────────────────────────────────────────
 
@@ -482,11 +608,11 @@ describe('GroupService', () => {
     const target = { id: 2, role: GroupRole.ADMIN };
 
     beforeEach(() => {
-      tx.group.findUnique.mockResolvedValue({ id: group.id });
+      mockPrismaService.group.findUnique.mockResolvedValue({ id: group.id });
     });
 
     it('should removes target when group exists, actor is OWNER/ADMIN, target is member', async () => {
-      tx.groupMember.findMany.mockReturnValueOnce([
+      mockPrismaService.groupMember.findMany.mockReturnValueOnce([
         {
           id: group.id,
           userId: actor.id,
@@ -501,40 +627,40 @@ describe('GroupService', () => {
 
       await groupsService.kickOutMember(group.id, target.id, actor.id);
 
-      expect(tx.group.findUnique).toHaveBeenCalledWith({
+      expect(mockPrismaService.group.findUnique).toHaveBeenCalledWith({
         where: { id: 1 },
         select: { id: true },
       });
 
-      expect(tx.groupMember.findMany).toHaveBeenCalledWith({
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledWith({
         where: { groupId: 1, userId: { in: [1, 2] } },
         select: { userId: true, role: true },
       });
 
-      expect(tx.groupMember.delete).toHaveBeenCalledWith({
+      expect(mockPrismaService.groupMember.delete).toHaveBeenCalledWith({
         where: { groupId_userId: { groupId: 1, userId: 2 } },
       });
 
-      expect(tx.groupMember.delete).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.delete).toHaveBeenCalledTimes(1);
     });
 
     it('should throw GroupNotFoundError', async () => {
-      tx.group.findUnique.mockResolvedValueOnce(null);
+      mockPrismaService.group.findUnique.mockResolvedValueOnce(null);
 
       await expect(
         groupsService.kickOutMember(group.id, target.id, actor.id),
       ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
 
-      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
-      expect(tx.groupMember.findMany).not.toHaveBeenCalled();
-      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+      expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.findMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
 
     it('should throw NotAuthorizedToRemoveMemberError', async () => {
       const member1 = { id: 3, role: GroupRole.MEMBER };
       const member2 = { id: 4, role: GroupRole.MEMBER };
 
-      tx.groupMember.findMany.mockReturnValueOnce([
+      mockPrismaService.groupMember.findMany.mockReturnValueOnce([
         {
           id: group.id,
           userId: member1.id,
@@ -551,12 +677,12 @@ describe('GroupService', () => {
         groupsService.kickOutMember(group.id, member1.id, member2.id),
       ).rejects.toBeInstanceOf(GroupsErrors.NotAuthorizedToRemoveMemberError);
 
-      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
-      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+      expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
 
     it('should throw GroupMemberNotFound', async () => {
-      tx.groupMember.findMany.mockReturnValueOnce([
+      mockPrismaService.groupMember.findMany.mockReturnValueOnce([
         {
           id: group.id,
           userId: actor.id,
@@ -568,9 +694,9 @@ describe('GroupService', () => {
         groupsService.kickOutMember(group.id, 99, actor.id),
       ).rejects.toBeInstanceOf(GroupsErrors.GroupMemberNotFoundError);
 
-      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
-      expect(tx.groupMember.findMany).toHaveBeenCalledTimes(1);
-      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+      expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
 
     it('should throw OwnerCanNotRemoveSelf error', async () => {
@@ -579,15 +705,15 @@ describe('GroupService', () => {
         userId: 6,
         role: GroupRole.OWNER,
       };
-      tx.groupMember.findMany.mockReturnValueOnce([owner]);
+      mockPrismaService.groupMember.findMany.mockReturnValueOnce([owner]);
 
       await expect(
         groupsService.kickOutMember(group.id, owner.userId, owner.userId),
       ).rejects.toBeInstanceOf(GroupsErrors.OwnerCanNotRemoveSelfFromGroup);
 
-      expect(tx.group.findUnique).toHaveBeenCalledTimes(1);
-      expect(tx.groupMember.findMany).toHaveBeenCalledTimes(1);
-      expect(tx.groupMember.delete).not.toHaveBeenCalled();
+      expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
   });
 });
