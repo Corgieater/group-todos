@@ -2,7 +2,6 @@ enum GroupRole {
   OWNER
   ADMIN
   MEMBER
-  GUEST
 }
 
 model Group {

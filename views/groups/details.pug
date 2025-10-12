@@ -1,27 +1,25 @@
-//- views/groups/detail.pug
-//- 期待的 locals：
+//- views/groups/details.pug
+//- locals:
 //- group: { id, name, createdAtLabel, updatedAtLabel }
 //- owner: { id, name, email }
 //- members: [{ user: { id, name, email }, role, joinedAtLabel }]
-//- currentUserId: number  （用來判斷是否顯示管理按鈕）
-//- isOwner: boolean       （後端計算好更簡單）
-//- success, error: 可選的 flash 訊息
-
-//- views/groups/details.pug
-
-//- views/groups/details.pug
+//- currentUserId: number
+//- isOwner: boolean
+//- isAdmin: boolean
+//- canManageMembers: boolean
+//- success?: string, error?: string, csrfToken?: string
 
 doctype html
 html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1.0")
-    //- 避免用 template literal；直接拼字串或在 controller 傳 title
-    - const pageTitle = 'Group • ' + ((group && group.name) ? group.name : 'Details')
+    - const pageTitle = 'Group • ' + (group && group.name ? group.name : 'Details')
     title= pageTitle
     include ../partials/bootstrap
   body
     include ../partials/message
+
     nav.navbar.navbar-light.bg-light
       .container
         a.navbar-brand(href="/tasks/home") Task Board
@@ -33,19 +31,19 @@ html(lang="en")
       if error
         .alert.alert-danger(role="alert")= error
 
+      // Header
       .d-flex.justify-content-between.align-items-center.mb-3
         h1.h4.mb-0
           i.bi.bi-people-fill.me-2
           = group && group.name ? group.name : 'Details'
         if isOwner
-          .btn-group
-            a.btn.btn-outline-primary.btn-sm(href=`/groups/${group.id}/edit`)
-              i.bi.bi-pencil-square.me-1
-              | Edit
+          a.btn.btn-outline-primary.btn-sm(href=`/groups/${group.id}/edit`)
+            i.bi.bi-pencil-square.me-1
+            | Edit
 
-      //- 基本資訊
+      // Info + Actions
       .row.g-3.mb-4
-        .col-12.col-md-6
+        .col-12.col-lg-6
           .card.shadow-sm
             .card-body
               h2.h6.text-muted.mb-3 Group Info
@@ -57,33 +55,39 @@ html(lang="en")
                   i.bi.bi-person-circle.me-1
                   = owner && owner.name ? owner.name : '—'
                   if owner && owner.email
-                    //- 顯示 <email>，用 HTML entity 避免角括號衝突
                     span.text-muted.ms-2 &lt;#{owner.email}&gt;
                 dt.col-4 Created
                 dd.col-8= group.createdAtLabel || group.createdAt
                 dt.col-4 Updated
                 dd.col-8= group.updatedAtLabel || group.updatedAt
-        .col-12.col-md-6
+
+        .col-12.col-lg-6
           .card.shadow-sm
             .card-body
               h2.h6.text-muted.mb-3 Quick Actions
               .d-grid.gap-2
                 if isOwner
                   form(action=`/api/groups/${group.id}/regenerate-invite`, method="POST")
+                    if csrfToken
+                      input(type="hidden" name="_csrf" value=csrfToken)
                     button.btn.btn-outline-secondary(type="submit")
                       i.bi.bi-arrow-clockwise.me-1
                       | Regenerate Invite Link
                   form(action=`/api/groups/${group.id}/delete`, method="POST", onsubmit="return confirm('Delete this group? This cannot be undone.');")
+                    if csrfToken
+                      input(type="hidden" name="_csrf" value=csrfToken)
                     button.btn.btn-outline-danger(type="submit")
                       i.bi.bi-trash3.me-1
                       | Delete Group
                 else
                   form(action=`/api/groups/${group.id}/leave`, method="POST", onsubmit="return confirm('Leave this group?');")
+                    if csrfToken
+                      input(type="hidden" name="_csrf" value=csrfToken)
                     button.btn.btn-outline-danger(type="submit")
                       i.bi.bi-box-arrow-right.me-1
                       | Leave Group
 
-      //- 成員清單
+      // Members header
       .d-flex.justify-content-between.align-items-center.mb-2
         h2.h5.mb-0 Members
         if isOwner
@@ -91,61 +95,59 @@ html(lang="en")
             i.bi.bi-person-plus.me-1
             | Invite
 
+      // Members table (responsive)
       if !members || members.length === 0
         .text-center.text-muted.py-4
           i.bi.bi-people.me-2
           | No members yet.
       else
-        //- 行動版卡片
-        .d-md-none
-          .row.g-3
-            each m in members
-              .col-12
-                .card.shadow-sm
-                  .card-body
-                    .d-flex.justify-content-between.align-items-start
-                      .d-flex.flex-column
-                        strong= (m.user && m.user.name) ? m.user.name : '—'
-                        if m.user && m.user.email
-                          small.text-muted= m.user.email
-                        small.text-muted.mt-1
-                          | Role: 
-                          span.badge.bg-secondary.ms-1= m.role
-                        small.text-muted
-                          | Joined: 
-                          = m.joinedAtLabel || m.joinedAt
-                      if isOwner
-                        form.ms-3(action=`/api/groups/${group.id}/members/${m.user && m.user.id}/remove`, method="POST", onsubmit="return confirm('Remove this member?');")
-                          button.btn.btn-sm.btn-outline-danger(type="submit")
-                            i.bi.bi-person-dash
-        //- 桌機版表格
-        .d-none.d-md-block
-          .table-responsive
-            table.table.table-hover.align-middle
-              thead
+        .table-responsive
+          table.table.table-hover.align-middle
+            thead
+              tr
+                th(scope="col") Name
+                th(scope="col") Email
+                th(scope="col") Role
+                th(scope="col") Joined
+                if canManageMembers
+                  th.text-end(scope="col") Actions
+            tbody
+              each m in members
+                - const hasUser = !!(m && m.user)
+                - const rowUserId = hasUser ? m.user.id : undefined
+                - const isSelf = !!(currentUserId && rowUserId && currentUserId === rowUserId)
+                - const targetIsOwner = m && m.role === 'OWNER'
+                - const viewerIsOwner = !!isOwner
+                - const viewerIsAdmin = !!isAdmin
+                //- 計算是否可顯示 Remove
+                - let canRemove = false
+                - if (canManageMembers && !isSelf && !targetIsOwner) {
+                -   if (viewerIsOwner) canRemove = true
+                -   else if (viewerIsAdmin && m.role === 'MEMBER') canRemove = true
+                - }
+
                 tr
-                  th(scope="col") Name
-                  th(scope="col") Email
-                  th(scope="col") Role
-                  th(scope="col") Joined
-                  if isOwner
-                    th.text-end(scope="col") Actions
-              tbody
-                each m in members
-                  tr
-                    td= (m.user && m.user.name) ? m.user.name : '—'
-                    td= (m.user && m.user.email) ? m.user.email : '—'
-                    td
-                      span.badge.bg-secondary= m.role
-                    td= m.joinedAtLabel || m.joinedAt
-                    if isOwner
-                      td.text-end
-                        form.d-inline(action=`/api/groups/${group.id}/members/${m.user && m.user.id}/remove`, method="POST", onsubmit="return confirm('Remove this member?');")
+                  td= hasUser && m.user.name ? m.user.name : '—'
+                  td= hasUser && m.user.email ? m.user.email : '—'
+                  td
+                    span.badge.bg-secondary= m.role
+                  td= m.joinedAtLabel || m.joinedAt
+                  if canManageMembers
+                    td.text-end
+                      if canRemove
+                        form.d-inline(
+                          action=`/api/groups/${group.id}/kick-out-members`
+                          method="POST"
+                          onsubmit="return confirm('Remove this member?');"
+                        )
+                          if csrfToken
+                            input(type="hidden" name="_csrf" value=csrfToken)
+                          input(type="hidden" name="memberId" value=(hasUser ? m.user.id : ''))
                           button.btn.btn-sm.btn-outline-danger(type="submit")
                             i.bi.bi-person-dash.me-1
                             | Remove
+                      else
+                        //- 不可移除時：不要顯示可點擊按鈕（自踢/踢 Owner/或 Admin 想踢 Admin）
+                        //- 你也可以顯示一個淡灰色的不可用圖示，這裡先不顯示以保持乾淨
 
-    script(
-      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-      crossorigin="anonymous"
-    )
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous")
