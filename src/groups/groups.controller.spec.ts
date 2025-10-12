@@ -11,7 +11,10 @@ import {
 import { CurrentUser } from 'src/common/types/current-user';
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
-import { inviteGroupMemberDto } from './dto/groups.dto';
+import {
+  inviteGroupMemberDto,
+  kickOutMemberFromGroupDto,
+} from './dto/groups.dto';
 
 describe('GroupsController', () => {
   let groupsController: GroupsController;
@@ -25,6 +28,7 @@ describe('GroupsController', () => {
     inviteGroupMember: jest.fn(),
     disbandGroupById: jest.fn(),
     verifyInvitation: jest.fn(),
+    kickOutMember: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -128,6 +132,27 @@ describe('GroupsController', () => {
         'Group has been disbanded',
       );
       expect(res.redirect).toHaveBeenCalledWith('/users-home');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // kickOutMember
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('kickOutMember', () => {
+    const groupId: number = 5;
+    const dto: kickOutMemberFromGroupDto = { memberId: 3 };
+
+    it('should remove member from group', async () => {
+      await groupsController.kickOutMember(req, groupId, currentUser, dto, res);
+
+      expect(mockGroupsService.kickOutMember).toHaveBeenCalledWith(5, 3, 1);
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'success',
+        'Member already removed from group.',
+      );
+      expect(res.redirect).toHaveBeenCalledWith(`/groups/5`);
     });
   });
 });
