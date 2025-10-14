@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Request, Response } from 'express';
-import type { User as UserModel } from '@prisma/client';
+import { GroupRole, type User as UserModel } from '@prisma/client';
 import { GroupsController } from './groups.controller';
 import { GroupsService } from './groups.service';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
@@ -12,8 +12,9 @@ import { CurrentUser } from 'src/common/types/current-user';
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
 import {
-  inviteGroupMemberDto,
-  kickOutMemberFromGroupDto,
+  InviteGroupMemberDto,
+  KickOutMemberFromGroupDto,
+  UpdateMemberRoleDto,
 } from './dto/groups.dto';
 
 describe('GroupsController', () => {
@@ -29,6 +30,8 @@ describe('GroupsController', () => {
     disbandGroupById: jest.fn(),
     verifyInvitation: jest.fn(),
     kickOutMember: jest.fn(),
+    updateMemberRole: jest.fn(),
+    leaveGroup: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -78,7 +81,7 @@ describe('GroupsController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('invite', () => {
-    const dto: inviteGroupMemberDto = { email: 'test2@test.com' };
+    const dto: InviteGroupMemberDto = { email: 'test2@test.com' };
     it('should invite user', async () => {
       await groupsController.invite(req, 1, currentUser, dto, res);
 
@@ -136,12 +139,58 @@ describe('GroupsController', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
+  // leave
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('leave', () => {
+    it('should let admins/members leave group', async () => {
+      await groupsController.leave(req, 1, currentUser, res);
+
+      expect(mockGroupsService.leaveGroup).toHaveBeenCalledWith(1, 1);
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'success',
+        'You have left the group.',
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/users-home');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // updateMemberRole
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('updateMemberRole', () => {
+    it('should update member role', async () => {
+      const dto: UpdateMemberRoleDto = {
+        memberId: 6,
+        newRole: GroupRole.ADMIN,
+      };
+      await groupsController.updateMemberRole(req, 1, currentUser, dto, res);
+
+      expect(mockGroupsService.updateMemberRole).toHaveBeenCalledWith(
+        1,
+        6,
+        GroupRole.ADMIN,
+        1,
+      );
+
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'success',
+        'Member role have been updated',
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/groups/1');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
   // kickOutMember
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('kickOutMember', () => {
     const groupId: number = 5;
-    const dto: kickOutMemberFromGroupDto = { memberId: 3 };
+    const dto: KickOutMemberFromGroupDto = { memberId: 3 };
 
     it('should remove member from group', async () => {
       await groupsController.kickOutMember(req, groupId, currentUser, dto, res);

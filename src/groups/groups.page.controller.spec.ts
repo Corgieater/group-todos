@@ -111,6 +111,8 @@ describe('GroupsPageController', () => {
       expect(view).toBe('groups/details');
 
       expect(model).toEqual({
+        canManageMembers: true,
+        currentUserId: 1,
         group: {
           id: vm.id,
           name: vm.name,
@@ -120,6 +122,7 @@ describe('GroupsPageController', () => {
         owner: vm.owner,
         members: vm.members,
         isOwner: true,
+        isAdmin: false,
       });
     });
 

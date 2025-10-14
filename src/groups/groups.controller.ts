@@ -16,9 +16,10 @@ import { Request, Response } from 'express';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
-  createGroupDto,
-  inviteGroupMemberDto,
-  kickOutMemberFromGroupDto,
+  CreateGroupDto,
+  InviteGroupMemberDto,
+  KickOutMemberFromGroupDto,
+  UpdateMemberRoleDto,
 } from './dto/groups.dto';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
@@ -33,7 +34,7 @@ export class GroupsController {
   async create(
     @Req() req: Request,
     @CurrentUserDecorator() user: CurrentUser,
-    @Body() dto: createGroupDto,
+    @Body() dto: CreateGroupDto,
     @Res() res: Response,
   ) {
     await this.groupsService.createGroup(user.userId, dto.name);
@@ -46,7 +47,7 @@ export class GroupsController {
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @CurrentUserDecorator() user: CurrentUser,
-    @Body() dto: inviteGroupMemberDto,
+    @Body() dto: InviteGroupMemberDto,
     @Res() res: Response,
   ) {
     await this.groupsService.inviteGroupMember(id, user.userId, dto.email);
@@ -67,6 +68,24 @@ export class GroupsController {
     res.redirect('/users-home');
   }
 
+  @Post(':id/update/role')
+  async updateMemberRole(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Body() dto: UpdateMemberRoleDto,
+    @Res() res: Response,
+  ) {
+    await this.groupsService.updateMemberRole(
+      id,
+      dto.memberId,
+      dto.newRole,
+      user.userId,
+    );
+    setSession(req, 'success', 'Member role have been updated');
+    res.redirect(`/groups/${id}`);
+  }
+
   @Post(':id/disband')
   async disband(
     @Req() req: Request,
@@ -80,14 +99,28 @@ export class GroupsController {
     res.redirect('/users-home');
   }
 
-  @Post(':id/kick-out')
+  @Post(':id/leave')
+  async leave(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    await this.groupsService.leaveGroup(id, user.userId);
+    setSession(req, 'success', 'You have left the group.');
+    res.redirect(`/users-home`);
+  }
+
+  @Post(':id/kick-out-members')
   async kickOutMember(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @CurrentUserDecorator() user: CurrentUser,
-    @Body() dto: kickOutMemberFromGroupDto,
+    @Body() dto: KickOutMemberFromGroupDto,
     @Res() res: Response,
   ) {
     await this.groupsService.kickOutMember(id, dto.memberId, user.userId);
+    setSession(req, 'success', 'Member already removed from group.');
+    res.redirect(`/groups/${id}`);
   }
 }

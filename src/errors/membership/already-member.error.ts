@@ -7,7 +7,7 @@ export class AlreadyMemberError extends DomainError {
     cause?: unknown;
   }) {
     super('AlreadyMemberError', {
-      code: 'ALREADY_MEMBER_ERROR',
+      code: 'ALREADY_MEMBER',
       message: 'This user is already a group member',
       cause: opts?.cause,
       data: opts

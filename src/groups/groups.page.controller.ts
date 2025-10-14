@@ -43,12 +43,20 @@ export class GroupsPageController {
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    // i think i can change by owner to by menber
     const group = await this.groupsService.getGroupDetailsByMemberId(
       id,
       user.userId,
     );
     const viewModel = buildGroupVM(group, user.timeZone);
+
+    // 推導檢視者角色
+    const viewer = viewModel.members.find(
+      (m) => m.user && m.user.id === user.userId,
+    );
+    const isOwner = viewModel.ownerId === user.userId;
+    const isAdmin = !!viewer && viewer.role === 'ADMIN';
+    const canManageMembers = isOwner || isAdmin;
+
     res.render('groups/details', {
       group: {
         id: viewModel.id,
@@ -58,7 +66,11 @@ export class GroupsPageController {
       },
       owner: viewModel.owner,
       members: viewModel.members,
-      isOwner: viewModel.ownerId === user.userId,
+      currentUserId: user.userId,
+      isOwner,
+      isAdmin,
+      canManageMembers,
+      // success/error/csrfToken 若有就一併傳
     });
   }
 }

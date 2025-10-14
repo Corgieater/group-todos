@@ -103,7 +103,7 @@ else
                 | Edit
 
               //- 刪除（若有 method-override，可用 _method=DELETE）
-              form(action=`/api/tasks/${t.id}/delete` method="POST")
+              form(action=`/api/tasks/${t.id}/disband` method="POST")
                 button.btn.btn-outline-danger.btn-sm(type="submit" onclick="return confirm('Delete this task?');")
                   i.bi.bi-trash3.me-1
                   | Delete

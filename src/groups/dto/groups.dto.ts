@@ -1,19 +1,36 @@
-import { IsEmail, IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { GroupRole } from '@prisma/client';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsString,
+} from 'class-validator';
 
-export class createGroupDto {
+export class CreateGroupDto {
   @IsNotEmpty()
   @IsString()
   name: string;
 }
 
-export class inviteGroupMemberDto {
+export class InviteGroupMemberDto {
   @IsNotEmpty()
   @IsEmail()
   email: string;
 }
 
-export class kickOutMemberFromGroupDto {
+export class KickOutMemberFromGroupDto {
   @IsNotEmpty()
   @IsNumber()
   memberId: number;
+}
+
+export class UpdateMemberRoleDto {
+  @IsNotEmpty()
+  @IsNumber()
+  memberId: number;
+
+  @IsNotEmpty()
+  @IsEnum(GroupRole)
+  newRole: GroupRole;
 }

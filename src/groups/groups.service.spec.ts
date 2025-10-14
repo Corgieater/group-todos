@@ -46,6 +46,8 @@ describe('GroupService', () => {
       delete: jest.fn(),
       findUnique: jest.fn(),
       upsert: jest.fn(),
+      update: jest.fn(),
+      deleteMany: jest.fn(),
     },
     actionToken: {
       create: jest.fn(),
@@ -301,6 +303,55 @@ describe('GroupService', () => {
       expect(mockPrismaService.group.deleteMany).toHaveBeenCalledWith({
         where: { id: 1, ownerId: 2 },
       });
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // leaveGroup
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('leaveGroup', () => {
+    it('should let members or admins leave groups (count=1)', async () => {
+      // 1. get groupMember by groupId and userId, select role
+      // 2. if role do the following
+      // 3. if role !== owner, delete the row
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
+        role: GroupRole.MEMBER,
+      });
+      mockPrismaService.groupMember.deleteMany.mockResolvedValueOnce({
+        count: 1,
+      });
+
+      await groupsService.leaveGroup(group.id, 6);
+
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 1, userId: 6 } },
+        select: { role: true },
+      });
+
+      expect(mockPrismaService.groupMember.deleteMany).toHaveBeenCalledWith({
+        where: { groupId: 1, userId: 6, role: { not: GroupRole.OWNER } },
+      });
+    });
+
+    it('should throw GroupMemberNotFoundError', async () => {
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
+      await expect(groupsService.leaveGroup(99, 6)).rejects.toBeInstanceOf(
+        GroupsErrors.GroupMemberNotFoundError,
+      );
+
+      expect(mockPrismaService.groupMember.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('should throw OwnerCanNotLeaveTheGroupError', async () => {
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
+        role: GroupRole.OWNER,
+      });
+
+      await expect(groupsService.leaveGroup(1, 1)).rejects.toBeInstanceOf(
+        GroupsErrors.OwnerCanNotLeaveTheGroupError,
+      );
+
+      expect(mockPrismaService.groupMember.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -631,6 +682,149 @@ describe('GroupService', () => {
       ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
 
       expect(mockPrismaService.groupMember.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // updateMemberRole
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('updateMemberRole', () => {
+    const ownerId = user.id;
+    const targetId = 5;
+
+    it('should update role', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        {
+          groupId: group.id,
+          userId: 1,
+          role: GroupRole.OWNER,
+        },
+        {
+          groupId: group.id,
+          userId: 5,
+          role: GroupRole.MEMBER,
+        },
+      ]);
+
+      await groupsService.updateMemberRole(
+        group.id,
+        targetId,
+        GroupRole.ADMIN,
+        ownerId,
+      );
+
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledWith({
+        where: { groupId: 1, userId: { in: [1, 5] } },
+        select: { userId: true, role: true },
+      });
+
+      expect(mockPrismaService.groupMember.update).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 1, userId: 5 } },
+        data: { role: GroupRole.ADMIN },
+      });
+    });
+
+    it('should throw userNotFoundError', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        {
+          groupId: group.id,
+          userId: 1,
+          role: GroupRole.OWNER,
+        },
+      ]);
+
+      await expect(
+        groupsService.updateMemberRole(group.id, 99, GroupRole.ADMIN, ownerId),
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupMemberNotFoundError);
+      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw RoleUpdateForbiddenError', async () => {
+      // if owner not found in this group
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        {
+          groupId: group.id,
+          userId: 5,
+          role: GroupRole.MEMBER,
+        },
+      ]);
+
+      await expect(
+        groupsService.updateMemberRole(group.id, targetId, GroupRole.ADMIN, 99),
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupPermissionError);
+      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotAuthorizedToUpdateMemberRoleError', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        {
+          groupId: group.id,
+          userId: 8,
+          role: GroupRole.MEMBER,
+        },
+        {
+          groupId: group.id,
+          userId: 5,
+          role: GroupRole.MEMBER,
+        },
+      ]);
+
+      await expect(
+        groupsService.updateMemberRole(group.id, targetId, GroupRole.ADMIN, 8),
+      ).rejects.toBeInstanceOf(
+        GroupsErrors.NotAuthorizedToUpdateMemberRoleError,
+      );
+      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw OwnerDowngradeFrobidden', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        {
+          groupId: group.id,
+          userId: 1,
+          role: GroupRole.OWNER,
+        },
+      ]);
+
+      await expect(
+        groupsService.updateMemberRole(
+          group.id,
+          ownerId,
+          GroupRole.ADMIN,
+          ownerId,
+        ),
+      ).rejects.toBeInstanceOf(GroupsErrors.OwnerDowngradeForbiddenError);
+      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw OwnerRoleChangeForbiddenError', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        { id: 101, userId: 8, role: GroupRole.OWNER },
+        { id: 102, userId: 9, role: GroupRole.OWNER },
+      ]);
+
+      await expect(
+        groupsService.updateMemberRole(group.id, 9, GroupRole.ADMIN, 8),
+      ).rejects.toBeInstanceOf(GroupsErrors.OwnerRoleChangeForbiddenError);
+      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
+    });
+
+    it('should not hit db update if role is the same', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        { id: 1, userId: 12, role: GroupRole.OWNER },
+        { id: 1, userId: 21, role: GroupRole.MEMBER },
+      ]);
+
+      await expect(
+        groupsService.updateMemberRole(group.id, 21, GroupRole.MEMBER, 12),
+      ).resolves.toBe(undefined);
+
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledWith({
+        where: { groupId: group.id, userId: { in: [12, 21] } },
+        select: { userId: true, role: true },
+      });
+      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
     });
   });
 

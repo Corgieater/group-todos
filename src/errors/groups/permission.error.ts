@@ -1,6 +1,8 @@
 import { $Enums } from '@prisma/client';
 import { DomainError } from '../domain-error.base';
 
+type GroupRole = $Enums.GroupRole;
+
 export class NotAuthorizedToInviteMember extends DomainError {
   readonly actorId: number;
   readonly groupId: number;
@@ -20,8 +22,6 @@ export class NotAuthorizedToInviteMember extends DomainError {
     return new NotAuthorizedToInviteMember(actorId, groupId, opts);
   }
 }
-
-type GroupRole = $Enums.GroupRole;
 
 export class NotAuthorizedToRemoveMemberError extends DomainError {
   constructor(opts: {
@@ -66,6 +66,46 @@ export class NotAuthorizedToRemoveMemberError extends DomainError {
     return new NotAuthorizedToRemoveMemberError({
       groupId,
       actorId,
+      targetUserId,
+    });
+  }
+}
+
+export class NotAuthorizedToUpdateMemberRoleError extends DomainError {
+  constructor(opts: {
+    groupId: number;
+    actorId: number;
+    actorRole?: GroupRole;
+    allowedRoles?: GroupRole[];
+    targetUserId?: number;
+    cause?: unknown;
+  }) {
+    super('NotAuthorizedToUpdateMemberRoleError', {
+      code: 'NOT_AUTHORIZED_TO_UPDATE_MEMBER_ROLE',
+      message: 'You are not allowed to update member role.',
+      data: {
+        groupId: opts.groupId,
+        actorId: opts.actorId,
+        actorRole: opts.actorRole,
+        allowedRoles: opts.allowedRoles,
+        targetUserId: opts.targetUserId,
+      },
+      cause: opts.cause,
+    });
+  }
+
+  static byRole(
+    groupId: number,
+    actorId: number,
+    actorRole: GroupRole,
+    allowedRoles: GroupRole[],
+    targetUserId?: number,
+  ) {
+    return new NotAuthorizedToUpdateMemberRoleError({
+      groupId,
+      actorId,
+      actorRole,
+      allowedRoles,
       targetUserId,
     });
   }

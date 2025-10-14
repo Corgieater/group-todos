@@ -73,7 +73,7 @@ html(lang="en")
                     button.btn.btn-outline-secondary(type="submit")
                       i.bi.bi-arrow-clockwise.me-1
                       | Regenerate Invite Link
-                  form(action=`/api/groups/${group.id}/delete`, method="POST", onsubmit="return confirm('Delete this group? This cannot be undone.');")
+                  form(action=`/api/groups/${group.id}/disband`, method="POST", onsubmit="return confirm('Delete this group? This cannot be undone.');")
                     if csrfToken
                       input(type="hidden" name="_csrf" value=csrfToken)
                     button.btn.btn-outline-danger(type="submit")
