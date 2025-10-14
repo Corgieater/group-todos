@@ -33,6 +33,12 @@ type GroupDetailsItem = Prisma.GroupGetPayload<{
   };
 }>;
 
+const REMOVAL_MATRIX: Record<GroupRole, Readonly<GroupRole[]>> = {
+  OWNER: ['ADMIN', 'MEMBER'] as GroupRole[],
+  ADMIN: ['MEMBER'] as GroupRole[],
+  MEMBER: [] as GroupRole[],
+} as const;
+
 @Injectable()
 export class GroupsService {
   constructor(
@@ -104,6 +110,31 @@ export class GroupsService {
     if (count !== 1) {
       throw GroupsErrors.GroupNotFoundError.byId(ownerId, id);
     }
+  }
+
+  async leaveGroup(id: number, userId: number): Promise<void> {
+    await this.prismaService.$transaction(async (tx) => {
+      const membership = await tx.groupMember.findUnique({
+        where: { groupId_userId: { groupId: id, userId } },
+        select: { role: true },
+      });
+
+      if (!membership) {
+        throw GroupsErrors.GroupMemberNotFoundError.byId(userId, id);
+      }
+
+      if (membership.role === GroupRole.OWNER) {
+        throw GroupsErrors.OwnerCanNotLeaveTheGroupError.self(id, userId);
+      }
+
+      const { count } = await tx.groupMember.deleteMany({
+        where: { groupId: id, userId, role: { not: GroupRole.OWNER } },
+      });
+
+      if (count !== 1) {
+        throw GroupsErrors.OwnerCanNotLeaveTheGroupError.self(id, userId);
+      }
+    });
   }
 
   async inviteGroupMember(
@@ -232,6 +263,9 @@ export class GroupsService {
   }
 
   async verifyInvitation(id: number, token: string) {
+    // QUESTION:
+    // Do i need to verify the token and db token user id?
+    // techenically it not going to happen if some other people click the email invitation???
     const now = new Date();
     const row = await this.prismaService.actionToken.findFirst({
       where: {
@@ -261,7 +295,7 @@ export class GroupsService {
     const candidate = this.authService.hmacToken(token, serverSecret);
 
     if (!this.authService.safeEqualB64url(row.tokenHash, candidate)) {
-      throw AuthErrors.InvalidTokenError.verify();
+      throw AuthErrors.InvalidTokenError.verify(); // test not cover
     }
 
     await this.prismaService.$transaction(async (tx) => {
@@ -275,7 +309,7 @@ export class GroupsService {
         data: { consumedAt: now },
       });
       if (count !== 1) {
-        throw AuthErrors.InvalidTokenError.invite();
+        throw AuthErrors.InvalidTokenError.invite(); // test not cover
       }
 
       await tx.groupMember.upsert({
@@ -290,19 +324,76 @@ export class GroupsService {
     });
   }
 
-  // NOTE:
-  // Come back and refactor if the roles get more complicated or i need to compare roles in other function
+  canRemove(actor: GroupRole, target: GroupRole): boolean {
+    return REMOVAL_MATRIX[actor].includes(target);
+  }
+
+  async updateMemberRole(
+    id: number,
+    targetId: number,
+    newRole: GroupRole,
+    actorId: number,
+  ) {
+    await this.prismaService.$transaction(async (tx) => {
+      const rows = await tx.groupMember.findMany({
+        where: {
+          groupId: id,
+          userId: { in: [actorId, targetId] },
+        },
+        select: { userId: true, role: true },
+      });
+
+      const actor = rows.find((r) => r.userId === actorId);
+      const target = rows.find((r) => r.userId === targetId);
+
+      if (!actor) {
+        throw GroupsErrors.GroupPermissionError.updateRole(id, actorId, {
+          cause: 'Can not find actor in this group',
+        });
+      }
+
+      if (actor.role !== GroupRole.OWNER) {
+        throw GroupsErrors.NotAuthorizedToUpdateMemberRoleError.byRole(
+          id,
+          actorId,
+          actor.role,
+          [GroupRole.OWNER],
+          targetId,
+        );
+      }
+
+      if (!target) {
+        throw GroupsErrors.GroupMemberNotFoundError.byId(targetId, id);
+      }
+
+      if (actor.userId === target.userId) {
+        throw GroupsErrors.OwnerDowngradeForbiddenError.self(id, actorId);
+      }
+
+      if (target.role === GroupRole.OWNER) {
+        throw GroupsErrors.OwnerRoleChangeForbiddenError.targetIsOwner(
+          id,
+          actorId,
+          target.userId,
+        );
+      }
+
+      if (target.role === newRole) {
+        return;
+      }
+
+      await tx.groupMember.update({
+        where: { groupId_userId: { groupId: id, userId: target.userId } },
+        data: { role: newRole },
+      });
+    });
+  }
+
   async kickOutMember(
     id: number,
     targetId: number,
     actorId: number,
   ): Promise<void> {
-    type GroupRole = $Enums.GroupRole;
-    const CAN_REMOVE: ReadonlySet<GroupRole> = new Set([
-      GroupRole.OWNER,
-      GroupRole.ADMIN,
-    ]);
-
     await this.prismaService.$transaction(async (tx) => {
       const group = await tx.group.findUnique({
         where: { id },
@@ -319,6 +410,7 @@ export class GroupsService {
 
       const actor = rows.find((r) => r.userId === actorId);
       if (!actor) {
+        // actor not a group member
         throw GroupsErrors.NotAuthorizedToRemoveMemberError.byId(
           id,
           actorId,
@@ -326,26 +418,30 @@ export class GroupsService {
         );
       }
 
-      if (!CAN_REMOVE.has(actor.role)) {
-        throw GroupsErrors.NotAuthorizedToRemoveMemberError.byRole(
-          id,
-          actorId,
-          actor.role,
-          Array.from(CAN_REMOVE),
-        );
-      }
-
       const target = rows.find((r) => r.userId === targetId);
-
       if (!target) {
+        // target not in group
         throw GroupsErrors.GroupMemberNotFoundError.byId(targetId, id);
       }
 
-      if (target.role === GroupRole.OWNER) {
-        throw GroupsErrors.OwnerCanNotRemoveSelfFromGroup.byId(
-          target.userId,
-          id,
-        );
+      if (actor.userId === target.userId) {
+        if (actor.role === 'OWNER') {
+          // can not remove owner
+          throw GroupsErrors.OwnerRemovalForbiddenError.self(id, actorId);
+        }
+        // can not remove self
+        throw GroupsErrors.GroupPermissionError.remove(id, actorId);
+      }
+
+      if (
+        actor.role === 'ADMIN' &&
+        (target.role === 'ADMIN' || target.role === 'OWNER')
+      ) {
+        throw GroupsErrors.GroupPermissionError.remove(id, actorId);
+      }
+
+      if (!this.canRemove(actor.role, target.role)) {
+        throw GroupsErrors.GroupPermissionError.remove(id, actorId);
       }
 
       await tx.groupMember.delete({
