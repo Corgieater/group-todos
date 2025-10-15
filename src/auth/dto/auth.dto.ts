@@ -57,6 +57,10 @@ export class AuthSigninDto {
   @IsNotEmpty()
   @IsString()
   password: string;
+
+  @IsOptional()
+  @IsString()
+  _csrf_token?: string; // 只為了通過 ValidationPipe，實際不使用
 }
 
 export class AuthUpdatePasswordDto {

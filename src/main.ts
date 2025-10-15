@@ -1,19 +1,45 @@
+// main.ts
+import express from 'express';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { doubleCsrf } from 'csrf-csrf';
 import { join } from 'path';
-import { ValidationPipe } from '@nestjs/common';
+import { HttpStatus, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { flashMessage } from './common/middleware/flash.middleware';
 import { UnauthorzedFilter } from './common/filters/unauthorized-redirect.filter';
 
+const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
+  getSecret: () => process.env.CSRF_SECRET!,
+  // TODO:
+  // find a way to deal with this
+  // see hackmd CSRF TODO
+  getSessionIdentifier: () => 'global', // ★ 穩定常數，避免 GET/POST 不一致
+  cookieName: 'XSRF-TOKEN',
+  cookieOptions: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  },
+  getCsrfTokenFromRequest: (req) =>
+    req.body?._csrf ||
+    req.headers['x-csrf-token'] ||
+    req.headers['x-xsrf-token'] ||
+    req.query?._csrf,
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+});
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
+
   app.setBaseViewsDir(join(__dirname, '..', 'views'));
   app.setViewEngine('pug');
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -22,7 +48,7 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-  app.use(cookieParser(config.get('COOKIE_SECRET')));
+
   app.use(
     session({
       name: 'group_flash_message',
@@ -33,6 +59,34 @@ async function bootstrap() {
       cookie: { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 600000 },
     }),
   );
+  app.use(cookieParser());
+
+  app.use(express.urlencoded({ extended: false }));
+  app.use(express.json());
+
+  app.use((req, res, next) => doubleCsrfProtection(req, res, next));
+
+  app.use((req: any, _res, next) => {
+    if (req.body && typeof req.body === 'object' && '_csrf' in req.body) {
+      delete req.body._csrf;
+    }
+    next();
+  });
+
+  app.use((req: any, res: any, next) => {
+    try {
+      res.locals.csrfToken = req.csrfToken();
+    } catch {}
+    next();
+  });
+
+  // CSRF 錯誤處理
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (err === invalidCsrfTokenError || err?.code === 'EBADCSRFTOKEN') {
+      return res.status(HttpStatus.FORBIDDEN).send('Invalid CSRF token');
+    }
+    next(err);
+  });
 
   app.use(flashMessage);
   app.useGlobalFilters(new UnauthorzedFilter());

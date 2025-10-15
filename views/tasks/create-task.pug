@@ -23,10 +23,11 @@ html(lang="en")
             const __todayISO = new Date().toISOString().slice(0,10);
             const __allDayChecked = (__createForm && __createForm.allDay != null)
               ? ['true','on','1','yes'].includes(String(__createForm.allDay).toLowerCase())
-              : false;
+              : true;
 
           form(action="/api/tasks", method="POST", novalidate)
-            .row.g-3
+              input(type="hidden" name="_csrf" value=csrfToken) 
+              .row.g-3
               .col-12
                 label.form-label(for="title") Title
                 input#title.form-control(
@@ -57,11 +58,11 @@ html(lang="en")
 
               .col-md-6
                 .form-check.mt-4
-                  // hidden false 先送出
+                  input(type="hidden" name="allDay" value="0")
                   input#allDay.form-check-input(
                     type="checkbox"
-                    role="switch"
                     name="allDay"
+                    value="1"
                     checked=__allDayChecked
                   )
                   label.form-check-label(for="allDay") All-day

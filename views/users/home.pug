@@ -12,6 +12,7 @@ html(lang="en")
         a.navbar-brand(href="/tasks/home") Task Board
         .ms-auto
           form(action="/api/auth/signout", method="POST")
+            input(type="hidden" name="_csrf" value=csrfToken) 
             button.btn.btn-sm.btn-outline-danger(type="submit")
               i.bi.bi-box-arrow-right.me-1
               | Sign out
@@ -42,6 +43,7 @@ html(lang="en")
       hr.my-4
       h2.h5.mb-3 Change password
       form(action="/api/auth/change-password", method="POST", class="row gy-3")
+        input(type="hidden" name="_csrf" value=csrfToken) 
         .col-md-5
           label.form-label(for="old-password") Old password
           input#old-password.form-control(

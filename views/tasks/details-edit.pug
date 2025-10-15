@@ -17,6 +17,7 @@ html(lang="en")
               h1.h4.mb-4 Edit task
 
               form(action=`/api/tasks/${id}/update`, method="POST")
+                input(type="hidden" name="_csrf" value=csrfToken) 
                 // Title
                 .mb-3
                   label.form-label(for="title") Title

@@ -2,8 +2,11 @@
 -
   // 安全防呆 + 小工具
   const list = Array.isArray(viewModel) ? viewModel : [];
-  const listStatus= typeof currentStatus === 'string' ? currentStatus : 'FINISHED';
-  const isDoneTab = status === 'FINISHED';
+  // 來源優先：currentStatus → status → 'ALL'
+  const listStatus = typeof currentStatus === 'string'
+    ? currentStatus
+    : (typeof status === 'string' ? status : 'ALL');
+  const isDoneTab = listStatus === 'FINISHED';
   const PRIORITY = { 1: 'Urgent', 2: 'High', 3: 'Medium', 4: 'Low' };
   const P_BADGE = { 1: 'danger', 2: 'warning', 3: 'info', 4: 'secondary' };
 
@@ -11,7 +14,6 @@
     if (!s) return null;
     const d = new Date(s);
     if (Number.isNaN(d.getTime())) return null;
-    // 顯示 yyyy/mm/dd hh:mm（若只有日期就只顯示日期）
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth()+1).padStart(2,'0');
     const dd = String(d.getDate()).padStart(2,'0');
@@ -28,12 +30,11 @@ if !list.length
       p.lead.mb-3= emptyHint || 'No tasks.'
       a.btn.btn-primary(href="/tasks/new") + Create a task
 else
-  //- 用 list-group 呈現
   .card.shadow-sm
     .card-header.bg-body
       .d-flex.justify-content-between.align-items-center
         span.fw-semibold #{list.length} task#{list.length > 1 ? 's' : ''} found
-        //- 可加上分頁或排序控制區
+        //- 可加上排序/分頁控制
         // .btn-group
         //   a.btn.btn-sm.btn-outline-secondary(href="?sort=dueAtUtc") Sort by due
         //   a.btn.btn-sm.btn-outline-secondary(href="?sort=priority") Sort by priority
@@ -82,28 +83,32 @@ else
 
             // 右區：操作
             .d-flex.flex-wrap.gap-2
-              //- 完成 / 還原
+              // 完成分頁 → 只顯示 Restore
               if isDoneTab
-                // TODO: NOTE
-                // Do we need restore? how? why?
                 form(action=`/api/tasks/${t.id}/restore` method="POST")
+                  input(type="hidden" name="_csrf" value=csrfToken)
                   button.btn.btn-outline-secondary.btn-sm(type="submit")
                     i.bi.bi-arrow-counterclockwise.me-1
                     | Restore
-              else
+              else if t.status !== 'FINISHED'
                 form(action=`/api/tasks/${t.id}/update/status` method="POST")
-                  input(type="hidden", name="status", value="FINISHED")
+                  input(type="hidden" name="_csrf" value=csrfToken)
+                  input(type="hidden" name="status" value="FINISHED")
                   button.btn.btn-success.btn-sm(type="submit")
                     i.bi.bi-check2.me-1
                     | Mark done
 
-              //- 編輯
+              // 編輯
               a.btn.btn-outline-primary.btn-sm(href=`/tasks/${t.id}/edit`)
                 i.bi.bi-pencil-square.me-1
                 | Edit
 
-              //- 刪除（若有 method-override，可用 _method=DELETE）
+              // 刪除
               form(action=`/api/tasks/${t.id}/disband` method="POST")
-                button.btn.btn-outline-danger.btn-sm(type="submit" onclick="return confirm('Delete this task?');")
+                input(type="hidden" name="_csrf" value=csrfToken)
+                button.btn.btn-outline-danger.btn-sm(
+                  type="submit"
+                  onclick="return confirm('Delete this task?');"
+                )
                   i.bi.bi-trash3.me-1
                   | Delete

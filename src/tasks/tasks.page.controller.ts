@@ -38,6 +38,7 @@ export class TasksPageController {
     const todayUndatedTasks = todayUndatedTasksRaw.map((t) =>
       buildTaskVM(t, user.timeZone),
     );
+
     const expiredTasks = expiredTasksRaw.map((t) =>
       buildTaskVM(t, user.timeZone),
     );

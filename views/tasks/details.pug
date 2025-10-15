@@ -38,12 +38,14 @@ html(lang="en")
           .d-flex.gap-2
             if status !== 'FINISHED'
               form(action=`/api/tasks/${id}/update/status`, method="POST")
+                input(type="hidden" name="_csrf" value=csrfToken) 
                 input(type="hidden", name="status", value="FINISHED")
                 button.btn.btn-success(type="submit" title="Mark as finished")
                   i.bi.bi-check2-circle.me-1
                   | Done
             else
               form(action=`/api/tasks/${id}/update/status`, method="POST")
+                input(type="hidden" name="_csrf" value=csrfToken) 
                 input(type="hidden", name="status", value="UNFINISHED")
                 button.btn.btn-outline-secondary(type="submit" title="Restore")
                   i.bi.bi-arrow-counterclockwise.me-1
