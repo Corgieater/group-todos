@@ -21,7 +21,7 @@ export const GroupsPageFilter = createDomainErrorPageFilter({
     msg: () => 'Group not found',
   }),
 
-  ALREADY_MEMBER_ERROR: makeRedirectHandler(
+  ALREADY_MEMBER: makeRedirectHandler(
     (req, err: any) => {
       const id = err?.data?.groupId ?? req.params?.id;
       return `/groups/${id}`;
