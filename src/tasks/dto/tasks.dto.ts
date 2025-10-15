@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 import { TaskStatus, TaskStatusValues } from '../types/enum';
 import { TaskPriority } from '../types/enum';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 function toBool(val: any): boolean {
   if (typeof val === 'boolean') return val;
@@ -21,6 +21,12 @@ function toBool(val: any): boolean {
     .toLowerCase();
   if (['true', '1', 'on', 'yes', 'y'].includes(s)) return true;
   return false; // 其他都算 false（包含 '', '0', 'off', 'no'）
+}
+
+const TRUE_LIKE = new Set(['1', 'true', 'on', 'yes', 'y', 't']);
+function isTrueLike(v: unknown): boolean {
+  const s = String(v).trim().toLowerCase();
+  return TRUE_LIKE.has(s);
 }
 
 export class TasksAddDto {
@@ -47,12 +53,22 @@ export class TasksAddDto {
   )
   dueDate?: string;
 
-  // allDay：支援陣列；預設 true（你表單預設勾選）
-  @Transform(({ value }) =>
-    Array.isArray(value) ? value.map(toBool).some(Boolean) : toBool(value),
+  // check if this can be used
+  @Type(() => String)
+  @Transform(
+    ({ value }) => {
+      if (Array.isArray(value)) {
+        // hidden=0 + checkbox=1 → ['0','1'] → true
+        return value.some(isTrueLike);
+      }
+      // 單值 '0' → false；'1' → true；undefined/null → false
+      if (value == null) return false;
+      return isTrueLike(value);
+    },
+    { toClassOnly: true },
   )
   @IsBoolean()
-  allDay: boolean = false; // ← 和 UI 對齊
+  allDay!: boolean;
 
   // 規則 1：當 allDay=false，dueTime 必填且要 HH:mm
   @ValidateIf((o) => o.allDay === false)
