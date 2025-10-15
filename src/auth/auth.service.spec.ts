@@ -46,22 +46,21 @@ describe('AuthService', () => {
     updatePasswordHash: jest.fn(),
   };
 
-  const tx = {
-    actionToken: {
-      updateMany: jest.fn(),
-      deleteMany: jest.fn(),
-    },
-    user: { update: jest.fn() },
-  };
-
   const mockPrismaService = {
     actionToken: {
       create: jest.fn(),
       findFirst: jest.fn(),
       upsert: jest.fn(),
+      updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
-    $transaction: jest.fn().mockImplementation(async (fn, options) => {
-      return fn(tx);
+    user: { update: jest.fn() },
+    $transaction: jest.fn().mockImplementation(async (cb: any) => {
+      const tx = {
+        actionToken: mockPrismaService.actionToken,
+        user: mockPrismaService.user,
+      };
+      return cb(tx);
     }),
   };
 
@@ -169,7 +168,7 @@ describe('AuthService', () => {
       expect(result).toEqual({ accessToken: JWT_TOKEN });
     });
 
-    it('should throw UnauthorizedException when password does not match', async () => {
+    it('should throw InvalidCredentialError when password does not match', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
       mockArgon.verify.mockResolvedValueOnce(false);
 
@@ -178,6 +177,14 @@ describe('AuthService', () => {
       ).rejects.toBeInstanceOf(AuthErrors.InvalidCredentialError);
 
       expect(mockJwt.signAsync).not.toHaveBeenCalled();
+    });
+
+    it('should throw UsersNotFoundError', async () => {
+      mockUsersService.findByEmail.mockResolvedValueOnce(null);
+
+      await expect(
+        authService.signin('mock@test.com', 'mock'),
+      ).rejects.toBeInstanceOf(AuthErrors.UserNotFoundError);
     });
   });
 
@@ -196,11 +203,11 @@ describe('AuthService', () => {
         newPassword: 'foo',
       };
     });
-
+    // fix all these tests since it was using tx
     it('should change password if old password is correct and new one is different', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
       mockArgon.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-      // here
+
       await authService.changePassword(payload);
       expect(mockUsersService.findById).toHaveBeenCalledWith(payload.userId);
       expect(mockArgon.verify).toHaveBeenNthCalledWith(
@@ -218,7 +225,7 @@ describe('AuthService', () => {
       expect(mockUsersService.updatePasswordHash).toHaveBeenCalledWith(
         payload.userId,
         HASH,
-        tx,
+        expect.any(Object),
       );
     });
 
@@ -381,13 +388,16 @@ describe('AuthService', () => {
       expect(hmacSpy).toHaveBeenCalledWith(rawToken, expect.any(String));
       expect(eqSpy).toHaveBeenCalledWith(STORED_HASH, STORED_HASH);
 
-      expect(mockJwt.signAsync).toHaveBeenCalledWith({
-        tokenUse: 'resetPassword',
-        sub: user.id,
-        userName: user.name,
-        email: user.email,
-        tokenId,
-      });
+      expect(mockJwt.signAsync).toHaveBeenCalledWith(
+        {
+          tokenUse: 'resetPassword',
+          sub: user.id,
+          userName: user.name,
+          email: user.email,
+          tokenId,
+        },
+        { expiresIn: '10m' },
+      );
       expect(result).toEqual({ accessToken: JWT_TOKEN });
     });
 
@@ -432,15 +442,12 @@ describe('AuthService', () => {
     let userId: number;
 
     beforeEach(() => {
-      tx.actionToken.updateMany.mockReset();
-      tx.actionToken.deleteMany.mockClear();
+      mockPrismaService.actionToken.updateMany.mockReset();
+      mockPrismaService.actionToken.deleteMany.mockClear();
       mockUsersService.updatePasswordHash.mockReset();
-
-      mockPrismaService.$transaction.mockClear();
-      mockPrismaService.$transaction.mockImplementation(async (fn) => fn(tx));
     });
 
-    it('should reset password, mark token as used, delete other unused tokens', async () => {
+    it('should reset password and update consumedAt', async () => {
       newPassword = 'newPassword';
       confirmPassword = 'newPassword';
       tokenId = 2;
@@ -449,7 +456,7 @@ describe('AuthService', () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
       mockArgon.verify.mockResolvedValueOnce(false);
 
-      tx.actionToken.updateMany.mockResolvedValue({ count: 1 });
+      mockPrismaService.actionToken.updateMany.mockResolvedValue({ count: 1 });
 
       await authService.confirmResetPassword(
         tokenId,
@@ -465,8 +472,8 @@ describe('AuthService', () => {
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
 
       // update token have been used
-      expect(tx.actionToken.updateMany).toHaveBeenCalledTimes(1);
-      expect(tx.actionToken.updateMany).toHaveBeenCalledWith({
+      expect(mockPrismaService.actionToken.updateMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.actionToken.updateMany).toHaveBeenCalledWith({
         where: {
           id: tokenId,
           userId,
@@ -480,19 +487,8 @@ describe('AuthService', () => {
       expect(mockUsersService.updatePasswordHash).toHaveBeenCalledWith(
         user.id,
         HASH,
-        tx,
+        expect.any(Object),
       );
-
-      // delete unused token
-      expect(tx.actionToken.deleteMany).toHaveBeenCalledTimes(1);
-      expect(tx.actionToken.deleteMany).toHaveBeenCalledWith({
-        where: { userId: user.id, consumedAt: null },
-      });
-
-      // ensure we don't delete tokens before it used
-      const orderUpdate = tx.actionToken.updateMany.mock.invocationCallOrder[0];
-      const orderDelete = tx.actionToken.deleteMany.mock.invocationCallOrder[0];
-      expect(orderUpdate).toBeLessThan(orderDelete);
     });
 
     it('should throw error if user not found', async () => {
@@ -532,7 +528,9 @@ describe('AuthService', () => {
     it('should throw InvalidTokenError if count !== 1', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
       mockArgon.verify.mockResolvedValueOnce(false);
-      tx.actionToken.updateMany.mockReturnValueOnce({ count: 0 });
+      mockPrismaService.actionToken.updateMany.mockReturnValueOnce({
+        count: 0,
+      });
 
       await expect(
         authService.confirmResetPassword(

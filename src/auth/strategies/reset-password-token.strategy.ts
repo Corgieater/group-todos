@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
@@ -24,15 +24,22 @@ export class ResetPasswordTokenStrategy extends PassportStrategy(
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([cookieExtractor]),
       secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
+      audience: 'reset-password',
       ignoreExpiration: false,
     });
   }
 
-  validate(payload: ResetPasswordAccessTokenPayload) {
-    if (payload.tokenUse !== 'resetPassword' || payload.tokenId == null) {
-      throw AuthErrors.InvalidTokenError.reset({ cause: 'invalid tokenUse' });
+  async validate(payload: ResetPasswordAccessTokenPayload) {
+    if (payload.tokenUse !== 'resetPassword') {
+      throw new UnauthorizedException('Wrong token use');
     }
-    const { sub, ...rest } = payload;
-    return { userId: sub, ...rest };
+    if (!payload.sub) {
+      throw new UnauthorizedException('Malformed token');
+    }
+    return {
+      userId: Number(payload.sub),
+      email: payload.email,
+      userName: payload.userName,
+    };
   }
 }

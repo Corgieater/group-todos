@@ -95,7 +95,9 @@ describe('AuthController', () => {
       expect(res.cookie).toHaveBeenCalledWith('grouptodo_login', 'jwtToken', {
         httpOnly: true,
         sameSite: 'lax',
-        maxAge: mockConfigService.mock.get<number>('LOGIN_COOKIE_MAX_AGE'),
+        maxAge: mockConfigService.mock.getOrThrow<number>(
+          'LOGIN_COOKIE_MAX_AGE',
+        ),
       });
       expect(res.redirect).toHaveBeenCalledWith('/tasks/home');
     });
@@ -189,7 +191,7 @@ describe('AuthController', () => {
         expect.objectContaining({
           httpOnly: true,
           sameSite: 'lax',
-          maxAge: mockConfigService.mock.get<number>(
+          maxAge: mockConfigService.mock.getOrThrow<number>(
             'RESET_PASSWORD_COOKIE_MAX_AGE',
           ),
         }),
