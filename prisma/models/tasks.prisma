@@ -15,6 +15,9 @@ model Task {
   ownerId Int
   owner   User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  groupId Int?
+  group   Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
   title       String
   status      Status  @default(UNFINISHED)
   priority    Int     @default(3)
@@ -36,25 +39,30 @@ model Task {
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   @@index([ownerId, status, priority])
+  @@index([groupId, status, priority])
   @@index([dueAtUtc])
   @@index([allDay, allDayLocalDate])
 }
 
 model TaskAssignee {
-  taskId Int
-  userId Int
-
-  assignedAt DateTime         @default(now())
-  status     AssignmentStatus @default(PENDING)
-
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  user User @relation("AssigneeUser", fields: [userId], references: [id])
-
+  taskId       Int
+  assigneeId   Int
   assignedById Int?
-  assignedBy   User? @relation("AssignerUser", fields: [assignedById], references: [id])
 
-  @@id([taskId, userId])
-  @@index([userId, status])
+  status AssignmentStatus @default(PENDING)
+  reason String?
+
+  assignedAt  DateTime  @default(now())
+  acceptedAt  DateTime? @db.Timestamptz(6)
+  declinedAt  DateTime? @db.Timestamptz(6)
+  completedAt DateTime? @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignee   User  @relation("AssigneeUser", fields: [assigneeId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("AssignedByUser", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([taskId, assigneeId])
+  @@index([assigneeId, status])
   @@index([assignedAt])
 }

@@ -8,11 +8,11 @@ model User {
   issuedTokens ActionToken[] @relation("IssuedTokens")
   Task         Task[]
 
-  assignedTasks TaskAssignee[] @relation("AssigneeUser")
+  assignedTasks  TaskAssignee[] @relation("AssigneeUser")
+  delegatedTasks TaskAssignee[] @relation("AssignedByUser")
 
-  delegatedTasks TaskAssignee[] @relation("AssignerUser")
-  Group          Group[]
-  GroupMember    GroupMember[]
+  Group       Group[]
+  GroupMember GroupMember[]
 
   @@index([timeZone])
 }

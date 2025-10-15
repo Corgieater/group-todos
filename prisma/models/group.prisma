@@ -11,6 +11,7 @@ model Group {
   owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   members      GroupMember[]
   actionTokens ActionToken[]
+  groupTasks   Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
