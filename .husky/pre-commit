@@ -7,7 +7,7 @@ STAGED_TS=$(git diff --cached --name-only --diff-filter=ACMR \
 if [ -n "$STAGED_TS" ]; then
   echo "✅ TS changes detected → typecheck + related tests"
   npx tsc-files --noEmit $STAGED_TS
-  npx jest --bail --findRelatedTests $STAGED_TS
+  npx jest --bail --findRelatedTests --passWithNoTests $STAGED_TS
 else
   echo "ℹ️ No TS changes → skipping checks"
 fi

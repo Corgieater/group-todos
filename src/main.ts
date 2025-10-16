@@ -69,7 +69,7 @@ async function bootstrap() {
   app.use((req, res, next) => {
     if (
       allowBypass &&
-      req.headers['x-csrf-bypass'] === process.env.BYPASS_CODE && // test bypass
+      req.headers['x-csrf-bypass'] === process.env.BYPASS_CODE && // manual test bypass
       process.env.NODE_ENV !== 'production'
     ) {
       return next(); // skip CSRF
