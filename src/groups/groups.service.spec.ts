@@ -20,18 +20,8 @@ import { AuthService } from 'src/auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 
-describe('GroupService', () => {
-  let groupsService: GroupsService;
-
-  const mockConfigService = createMockConfig();
-  const user: UsersModel = createMockUser();
-
-  const mockUsersService = {
-    findByIdOrThrow: jest.fn(),
-    findByEmail: jest.fn(),
-  };
-
-  const mockPrismaService = {
+function createMockPrisma() {
+  const prisma: any = {
     group: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -55,14 +45,24 @@ describe('GroupService', () => {
       findFirst: jest.fn(),
       updateMany: jest.fn(),
     },
-    $transaction: jest.fn().mockImplementation(async (cb: any) => {
-      const tx = {
-        group: mockPrismaService.group,
-        actionToken: mockPrismaService.actionToken,
-        groupMember: mockPrismaService.groupMember,
-      };
-      return cb(tx);
-    }),
+    $transaction: jest.fn(),
+  };
+
+  prisma.$transaction.mockImplementation(async (cb: any) => cb(prisma));
+
+  return prisma;
+}
+
+describe('GroupService', () => {
+  let groupsService: GroupsService;
+  let mockPrismaService: ReturnType<typeof createMockPrisma>;
+
+  const mockConfigService = createMockConfig();
+  const user: UsersModel = createMockUser();
+
+  const mockUsersService = {
+    findByIdOrThrow: jest.fn(),
+    findByEmail: jest.fn(),
   };
 
   const mockMailService = {
@@ -85,7 +85,8 @@ describe('GroupService', () => {
     updatedAt: new Date('2025-09-01T13:02:00.549Z'),
   };
 
-  beforeAll(async () => {
+  beforeEach(async () => {
+    mockPrismaService = createMockPrisma();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GroupsService,
@@ -98,9 +99,6 @@ describe('GroupService', () => {
     }).compile();
 
     groupsService = module.get<GroupsService>(GroupsService);
-  });
-
-  beforeEach(() => {
     jest.clearAllMocks();
     mockPrismaService.group.findUnique.mockResolvedValue(group);
   });
@@ -1033,11 +1031,6 @@ describe('GroupService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('checkIfMember', () => {
-    beforeEach(() => {
-      // NOTE:
-      // if this deleted, groupMember.findUnique will be polluted and the second test will fail
-      mockPrismaService.groupMember.findUnique.mockReset();
-    });
     it('should pass', async () => {
       mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
         userId: 1,
