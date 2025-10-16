@@ -1027,4 +1027,34 @@ describe('GroupService', () => {
       expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // checkIfMember
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('checkIfMember', () => {
+    beforeEach(() => {
+      // NOTE:
+      // if this deleted, groupMember.findUnique will be polluted and the second test will fail
+      mockPrismaService.groupMember.findUnique.mockReset();
+    });
+    it('should pass', async () => {
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
+        userId: 1,
+      });
+      await groupsService.checkIfMember(group.id, user.id);
+
+      expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 1, userId: 1 } },
+        select: { userId: true },
+      });
+    });
+
+    it('throws GroupNotFoundError when not member', async () => {
+      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
+      await expect(groupsService.checkIfMember(1, 1)).rejects.toBeInstanceOf(
+        GroupsErrors.GroupNotFoundError,
+      );
+    });
+  });
 });

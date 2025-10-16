@@ -16,6 +16,9 @@ import {
   KickOutMemberFromGroupDto,
   UpdateMemberRoleDto,
 } from './dto/groups.dto';
+import { TasksService } from 'src/tasks/tasks.service';
+import { TasksAddPayload } from 'src/tasks/types/tasks';
+import { GroupsErrors } from 'src/errors';
 
 describe('GroupsController', () => {
   let groupsController: GroupsController;
@@ -32,6 +35,11 @@ describe('GroupsController', () => {
     kickOutMember: jest.fn(),
     updateMemberRole: jest.fn(),
     leaveGroup: jest.fn(),
+    checkIfMember: jest.fn(),
+  };
+
+  const mockTasksService = {
+    createTask: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -47,7 +55,10 @@ describe('GroupsController', () => {
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GroupsController],
-      providers: [{ provide: GroupsService, useValue: mockGroupsService }],
+      providers: [
+        { provide: GroupsService, useValue: mockGroupsService },
+        { provide: TasksService, useValue: mockTasksService },
+      ],
     }).compile();
 
     groupsController = module.get<GroupsController>(GroupsController);
@@ -202,6 +213,56 @@ describe('GroupsController', () => {
         'Member already removed from group.',
       );
       expect(res.redirect).toHaveBeenCalledWith(`/groups/5`);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // createGroupTask
+  // ───────────────────────────────────────────────────────────────────────────────
+
+  describe('createGroupTask', () => {
+    const groupId = 5;
+    const dto = {
+      title: 'task',
+      allDay: true,
+    };
+    const payload: TasksAddPayload = {
+      title: 'task',
+      status: null,
+      priority: null,
+      description: null,
+      dueDate: null,
+      allDay: true,
+      dueTime: null,
+      location: null,
+      userId: 1,
+    };
+    it('should create group task', async () => {
+      await groupsController.createGroupTask(
+        req,
+        groupId,
+        currentUser,
+        dto,
+        res,
+      );
+
+      expect(mockGroupsService.checkIfMember).toHaveBeenCalledWith(5, 1);
+      expect(mockTasksService.createTask).toHaveBeenCalledWith(payload, 5);
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'success',
+        'Group task added.',
+      );
+      return res.redirect('/tasks/home');
+    });
+
+    it('should throw GroupNotFoundError', async () => {
+      mockGroupsService.checkIfMember.mockRejectedValueOnce(
+        GroupsErrors.GroupNotFoundError.byId(1, 5),
+      );
+      await expect(
+        groupsController.createGroupTask(req, groupId, currentUser, dto, res),
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
     });
   });
 });

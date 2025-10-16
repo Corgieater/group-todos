@@ -1,13 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
-import {
-  $Enums,
-  ActionTokenType,
-  type Group as GroupModel,
-  GroupRole,
-  Prisma,
-} from '@prisma/client';
+import { ActionTokenType, GroupRole, Prisma } from '@prisma/client';
 import {
   AuthErrors,
   GroupsErrors,
@@ -448,5 +442,16 @@ export class GroupsService {
         where: { groupId_userId: { groupId: id, userId: targetId } },
       });
     });
+  }
+
+  async checkIfMember(id: number, userId: number) {
+    const member = await this.prismaService.groupMember.findUnique({
+      where: { groupId_userId: { groupId: id, userId } },
+      select: { userId: true },
+    });
+
+    if (!member) {
+      throw GroupsErrors.GroupNotFoundError.byId(userId, id);
+    }
   }
 }

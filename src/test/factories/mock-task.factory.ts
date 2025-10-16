@@ -6,6 +6,7 @@ export function createMockTask(overrides: Partial<TaskModel> = {}): TaskModel {
   return {
     id: 1,
     ownerId: 1,
+    groupId: null,
     title: 'low test',
     status: TaskStatus.UNFINISHED,
     priority: TaskPriority.LOW,

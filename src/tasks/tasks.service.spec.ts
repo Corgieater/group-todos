@@ -34,11 +34,6 @@ describe('TasksService', () => {
     title: 'medium test',
     priority: TaskPriority.MEDIUM,
   });
-  const urgentTask: TaskModel = createMockTask({
-    id: 3,
-    title: 'urgent test',
-    priority: TaskPriority.URGENT,
-  });
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -135,6 +130,23 @@ describe('TasksService', () => {
         priority: TaskPriority.HIGH,
         allDay: false,
         dueAtUtc: new Date('2025-09-09T02:10:00.000Z'),
+      });
+    });
+
+    it('should create group task', async () => {
+      const groupId = 5;
+      await tasksService.createTask(payload, groupId);
+
+      const [{ data }] = mockPrismaService.task.create.mock.calls[0];
+      expect(data).toMatchObject({
+        title: 'task1',
+        description: null,
+        dueAtUtc: null,
+        allDayLocalDate: new Date('2025-09-09T00:00:00.000Z'),
+        allDay: true,
+        location: null,
+        ownerId: 1,
+        groupId: 5,
       });
     });
 

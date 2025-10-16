@@ -9,5 +9,6 @@ import { TasksPageController } from './tasks.page.controller';
   imports: [PrismaModule, UsersModule],
   providers: [TasksService],
   controllers: [TasksController, TasksPageController],
+  exports: [TasksService],
 })
 export class TasksModule {}

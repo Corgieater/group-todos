@@ -23,12 +23,18 @@ import {
 } from './dto/groups.dto';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
+import { TasksService } from 'src/tasks/tasks.service';
+import { TasksAddDto } from 'src/tasks/dto/tasks.dto';
+import { TasksAddPayload } from 'src/tasks/types/tasks';
 
 @Controller('/api/groups')
 @UseGuards(AccessTokenGuard)
 @UseFilters(GroupsPageFilter)
 export class GroupsController {
-  constructor(private groupsService: GroupsService) {}
+  constructor(
+    private groupsService: GroupsService,
+    private tasksService: TasksService,
+  ) {}
 
   @Post('new')
   async create(
@@ -122,5 +128,32 @@ export class GroupsController {
     await this.groupsService.kickOutMember(id, dto.memberId, user.userId);
     setSession(req, 'success', 'Member already removed from group.');
     res.redirect(`/groups/${id}`);
+  }
+
+  @Post(':id/tasks')
+  async createGroupTask(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Body() dto: TasksAddDto,
+    @Res() res: Response,
+  ) {
+    await this.groupsService.checkIfMember(id, user.userId);
+
+    const payload: TasksAddPayload = {
+      title: dto.title,
+      status: dto.status ?? null,
+      priority: dto.priority ?? null,
+      description: dto.description ?? null,
+      allDay: dto.allDay,
+      dueDate: dto.dueDate ?? null,
+      dueTime: dto.dueTime ?? null,
+      location: dto.location ?? null,
+      userId: user.userId,
+    };
+    await this.tasksService.createTask(payload, id);
+    setSession(req, 'success', 'Group task added.');
+    // TODO: this should be something like :id/groups/tasks
+    return res.redirect('/tasks/home');
   }
 }

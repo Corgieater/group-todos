@@ -15,7 +15,10 @@ export class TasksService {
     private usersService: UsersService,
   ) {}
 
-  async createTask(payload: TasksAddPayload): Promise<void> {
+  async createTask(
+    payload: TasksAddPayload,
+    groupId: number | null = null,
+  ): Promise<void> {
     const user = await this.usersService.findByIdOrThrow(payload.userId);
     let dueAtUtc: Date | null = null;
     let allDayLocalDate: Date | null = null;
@@ -52,6 +55,9 @@ export class TasksService {
     }
     if (payload.priority) {
       data['priority'] = payload.priority;
+    }
+    if (groupId) {
+      data['groupId'] = groupId;
     }
     await this.prismaService.task.create({ data });
   }

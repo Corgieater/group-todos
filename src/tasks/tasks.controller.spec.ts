@@ -46,6 +46,7 @@ describe('TasksController', () => {
 
     task = {
       id: 1,
+      groupId: null,
       ownerId: user.id,
       title: 'walk cat',
       status: TaskStatus.UNFINISHED,
