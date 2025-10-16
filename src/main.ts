@@ -12,6 +12,8 @@ import session from 'express-session';
 import { flashMessage } from './common/middleware/flash.middleware';
 import { UnauthorzedFilter } from './common/filters/unauthorized-redirect.filter';
 
+const allowBypass = process.env.ALLOW_DEV_CSRF_BYPASS === '1';
+
 const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
   getSecret: () => process.env.CSRF_SECRET!,
   // TODO:
@@ -64,7 +66,16 @@ async function bootstrap() {
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
 
-  app.use((req, res, next) => doubleCsrfProtection(req, res, next));
+  app.use((req, res, next) => {
+    if (
+      allowBypass &&
+      req.headers['x-csrf-bypass'] === process.env.BYPASS_CODE && // test bypass
+      process.env.NODE_ENV !== 'production'
+    ) {
+      return next(); // skip CSRF
+    }
+    return doubleCsrfProtection(req, res, next);
+  });
 
   app.use((req: any, _res, next) => {
     if (req.body && typeof req.body === 'object' && '_csrf' in req.body) {
