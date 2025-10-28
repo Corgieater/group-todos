@@ -20,10 +20,14 @@ jest.mock('src/common/helpers/util', () => ({
   })),
 }));
 import { buildGroupVM } from 'src/common/helpers/util';
+import { TasksService } from 'src/tasks/tasks.service';
 
 describe('GroupsPageController', () => {
   let groupsPageController: GroupsPageController;
   const mockGroupsService = { getGroupDetailsByMemberId: jest.fn() };
+  const mockTasksService = {
+    listGroupOpenTasksDueTodayNoneOrExpired: jest.fn(),
+  };
 
   // i think this should include member
   const group: GroupModel = {
@@ -52,7 +56,10 @@ describe('GroupsPageController', () => {
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GroupsPageController],
-      providers: [{ provide: GroupsService, useValue: mockGroupsService }],
+      providers: [
+        { provide: GroupsService, useValue: mockGroupsService },
+        { provide: TasksService, useValue: mockTasksService },
+      ],
     }).compile();
 
     groupsPageController =
