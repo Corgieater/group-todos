@@ -3,31 +3,35 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title #{groupName || 'Group'} Tasks
+    title Group Tasks – #{groupName || 'Group'}
     include ../partials/bootstrap
   body
-    // 訊息與導覽列
+    // partials
     include ../partials/message
     include ../partials/header
 
     main.container.py-4
       -
-        // Priority 配色（subtle + 邊框）
+        // Priority 樣式對應
         const prioBgMap = { 1:'bg-danger-subtle', 2:'bg-warning-subtle', 3:'bg-primary-subtle', 4:'bg-secondary-subtle' };
         const prioBorderMap = { 1:'border-danger', 2:'border-warning', 3:'border-primary', 4:'border-secondary' };
-        const cardClassForPrio = (p) => `${prioBgMap[p] || ''} ${prioBorderMap[p] || 'border-secondary'} border-2`;
+        const cardClassForPrio = (p) => `${prioBgMap[p]||''} ${prioBorderMap[p]||'border-secondary'} border-2`;
+
         const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
-        const totalTasks = safeLen(expired) + safeLen(today) + safeLen(none);
 
       // Header
       .row.mb-3
         .col
           h1.h4.mb-1 #{groupName || 'Group'} Tasks
-          small.text-muted Group ID: #{groupId}
-        .col-auto.ms-auto.text-end
-          span.badge.bg-primary-subtle.text-primary-emphasis.me-2 #{totalTasks}
+          p.text-muted.mb-0 Group ID: #{groupId}
+        .col-auto.text-end
+          //- 合計只算三個 bucket
+          -
+            const total = safeLen(expired) + safeLen(today) + safeLen(none);
+          span.badge.bg-primary-subtle.text-primary-emphasis.me-2 #{total}
           | tasks
 
+      // 快速操作（可依需要調整）
       .mb-3
         a.btn.btn-sm.btn-outline-primary(href=`/groups/${groupId}/tasks/new`)
           i.bi.bi-plus-lg.me-1
@@ -50,14 +54,15 @@ html(lang="en")
                       method="POST"
                     )
                       if typeof csrfToken !== 'undefined'
-                        input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="FINISHED")
+                        input(type="hidden" name="_csrf" value=csrfToken)
+                      input(type="hidden" name="status" value="FINISHED")
                       button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
                         i.bi.bi-check2-circle.me-1
                         | Done
                   .card-body
                     h3.h6.card-title.mb-1
                       a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
+                    // 時間顯示
                     if task.allDay
                       if task.dueLabel
                         small.text-muted.d-block All-day: #{task.dueLabel}
@@ -91,8 +96,8 @@ html(lang="en")
                       method="POST"
                     )
                       if typeof csrfToken !== 'undefined'
-                        input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="FINISHED")
+                        input(type="hidden" name="_csrf" value=csrfToken)
+                      input(type="hidden" name="status" value="FINISHED")
                       button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
                         i.bi.bi-check2-circle.me-1
                         | Done
@@ -132,16 +137,16 @@ html(lang="en")
                       method="POST"
                     )
                       if typeof csrfToken !== 'undefined'
-                        input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="FINISHED")
+                        input(type="hidden" name="_csrf" value=csrfToken)
+                      input(type="hidden" name="status" value="FINISHED")
                       button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
                         i.bi.bi-check2-circle.me-1
                         | Done
                   .card-body
-                    h3.h6.card-title.mb-0
+                    h3.h6.card-title.mb-1
                       a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
                     if task.description
-                      p.small.text-muted.mt-1.mb-0.text-truncate(title=task.description) ✒️ #{task.description}
+                      p.mb-0.small.text-muted.text-truncate(title=task.description) ✒️ #{task.description}
                     if task.location
                       small.text-muted.d-block.mt-1.text-truncate 📍 #{task.location}
         else

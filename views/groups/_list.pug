@@ -20,4 +20,5 @@ mixin GroupList(items)
                 a.text-decoration-none(href=`/groups/${g.id}`)= g.name
               td.text-end
                 a.btn.btn-sm.btn-outline-secondary.me-2(href=`/groups/${g.id}`) View
+                a.btn.btn-sm.btn-outline-success.me-2(href=`/groups/${g.id}/tasks`) Tasks
                 a.btn.btn-sm.btn-outline-primary(href=`/groups/${g.id}/edit`) Edit
