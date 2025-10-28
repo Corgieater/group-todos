@@ -30,24 +30,61 @@ export class TasksPageController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    const [todayUndatedTasksRaw, expiredTasksRaw] = await Promise.all([
-      this.tasksService.getUnfinishedTasksTodayOrNoDueDate(user.userId),
-      this.tasksService.getExpiredTasks(user.userId),
-    ]);
+    const { items, bounds } =
+      await this.tasksService.listOpenTasksDueTodayNoneOrExpired(user.userId);
+    const tasks = items;
+    const { startUtc, endUtc, startOfTodayUtc, todayDateOnlyUtc } = bounds;
 
-    const todayUndatedTasks = todayUndatedTasksRaw.map((t) =>
-      buildTaskVM(t, user.timeZone),
-    );
+    type TaskVM = (typeof tasks)[number];
+    type Buckets = { expired: TaskVM[]; today: TaskVM[]; none: TaskVM[] };
+    const buckets: Buckets = { expired: [], today: [], none: [] };
 
-    const expiredTasks = expiredTasksRaw.map((t) =>
-      buildTaskVM(t, user.timeZone),
-    );
+    for (const t of tasks) {
+      const isExpired =
+        (t.dueAtUtc && t.dueAtUtc < startOfTodayUtc) ||
+        (t.allDayLocalDate && t.allDayLocalDate < todayDateOnlyUtc);
+
+      if (isExpired) {
+        buckets.expired.push(t);
+        continue;
+      }
+
+      const isToday =
+        (t.dueAtUtc && t.dueAtUtc >= startUtc && t.dueAtUtc <= endUtc) ||
+        (t.allDayLocalDate && +t.allDayLocalDate === +todayDateOnlyUtc);
+
+      if (isToday) {
+        buckets.today.push(t);
+        continue;
+      }
+
+      const isNone = !t.dueAtUtc && !t.allDayLocalDate;
+      if (isNone) {
+        buckets.none.push(t);
+        continue;
+      }
+    }
+
+    const ts = (d: Date | null | undefined) =>
+      d ? d.getTime() : Number.POSITIVE_INFINITY;
+
+    const sortByDay = (a: TaskVM, b: TaskVM) =>
+      Number(b.allDay) - Number(a.allDay) ||
+      ts(a.allDayLocalDate) - ts(b.allDayLocalDate) ||
+      ts(a.dueAtUtc) - ts(b.dueAtUtc);
+
+    const sortByNone = (a: TaskVM, b: TaskVM) =>
+      ts(a.createdAt) - ts(b.createdAt);
+
+    buckets.today.sort(sortByDay);
+    buckets.expired.sort(sortByDay);
+    buckets.none.sort(sortByNone);
 
     return res.render('tasks/home', {
       name: user.userName,
-      expiredTasks,
-      todayUndatedTasks,
-      totalTasks: todayUndatedTasks.length + expiredTasks.length,
+      today: buckets.today,
+      expired: buckets.expired,
+      none: buckets.none,
     });
   }
 
