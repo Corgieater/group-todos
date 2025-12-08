@@ -1,6 +1,6 @@
 enum Status {
-  UNFINISHED
-  FINISHED
+  OPEN
+  CLOSED
   ARCHIVED
 }
 
@@ -8,6 +8,12 @@ enum AssignmentStatus {
   PENDING
   ACCEPTED
   DECLINED
+  COMPLETED
+}
+
+enum CompletionPolicy {
+  ALL_ASSIGNEES
+  ANY_ASSIGNEE
 }
 
 model Task {
@@ -19,7 +25,7 @@ model Task {
   group   Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   title       String
-  status      Status  @default(UNFINISHED)
+  status      Status  @default(OPEN)
   priority    Int     @default(3)
   description String?
   location    String?
@@ -37,6 +43,13 @@ model Task {
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  completionPolicy CompletionPolicy @default(ALL_ASSIGNEES)
+  closedAt         DateTime?
+  closedById       Int?
+  closedReason     String?
+
+  closedWithOpenAssignees Boolean @default(false)
 
   @@index([ownerId, status, priority])
   @@index([groupId, status, priority])
