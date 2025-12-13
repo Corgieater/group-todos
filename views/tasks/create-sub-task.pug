@@ -3,41 +3,57 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title Create Task
+    // 1. 頁面標題修改
+    title Create SubTask
     include ../partials/bootstrap
   body
-    // 上方訊息（沿用你的 partial）
     include ../partials/message
     include ../partials/header
 
     // 內容
     .container.py-4
-      h1.h3.mb-3 Create Task
+      // 標題顯示父任務 ID (假設從後端傳入 parentTaskTitle)
+      h1.h3.mb-3 Create SubTask for: #{parentTaskTitle}
 
       .card.shadow-sm
         .card-body
-          //- 後端傳入的 form（可選）用來在驗證失敗時回填
           -
-            // 用唯一名稱，避免與 partial 內變數衝突
+            // 後端傳入的 form（可選）用來在驗證失敗時回填
             const __createForm = (typeof form === 'object' && form) ? form : {};
             const __todayISO = new Date().toISOString().slice(0,10);
             const __allDayChecked = (__createForm && __createForm.allDay != null)
               ? ['true','on','1','yes'].includes(String(__createForm.allDay).toLowerCase())
               : true;
 
-          form(action="/api/tasks", method="POST")
-              input(type="hidden" name="_csrf" value=csrfToken) 
-              .row.g-3
+          // 2. 表單 Action 假設指向 /api/subtasks/:parentTaskId
+          // ⚠️ 注意: 您可能需要調整您的後端路由來接收這個 POST 請求
+          form(action=`/api/tasks/${parentTaskId}/subtasks`, method="POST")
+            input(type="hidden" name="_csrf" value=csrfToken) 
+            
+            // 3. 隱藏欄位：傳遞 parentTaskId (必填)
+            // 假設 parentTaskId 變數從後端渲染時傳入
+            if parentTaskId
+              input(type="hidden" name="parentTaskId" value=parentTaskId)
+            else
+              // 錯誤處理：如果沒有父任務 ID 則顯示錯誤或禁止提交
+              p.alert.alert-danger 錯誤：找不到父任務 ID。
+
+            // ⚠️ 備註: actorId 應該在後端從 Session/JWT/Cookie 中獲取，不應該通過表單傳遞。
+            // 如果您的後端需要它，可以考慮在這裡加入隱藏欄位，但通常不建議。
+
+            .row.g-3
+              // Title (不變)
               .col-12
                 label.form-label(for="title") Title
                 input#title.form-control(
                   type="text"
                   name="title"
                   required
-                  value=(__createForm.title || 'walk cat')
-                  placeholder="e.g. Walk cat"
+                  value=(__createForm.title || '')
+                  placeholder="e.g. Call client"
                 )
 
+              // Description (不變)
               .col-12
                 label.form-label(for="description") Description
                 input#description.form-control(
@@ -47,6 +63,7 @@ html(lang="en")
                   placeholder="Optional notes"
                 )
 
+              // Due date
               .col-md-6
                 label.form-label(for="dueDate") Due date
                 input#dueDate.form-control(
@@ -56,6 +73,7 @@ html(lang="en")
                   min=__todayISO
                 )
 
+              // All-day Checkbox
               .col-md-6
                 .form-check.mt-4
                   input(type="hidden" name="allDay" value="0")
@@ -67,7 +85,7 @@ html(lang="en")
                   )
                   label.form-check-label(for="allDay") All-day
 
-              //- 時間（可被 All day 停用）
+              // Time (可被 All day 停用)
               .col-md-6#timeRow
                 label.form-label(for="dueTime") Time
                 input#dueTime.form-control(
@@ -76,6 +94,7 @@ html(lang="en")
                   value=(__createForm.dueTime || '')
                 )
 
+              // Location
               .col-md-6
                 label.form-label(for="location") Location
                 input#location.form-control(
@@ -84,7 +103,8 @@ html(lang="en")
                   value=(__createForm.location || '')
                   placeholder="Where is it?"
                 )
-
+              
+              // Priority
               .col-md-6
                 label.form-label(for="priority") Priority
                 select#priority.form-select(name="priority")
@@ -92,14 +112,26 @@ html(lang="en")
                   option(value="2" selected=(String(__createForm.priority)==='2')) High
                   option(value="3" selected=(!__createForm.priority || String(__createForm.priority)==='3')) Medium
                   option(value="4" selected=(String(__createForm.priority)==='4')) Low
-              .d-flex.flex-column.flex-md-row.justify-content-end.gap-2.mt-3
-                a.btn.btn-outline-secondary.px-4(href="/tasks/list?status=UNFINISHED") Cancel
-                button#submitBtn.btn.btn-primary.px-4(type="submit")
-                  span#submitSpinner.spinner-border.spinner-border-sm.me-2.d-none(role="status" aria-hidden="true")
-                  i.bi.bi-check2-circle.me-1
-                  | Create Task
+              
+              // Status (新增：子任務狀態通常預設 OPEN，但若允許使用者設定則保留)
+              // 由於您的 SubTaskAddPayload 包含 status，我們保留選項
+              // 假設您有一個 TaskStatus 的 Enum 或對應值
+              // .col-md-6
+              //   label.form-label(for="status") Status
+              //   select#status.form-select(name="status")
+              //     option(value="OPEN" selected=(!__createForm.status || String(__createForm.status)==='OPEN')) Open
+              //     option(value="CLOSED" selected=(String(__createForm.status)==='CLOSED')) Closed
+              //     option(value="ARCHIVED" selected=(String(__createForm.status)==='ARCHIVED')) Archived
 
-    // JS（維持你原本的互動行為）
+
+              .d-flex.flex-column.flex-md-row.justify-content-end.gap-2.mt-3
+                a.btn.btn-outline-secondary.px-4(href=`/tasks/${parentTaskId}`) Back to Task
+                button#submitBtn.btn.btn-primary.px-4(type="submit" disabled=!parentTaskId)
+                  span#submitSpinner.spinner-border.spinner-border-sm.me-2.d-none(role="status" aria-hidden="true")
+                  i.bi.bi-plus-circle.me-1
+                  | Create SubTask
+
+    // JS（維持原本的互動行為）
     script.
       const allDay = document.getElementById('allDay');
       const timeRow = document.getElementById('timeRow');
@@ -131,7 +163,7 @@ html(lang="en")
       updateTimeMin();
 
       (function () {
-      const formEl = document.querySelector('form[action="/api/tasks"]');
+      const formEl = document.querySelector('form[action^="/api/tasks"]');
       const submitBtn = document.getElementById('submitBtn');
       const spinner = document.getElementById('submitSpinner');
       if (!formEl || !submitBtn || !spinner) return;

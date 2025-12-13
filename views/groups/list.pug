@@ -1,0 +1,84 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title My Groups
+    include ../partials/bootstrap
+    // 引入 Bootstrap Icons (如果尚未在 bootstrap partial 中包含)
+    link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css") 
+
+  body
+    // 區塊 1: 導航列 (Navbar)
+    include ../partials/header
+
+    // 區塊 2: 訊息及標頭 (Header)
+    .container
+      include ../partials/message
+
+    // 區塊 3: 主要內容
+    .container.py-4
+      
+      // --- My Groups 區塊 ---
+      hr.my-4
+      
+      // 標題及新增按鈕
+      .hstack.gap-3.justify-content-between.mb-2
+        .d-flex.align-items-center.gap-2
+          h2.h5.mb-0 👥 My Groups
+          
+          // 群組計數
+          - const groupRows = (groups || []).map(it => it?.group ? it.group : it)
+          if (groupRows.length)
+            span.badge.text-bg-secondary.rounded-pill #{groupRows.length}
+        
+        // 新增群組按鈕
+        a.btn.btn-sm.btn-primary(href="/groups/new")
+          i.bi.bi-plus-lg.me-1
+          | New Group
+
+      // --- 群組清單渲染邏輯 (原 _list.pug 內容) ---
+      if !groupRows.length
+        // 空狀態提示
+        .border.border-2.border-dashed.rounded-3.p-5.text-center.text-muted
+          i.bi.bi-people.fs-1.d-block.mb-2
+          div.mb-2 No groups yet. Create one to get started!
+      else
+        // 群組表格
+        .table-responsive
+          table.table.table-hover.align-middle
+            caption.visually-hidden List of my groups
+            thead
+              tr
+                th.w-75 Name
+                th.text-end Actions
+            tbody
+              each g, idx in groupRows
+                tr
+                  // 群組名稱 (可點擊進入詳情)
+                  td
+                    a.text-decoration-none(href=`/groups/${g.id}`)
+                      i.bi.bi-folder2.me-2
+                      | #{g.name}
+                  
+                  // 操作按鈕
+                  td.text-end
+                    a.btn.btn-sm.btn-outline-secondary.me-2(href=`/groups/${g.id}`) 
+                      i.bi.bi-eye
+                      | View
+                    
+                    a.btn.btn-sm.btn-outline-success.me-2(href=`/groups/${g.id}/tasks`) 
+                      i.bi.bi-list-task
+                      | Tasks
+                    
+                    a.btn.btn-sm.btn-outline-primary(href=`/groups/${g.id}/edit`) 
+                      i.bi.bi-pencil
+                      | Edit
+      
+      // --- Task List 區塊 (如果需要，可以在此添加) ---
+      // hr.my-4
+      // h2.h5.mb-3 My Tasks
+      // // 任務列表內容...
+
+    // 引入 Bootstrap JS
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

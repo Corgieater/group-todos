@@ -1,21 +1,33 @@
 header.site-header
   // NAVBAR：淺色底 + 主色品牌字
+  // 使用 data-bs-theme="light" 確保顏色適用淺色背景
   nav.navbar.navbar-expand-md.bg-body.border-bottom.shadow-sm(data-bs-theme="light")
     .container
-      a.navbar-brand.text-primary(href="/tasks/home") Group Todos
+      a.navbar-brand.text-primary(href="/tasks/home") ✒️ Group Todos
 
       button.navbar-toggler(type="button", data-bs-toggle="collapse", data-bs-target="#mainNav", aria-controls="mainNav", aria-expanded="false", aria-label="Toggle navigation")
         span.navbar-toggler-icon
 
       #mainNav.collapse.navbar-collapse
-        // 左側
+        // 左側導航連結
         ul.navbar-nav.me-auto
           li.nav-item
-            a.nav-link(href="/users-home") User Page
+            a.nav-link(href="/users-home") 🏠User Page
           li.nav-item
-            a.nav-link(href="/tasks/create") Add New Task
-        // 右側
+            a.nav-link(href="/tasks/home") 📋My Tasks
+          li.nav-item
+            a.nav-link(href="/groups/list") 👥My Groups
+          li.nav-item
+            a.nav-link(href="/tasks/status/CLOSED") 🧾My Archive
+            
+        // 右側導航連結 & 登出
         ul.navbar-nav.ms-auto
+          
+          // 登出按鈕 (整合自您的程式碼)
           li.nav-item
-            a.nav-link(href="/tasks/status/FINISHED") Overall
-
+            // 使用內聯樣式調整按鈕與導航列的間距，使其看起來像 nav-link
+            form.d-flex.align-items-center.h-100(action="/api/auth/signout", method="POST")
+              input(type="hidden" name="_csrf" value=csrfToken) 
+              button.btn.btn-sm.btn-outline-danger.my-1(type="submit")
+                i.bi.bi-box-arrow-right.me-1
+                | Sign out

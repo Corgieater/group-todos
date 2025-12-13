@@ -3,38 +3,42 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title Create Task
+    title Create Group Task
     include ../partials/bootstrap
   body
-    // 上方訊息（沿用你的 partial）
     include ../partials/message
     include ../partials/header
 
-    // 內容
     .container.py-4
-      h1.h3.mb-3 Create Task
+      // 頁首
+      .d-flex.align-items-center.justify-content-between.mb-3
+        h1.h3.mb-0 Create Group Task
+        if group && group.name
+          span.badge.text-bg-secondary #{group.name}
 
       .card.shadow-sm
         .card-body
-          //- 後端傳入的 form（可選）用來在驗證失敗時回填
           -
-            // 用唯一名稱，避免與 partial 內變數衝突
-            const __createForm = (typeof form === 'object' && form) ? form : {};
+            // 後端可傳：group, csrfToken, form(驗證失敗回填), members(可選，用於同時指派)
+            const __form = (typeof form === 'object' && form) ? form : {};
             const __todayISO = new Date().toISOString().slice(0,10);
-            const __allDayChecked = (__createForm && __createForm.allDay != null)
-              ? ['true','on','1','yes'].includes(String(__createForm.allDay).toLowerCase())
-              : true;
+            const __allDayChecked =
+              __form.allDay != null
+                ? ['true','on','1','yes'].includes(String(__form.allDay).toLowerCase())
+                : true;
 
-          form(action="/api/tasks", method="POST")
-              input(type="hidden" name="_csrf" value=csrfToken) 
-              .row.g-3
+          // 重要：action 依群組 id //see what going on
+          form(action=actionPath, method="POST")
+            input(type="hidden" name="_csrf" value=csrfToken)
+
+            .row.g-3
               .col-12
                 label.form-label(for="title") Title
                 input#title.form-control(
                   type="text"
                   name="title"
                   required
-                  value=(__createForm.title || 'walk cat')
+                  value=(__form.title || '')
                   placeholder="e.g. Walk cat"
                 )
 
@@ -43,7 +47,7 @@ html(lang="en")
                 input#description.form-control(
                   type="text"
                   name="description"
-                  value=(__createForm.description || '')
+                  value=(__form.description || '')
                   placeholder="Optional notes"
                 )
 
@@ -52,12 +56,13 @@ html(lang="en")
                 input#dueDate.form-control(
                   type="date"
                   name="dueDate"
-                  value=(__createForm.dueDate || '')
+                  value=(__form.dueDate || '')
                   min=__todayISO
                 )
 
               .col-md-6
                 .form-check.mt-4
+                  // 取消勾選時也會送出 0
                   input(type="hidden" name="allDay" value="0")
                   input#allDay.form-check-input(
                     type="checkbox"
@@ -67,13 +72,13 @@ html(lang="en")
                   )
                   label.form-check-label(for="allDay") All-day
 
-              //- 時間（可被 All day 停用）
+              // 時間（全日會停用）
               .col-md-6#timeRow
                 label.form-label(for="dueTime") Time
                 input#dueTime.form-control(
                   type="time"
                   name="dueTime"
-                  value=(__createForm.dueTime || '')
+                  value=(__form.dueTime || '')
                 )
 
               .col-md-6
@@ -81,25 +86,41 @@ html(lang="en")
                 input#location.form-control(
                   type="text"
                   name="location"
-                  value=(__createForm.location || '')
+                  value=(__form.location || '')
                   placeholder="Where is it?"
                 )
 
               .col-md-6
                 label.form-label(for="priority") Priority
                 select#priority.form-select(name="priority")
-                  option(value="1" selected=(String(__createForm.priority)==='1')) Urgent
-                  option(value="2" selected=(String(__createForm.priority)==='2')) High
-                  option(value="3" selected=(!__createForm.priority || String(__createForm.priority)==='3')) Medium
-                  option(value="4" selected=(String(__createForm.priority)==='4')) Low
-              .d-flex.flex-column.flex-md-row.justify-content-end.gap-2.mt-3
-                a.btn.btn-outline-secondary.px-4(href="/tasks/list?status=UNFINISHED") Cancel
-                button#submitBtn.btn.btn-primary.px-4(type="submit")
-                  span#submitSpinner.spinner-border.spinner-border-sm.me-2.d-none(role="status" aria-hidden="true")
-                  i.bi.bi-check2-circle.me-1
-                  | Create Task
+                  option(value="1" selected=(String(__form.priority)==='1')) Urgent
+                  option(value="2" selected=(String(__form.priority)==='2')) High
+                  option(value="3" selected=(!__form.priority || String(__form.priority)==='3')) Medium
+                  option(value="4" selected=(String(__form.priority)==='4')) Low
 
-    // JS（維持你原本的互動行為）
+              // 可選：同時指派成員（若後端傳入 members 才顯示）
+              if canAssign && members && members.length
+                .col-12
+                  label.form-label(for="assignees") Assign to members (optional)
+                  select#assignees.form-select(name="assignees[]" multiple size=Math.min(6, members.length))
+                    each m in members
+                      -
+                        const sel = Array.isArray(__form['assignees[]'])
+                          ? __form['assignees[]'].map(String).includes(String(m.id))
+                          : (Array.isArray(__form.assignees)
+                              ? __form.assignees.map(String).includes(String(m.id))
+                              : false);
+                      option(value=m.id selected=sel)= `${m.name || m.email} (${m.email})`
+                  .form-text Hold Ctrl/Cmd to select multiple
+
+            .d-flex.flex-column.flex-md-row.justify-content-end.gap-2.mt-3
+              a.btn.btn-outline-secondary.px-4(href=backPath) Cancel
+              button#submitBtn.btn.btn-primary.px-4(type="submit")
+                span#submitSpinner.spinner-border.spinner-border-sm.me-2.d-none(role="status" aria-hidden="true")
+                i.bi.bi-check2-circle.me-1
+                | Create Task
+
+    // 互動：沿用你的行為（全日切換、time 最小值、提交動畫）
     script.
       const allDay = document.getElementById('allDay');
       const timeRow = document.getElementById('timeRow');
@@ -131,15 +152,15 @@ html(lang="en")
       updateTimeMin();
 
       (function () {
-      const formEl = document.querySelector('form[action="/api/tasks"]');
-      const submitBtn = document.getElementById('submitBtn');
-      const spinner = document.getElementById('submitSpinner');
-      if (!formEl || !submitBtn || !spinner) return;
+        const formEl = document.querySelector('form[action^="/api/groups/"][action$="/tasks"]');
+        const submitBtn = document.getElementById('submitBtn');
+        const spinner = document.getElementById('submitSpinner');
+        if (!formEl || !submitBtn || !spinner) return;
 
-      formEl.addEventListener('submit', function () {
-        submitBtn.disabled = true;
-        spinner.classList.remove('d-none');
-      });
+        formEl.addEventListener('submit', function () {
+          submitBtn.disabled = true;
+          spinner.classList.remove('d-none');
+        });
       })();
 
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")

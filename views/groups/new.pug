@@ -41,8 +41,7 @@ html(lang="en")
 
               // Form
               form(method="post", action="/api/groups/new", novalidate)
-                //- 如果有 CSRF：
-                //- input(type="hidden", name="_csrf", value=csrfToken)
+                input(type="hidden", name="_csrf", value=csrfToken)
 
                 .mb-3
                   label.form-label(for="name")

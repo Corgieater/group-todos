@@ -3,84 +3,339 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title= title
+    title= title || 'Task Details'
     include ../partials/bootstrap
+    link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css") 
   body
-    // 上方訊息（沿用你的 partial）
+    // 上方訊息
     include ../partials/message
-
     // 簡潔導覽列
-    nav.navbar.navbar-expand-md.bg-body.border-bottom
-      .container
-        a.navbar-brand(href="/tasks/home") Group Todos
-        #mainNav.collapse.navbar-collapse
-        ul.navbar-nav.ms-auto
-          li.nav-item
-            a.nav-link(href=`/tasks/${id}/edit`) Edit
+    include ../partials/header
 
-    // 內容
     main.container.py-4
+      -
+        // ===== Helpers / 旗標 =====
+        const prioColorMap = { 1: 'danger', 2: 'warning', 3: 'primary', 4: 'secondary' };
+        const statusColorMap = { 'OPEN': 'warning', 'CLOSED': 'success', 'ARCHIVED': 'secondary' };
+        const priorityClass = `text-bg-${prioColorMap[priority] || 'secondary'}`;
+        const statusClass = `text-bg-${statusColorMap[status] || 'secondary'}`;
+
+        const isGroup = typeof groupId !== 'undefined' && groupId !== null;
+        const hasAssignees = Array.isArray(assignees) && assignees.length > 0;
+
+        // controller 若有傳 canManage 則採用；否則 fallback isAdminish
+        const canManageFlag = (typeof canManage !== 'undefined') ? !!canManage : !!isAdminish;
+
+        // 產生 modal id（避免重複）
+        const forceCloseModalId = `forceCloseModal-${id}`;
+        const declineModalId = `declineModal-${id}`;
+
       .row.align-items-center.mb-3
         .col
-          // 計算顏色：priority 用數字、status 用字串
-          -
-            const prioColorMap = { 1: 'danger', 2: 'warning', 3: 'primary', 4: 'secondary' };
-            const statusColorMap = { 'UNFINISHED': 'warning', 'FINISHED': 'success', 'ARCHIVED': 'secondary' };
-            const priorityClass = `text-bg-${prioColorMap[priority] || 'secondary'}`;
-            const statusClass = `text-bg-${statusColorMap[status] || 'secondary'}`;
-
           h1.h3.mb-1= title
           .d-flex.flex-wrap.gap-2.mt-2
             span.badge(class=priorityClass) Priority: #{priorityLabel}
             span.badge(class=statusClass) Status: #{statusLabel}
+            if isGroup
+              span.badge.text-bg-info Group
+            else
+              span.badge.text-bg-secondary Personal
         .col-auto
-          // 動作區：Done / Restore + Edit
+          // ===== 右上角動作列 =====
           .d-flex.gap-2
-            if status !== 'FINISHED'
-              form(action=`/api/tasks/${id}/update/status`, method="POST")
-                input(type="hidden" name="_csrf" value=csrfToken) 
-                input(type="hidden", name="status", value="FINISHED")
-                button.btn.btn-success(type="submit" title="Mark as finished")
+
+            // --- 關閉 / 重新開啟 / 封存 ---
+            if status === 'OPEN' && canManageFlag
+              form(action=`/api/tasks/${id}/close`, method="POST")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                button.btn.btn-success(type="submit" title="Close task")
                   i.bi.bi-check2-circle.me-1
-                  | Done
-            else
-              form(action=`/api/tasks/${id}/update/status`, method="POST")
-                input(type="hidden" name="_csrf" value=csrfToken) 
-                input(type="hidden", name="status", value="UNFINISHED")
-                button.btn.btn-outline-secondary(type="submit" title="Restore")
+                  | Close
+
+              if isGroup && hasAssignees && isAdminish
+                button.btn.btn-outline-danger(
+                  type="button"
+                  title="Force close with reason"
+                  data-bs-toggle="modal"
+                  data-bs-target=`#${forceCloseModalId}`
+                )
+                  i.bi.bi-exclamation-triangle.me-1
+                  | Force Close
+
+            else if status === 'CLOSED' && canManageFlag
+              form(action=`/api/tasks/${id}/update/status`, method="POST", class="d-inline")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                input(type="hidden", name="status", value="ARCHIVED")
+                button.btn.btn-outline-secondary(type="submit" title="Archive")
+                  i.bi.bi-box-arrow-down.me-1
+                  | Archive
+              form(action=`/api/tasks/${id}/restore`, method="POST", class="d-inline")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                input(type="hidden", name="status", value="OPEN")
+                button.btn.btn-outline-primary(type="submit" title="Reopen")
                   i.bi.bi-arrow-counterclockwise.me-1
-                  | Restore
+                  | Reopen
 
-            a.btn.btn-primary(href=`/tasks/${id}/edit`) Edit
+            a.btn.btn-primary(href=`/tasks/${id}/edit`) Edit   
 
-        .card.shadow-sm
+      // ===== Task 主內容卡 =====
+      .card.shadow-sm.mb-3
+        .card-body
+          if description
+            p.mb-3= description
+          else
+            p.text-muted.fst-italic.mb-3 No description.
+
+          ul.list-group.list-group-flush
+            li.list-group-item
+              strong Due:&nbsp;
+              if dueLabel
+                | #{dueLabel}
+                if allDay
+                  span.badge.text-bg-warning.ms-2 All Day
+              else
+                span.text-muted Not set
+            li.list-group-item
+              strong Location:&nbsp;
+              if location
+                | #{location}
+              else
+                span.text-muted Not set
+            if isGroup && typeof groupName !== 'undefined'
+              li.list-group-item
+                strong Group:&nbsp; 
+                | #{groupName}
+            li.list-group-item
+              strong Created:&nbsp; #{createdLabel}
+            li.list-group-item
+              strong Updated:&nbsp; #{updatedLabel}
+
+      // ===== 子任務 (SubTasks) 區塊 [新增] =====
+      .card.shadow-sm.mb-3
+        .card-body
+          .d-flex.align-items-center.justify-content-between.mb-2
+            h2.h5.mb-0 Sub Tasks
+            // 新增子任務按鈕
+            if canManageFlag
+              a.btn.btn-sm.btn-primary(href=`/tasks/${id}/sub-tasks/create` title="Add a new subtask")
+                i.bi.bi-list-task.me-1
+                | New SubTask
+          
+          // 渲染子任務清單
+          // 假設 subTasks 變數從後端傳入
+          if Array.isArray(subTasks) && subTasks.length > 0
+            // [TODO: 渲染子任務列表]
+            p.text-muted.fst-italic (子任務列表將會在這裡顯示)
+          else
+            p.text-muted.fst-italic No sub tasks for this task.
+
+
+      // ===== 群組任務：Assignees 清單 =====
+      if isGroup
+        .card.shadow-sm.mb-3
           .card-body
-            if description
-              p.mb-3= description
+            h2.h6.mb-3 Assignees
+            if hasAssignees
+              table.table.table-sm.align-middle
+                thead
+                  tr
+                    th(scope="col") Member
+                    th(scope="col") Status
+                    th(scope="col") Assigned By
+                    th(scope="col") Assigned
+                    th(scope="col") Accepted
+                    th(scope="col") Updated
+                tbody
+                  each a in assignees
+                    -
+                      const stBadge =
+                        a.status === 'PENDING' ? 'secondary'
+                        : a.status === 'ACCEPTED' ? 'info'
+                        : a.status === 'DECLINED' ? 'warning'
+                        : a.status === 'COMPLETED' ? 'success'
+                        : 'secondary';
+
+                      const assigneeName = a.assignee?.name || null;
+                      const assigneeEmail = a.assignee?.email || null;
+                      const assignedByName = a.assignedBy?.name || null;
+                      const assignedByEmail = a.assignedBy?.email || null;
+
+                      const selfAssign = a.assignedById && a.assignedById === a.assigneeId;
+
+                      const assignedStr = (typeof a.assignedLabel !== 'undefined')
+                        ? a.assignedLabel
+                        : (a.assignedAt ? new Date(a.assignedAt).toLocaleString('zh-TW') : '');
+
+                      const acceptedStr = (typeof a.acceptedLabel !== 'undefined')
+                        ? a.acceptedLabel
+                        : (a.acceptedAt ? new Date(a.acceptedAt).toLocaleString('zh-TW') : '');
+
+                      const updatedStr = (typeof a.updatedLabel !== 'undefined')
+                        ? a.updatedLabel
+                        : (a.updatedAt ? new Date(a.updatedAt).toLocaleString('zh-TW') : '');
+
+                    tr
+                      // — Member —
+                      td
+                        if assigneeName
+                          | #{assigneeName}
+                          if assigneeEmail
+                            span.text-muted.ms-1 (#{assigneeEmail})
+                        else if assigneeEmail
+                          | #{assigneeEmail}
+                        else
+                          | User ##{a.assigneeId}
+
+                      // — Status —
+                      td
+                        span.badge(class=`text-bg-${stBadge}`)= a.status
+
+                      // — Assigned By —
+                      td
+                        if selfAssign
+                          | －
+                        else if assignedByName
+                          | #{assignedByName}
+                          if assignedByEmail
+                            span.text-muted.ms-1 (#{assignedByEmail})
+                        else if assignedByEmail
+                          | #{assignedByEmail}
+                        else
+                          span.text-muted —
+
+                      // — Assigned —
+                      td
+                        if assignedStr
+                          | #{assignedStr}
+                        else
+                          span.text-muted —
+
+                      // — Accepted —
+                      td
+                        if acceptedStr
+                          | #{acceptedStr}
+                        else
+                          span.text-muted —
+
+                      // — Updated —
+                      td
+                        if updatedStr
+                          | #{updatedStr}
+                        else
+                          span.text-muted —
             else
-              p.text-muted.fst-italic.mb-3 No description.
+              p.text-muted.fst-italic No assignees.
 
-            ul.list-group.list-group-flush
-              li.list-group-item
-                strong Due:&nbsp;
-                if dueLabel
-                  | #{dueLabel} 
-                  if allDay
-                    span.badge.text-bg-warning.ms-2 All Day
-                else
-                  span.text-muted Not set
-              li.list-group-item
-                strong Location:&nbsp;
-                if location
-                  | #{location}
-                else
-                  span.text-muted Not set
-              li.list-group-item
-                strong Created:&nbsp; #{createdLabel}
-              li.list-group-item
-                strong Updated:&nbsp; #{updatedLabel}
+            // ===== 自己的狀態操作（含自我指派 Join） =====
+            if isGroup && (viewerIsAssignee || allowSelfAssign)
+              -
+                const st = viewerAssigneeStatus || 'NONE';
+                const canAccept   = st === 'PENDING' || st === 'DECLINED' || st === 'NONE';
+                const canComplete = st === 'ACCEPTED';
+                const canDecline  = st === 'PENDING' || st === 'ACCEPTED';
 
-      // 返回連結（可選）
+                // 新增：可改悔/還原的條件
+                const canWithdrawToPending = st === 'ACCEPTED' || st === 'DECLINED';
+                const canReopenFromCompleted = st === 'COMPLETED' && status === 'OPEN'; // 任務還開著才能退回
+
+              hr
+              h3.h6.mb-2 Update my assignment status
+              .d-flex.flex-wrap.gap-2
+                // Accept / Join
+                if canAccept
+                  form(action=`/api/tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="status", value="ACCEPTED")
+                    button.btn.btn-outline-primary.btn-sm(type="submit" title=(st==='NONE' ? 'Join this task' : 'Accept assignment'))
+                      i.bi.bi-hand-thumbs-up.me-1
+                      = (st === 'NONE' ? 'Join' : 'Accept')
+
+                // Completed
+                if canComplete
+                  form(action=`/api/tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="status", value="COMPLETED")
+                    button.btn.btn-success.btn-sm(type="submit" title="Mark as completed")
+                      i.bi.bi-check2-circle.me-1
+                      | Completed
+
+                // Decline（reason modal）
+                if canDecline
+                  button.btn.btn-outline-warning.btn-sm(
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target=`#${declineModalId}`
+                    title="Decline with reason"
+                  )
+                    i.bi.bi-slash-circle.me-1
+                    | Decline
+
+                // 🔄 Withdraw / Clear decision → 回到 PENDING
+                if canWithdrawToPending
+                  form(action=`/api/tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="status", value="PENDING")
+                    button.btn.btn-outline-secondary.btn-sm(type="submit" title=(st==='ACCEPTED' ? 'Withdraw to pending' : 'Clear decision'))
+                      i.bi.bi-arrow-counterclockwise.me-1
+                      = (st === 'ACCEPTED' ? 'Withdraw' : 'Clear decision')
+
+                // ♻️ Reopen（完成 → 接受）
+                if canReopenFromCompleted
+                  form(action=`/api/tasks/${id}/restore`, method="POST", class="d-inline")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="status", value="ACCEPTED")
+                    button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen (back to accepted)")
+                      i.bi.bi-arrow-repeat.me-1
+                      | Reopen
+
+      // ===== Force Close Modal（只有群組 + 有 assignees + 管理者） =====
+      if isGroup && hasAssignees && isAdminish
+        .modal.fade(id=forceCloseModalId tabindex="-1" aria-labelledby=`${forceCloseModalId}-label` aria-hidden="true")
+          .modal-dialog
+            .modal-content
+              .modal-header
+                h5.modal-title(id=`${forceCloseModalId}-label`) Force Close Task
+                button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
+              form(action=`/api/tasks/${id}/close`, method="POST")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                input(type="hidden", name="force", value="1")
+                .modal-body
+                  p.mb-2 This will close the task even if not all assignees have completed.
+                  .mb-3
+                    label.form-label(for=`${forceCloseModalId}-reason`) Reason (required)
+                    textarea.form-control(id=`${forceCloseModalId}-reason` name="closedReason" rows="3" required placeholder="e.g. Out of scope / duplicated / emergency")
+                .modal-footer
+                  button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
+                  button.btn.btn-danger(type="submit") Force Close
+
+      // ===== Decline Reason Modal（群組 assignee 自己要 Decline 時） =====
+      if isGroup
+        .modal.fade(id=declineModalId tabindex="-1" aria-labelledby=`${declineModalId}-label` aria-hidden="true")
+          .modal-dialog
+            .modal-content
+              .modal-header
+                h5.modal-title(id=`${declineModalId}-label`) Decline Assignment
+                button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
+              form(action=`/api/tasks/${id}/update/assignee-status`, method="POST")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                input(type="hidden", name="status", value="DECLINED")
+                .modal-body
+                  .mb-3
+                    label.form-label(for=`${declineModalId}-reason`) Reason (optional)
+                    textarea.form-control(id=`${declineModalId}-reason` name="reason" rows="3" placeholder="Optional reason for declining")
+                .modal-footer
+                  button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
+                  button.btn.btn-warning(type="submit") Decline
+
       .mt-3
         a.link-secondary(href="/tasks/home") ← Back to all tasks
 

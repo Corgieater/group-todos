@@ -3,7 +3,7 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title #{groupName || 'Group'} Tasks
+    title Tasks
     include ../partials/bootstrap
   body
     // 訊息與導覽列
@@ -19,17 +19,21 @@ html(lang="en")
         const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
         const totalTasks = safeLen(expired) + safeLen(today) + safeLen(none);
 
+        const isOpen = (t) => t.status === 'OPEN';
+        const isClosed = (t) => t.status === 'CLOSED';
+        const isArchived = (t) => t.status === 'ARCHIVED';
+
       // Header
       .row.mb-3
         .col
-          h1.h4.mb-1 #{groupName || 'Group'} Tasks
-          small.text-muted Group ID: #{groupId}
+          h1.h4.mb-1 #{name ? `Hi, ${name}` : 'All Tasks'}
+          small.text-muted Your personal tasks
         .col-auto.ms-auto.text-end
           span.badge.bg-primary-subtle.text-primary-emphasis.me-2 #{totalTasks}
           | tasks
 
       .mb-3
-        a.btn.btn-sm.btn-outline-primary(href=`/groups/${groupId}/tasks/new`)
+        a.btn.btn-sm.btn-outline-primary(href="/tasks/create")
           i.bi.bi-plus-lg.me-1
           | New Task
 
@@ -44,26 +48,54 @@ html(lang="en")
             each task in expired
               .col-12.col-md-6
                 .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if task.status !== 'FINISHED'
+                  // 右上角動作：依狀態切換
+                  if isOpen(task)
                     form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/update/status`
+                      action=`/api/tasks/${task.id}/close`
                       method="POST"
                     )
                       if typeof csrfToken !== 'undefined'
                         input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="FINISHED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
+                      input(type="hidden", name="status", value="CLOSED")
+                      button.btn.btn-success.btn-sm(type="submit" title="Close this task")
                         i.bi.bi-check2-circle.me-1
-                        | Done
+                        | Close
+                  else if isClosed(task)
+                    .position-absolute.top-0.end-0.m-2.btn-group
+                      // Archive
+                      form(directive="archive", action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="ARCHIVED")
+                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
+                          i.bi.bi-box-arrow-down.me-1
+                          | Archive
+                      // Reopen
+                      form(directive="reopen", action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="OPEN")
+                        button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
+                          i.bi.bi-arrow-counterclockwise.me-1
+                          | Reopen
+
                   .card-body
+                    // 狀態徽章
+                    if isArchived(task)
+                      span.badge.text-bg-secondary.float-end(title="Archived") Archived
+                    else if isClosed(task)
+                      span.badge.text-bg-success.float-end(title="Closed") Closed
+
                     h3.h6.card-title.mb-1
                       a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
+
                     if task.allDay
                       if task.dueLabel
                         small.text-muted.d-block All-day: #{task.dueLabel}
                     else
                       if task.dueLabel
                         small.text-muted.d-block Due: #{task.dueLabel}
+
                     .row.mt-2.gx-2
                       .col-6
                         if task.location
@@ -85,26 +117,50 @@ html(lang="en")
             each task in today
               .col-12.col-md-6
                 .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if task.status !== 'FINISHED'
+                  if isOpen(task)
                     form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/update/status`
+                      action=`/api/tasks/${task.id}/close`
                       method="POST"
                     )
                       if typeof csrfToken !== 'undefined'
                         input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="FINISHED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
+                      input(type="hidden", name="status", value="CLOSED")
+                      button.btn.btn-success.btn-sm(type="submit" title="Close this task")
                         i.bi.bi-check2-circle.me-1
-                        | Done
+                        | Close
+                  else if isClosed(task)
+                    .position-absolute.top-0.end-0.m-2.btn-group
+                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="ARCHIVED")
+                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
+                          i.bi.bi-box-arrow-down.me-1
+                          | Archive
+                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="OPEN")
+                        button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
+                          i.bi.bi-arrow-counterclockwise.me-1
+                          | Reopen
+
                   .card-body
+                    if isArchived(task)
+                      span.badge.text-bg-secondary.float-end Archived
+                    else if isClosed(task)
+                      span.badge.text-bg-success.float-end Closed
+
                     h3.h6.card-title.mb-1
                       a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
+
                     if task.allDay
                       if task.dueLabel
                         small.text-muted.d-block All-day: #{task.dueLabel}
                     else
                       if task.dueLabel
                         small.text-muted.d-block Due: #{task.dueLabel}
+
                     .row.mt-2.gx-2
                       .col-6
                         if task.location
@@ -126,18 +182,40 @@ html(lang="en")
             each task in none
               .col-12.col-md-6
                 .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if task.status !== 'FINISHED'
+                  if isOpen(task)
                     form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/update/status`
+                      action=`/api/tasks/${task.id}/close`
                       method="POST"
                     )
                       if typeof csrfToken !== 'undefined'
                         input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="FINISHED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
+                      input(type="hidden", name="status", value="CLOSED")
+                      button.btn.btn-success.btn-sm(type="submit" title="Close this task")
                         i.bi.bi-check2-circle.me-1
-                        | Done
+                        | Close
+                  else if isClosed(task)
+                    .position-absolute.top-0.end-0.m-2.btn-group
+                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="ARCHIVED")
+                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
+                          i.bi.bi-box-arrow-down.me-1
+                          | Archive
+                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="OPEN")
+                        button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
+                          i.bi.bi-arrow-counterclockwise.me-1
+                          | Reopen
+
                   .card-body
+                    if isArchived(task)
+                      span.badge.text-bg-secondary.float-end Archived
+                    else if isClosed(task)
+                      span.badge.text-bg-success.float-end Closed
+
                     h3.h6.card-title.mb-0
                       a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
                     if task.description

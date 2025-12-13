@@ -21,14 +21,14 @@ html(lang="en")
             // 既有的狀態清單（不含 Future）
             const all = (typeof statuses !== 'undefined' && Array.isArray(statuses) && statuses.length)
               ? statuses
-              : ['UNFINISHED','FINISHED'];
+              : ['OPEN','CLOSED'];
 
             // 顯示用標籤
             const pretty = (s) => {
               if (!s) return '';
               const up = String(s).toUpperCase();
-              if (up === 'UNFINISHED') return 'Unfinished';
-              if (up === 'FINISHED') return 'Finished';
+              if (up === 'OPEN') return 'Open';
+              if (up === 'CLOSED') return 'Closed';
               return s.charAt(0) + s.slice(1).toLowerCase();
             };
 
@@ -58,8 +58,8 @@ html(lang="en")
         // 空清單提示：依目前所選分頁切換
         let emptyHint = 'No tasks.';
         if (futureActive) emptyHint = 'No future tasks.';
-        else if (upStatus === 'UNFINISHED') emptyHint = 'No unfinished tasks.';
-        else if (upStatus === 'FINISHED') emptyHint = 'No finished tasks.';
+        else if (upStatus === 'OPEN') emptyHint = 'No open tasks.';
+        else if (upStatus === 'CLOSED') emptyHint = 'No closed tasks.';
 
         var currentStatus = status; // _tasks-list 若需要可用
       include ./_tasks-list

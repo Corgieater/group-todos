@@ -5,37 +5,178 @@ html(lang="en")
     meta(name="viewport", content="width=device-width, initial-scale=1")
     title Group Tasks – #{groupName || 'Group'}
     include ../partials/bootstrap
+
+    style.
+      .card .card-body { padding: 0.875rem 1rem; }
+      .badge-assignee-initial {
+        width: 28px; height: 28px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 50%; border: 1px solid var(--bs-border-color,#dee2e6);
+        font-weight: 600;
+      }
+
   body
-    // partials
     include ../partials/message
     include ../partials/header
 
     main.container.py-4
       -
-        // Priority 樣式對應
         const prioBgMap = { 1:'bg-danger-subtle', 2:'bg-warning-subtle', 3:'bg-primary-subtle', 4:'bg-secondary-subtle' };
         const prioBorderMap = { 1:'border-danger', 2:'border-warning', 3:'border-primary', 4:'border-secondary' };
         const cardClassForPrio = (p) => `${prioBgMap[p]||''} ${prioBorderMap[p]||'border-secondary'} border-2`;
 
         const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
+        const total = safeLen(expired) + safeLen(today) + safeLen(none);
+
+        const isOpen = (t) => t.status === 'OPEN';
+        const isClosed = (t) => t.status === 'CLOSED';
+        const isArchived = (t) => t.status === 'ARCHIVED';
+
+        const ADMINISH = new Set(['OWNER','ADMIN']);
+        const isAdminishViewer = ADMINISH.has(viewerRole);
+        const canManage = (t) => (isAdminishViewer || t.ownerId === viewerId);
+
+        const forceModalId = (t) => `forceCloseModal-${t.id}`;
 
       // Header
       .row.mb-3
         .col
           h1.h4.mb-1 #{groupName || 'Group'} Tasks
-          p.text-muted.mb-0 Group ID: #{groupId}
+          small.text-muted Group ID: #{groupId}
         .col-auto.text-end
-          //- 合計只算三個 bucket
-          -
-            const total = safeLen(expired) + safeLen(today) + safeLen(none);
           span.badge.bg-primary-subtle.text-primary-emphasis.me-2 #{total}
           | tasks
 
-      // 快速操作（可依需要調整）
       .mb-3
-        a.btn.btn-sm.btn-outline-primary(href=`/groups/${groupId}/tasks/new`)
+        a.btn.btn-sm.btn-outline-primary(href=`/groups/${groupId}/tasks/create`)
           i.bi.bi-plus-lg.me-1
           | New Task
+
+      // ===== mixin =====
+      mixin taskCard(task)
+        -
+          const hasAssignees = typeof task.hasAssignees !== 'undefined'
+            ? !!task.hasAssignees
+            : (Array.isArray(task.assignees) && task.assignees.length > 0);
+
+          const totalAssignees = hasAssignees ? task.assignees.length : 0;
+          const completedCount = hasAssignees
+            ? task.assignees.filter(a => a.status === 'COMPLETED').length
+            : 0;
+
+          const noneCompleted = !hasAssignees || completedCount === 0;
+          const allCompleted  = hasAssignees && completedCount === totalAssignees;
+          const someCompleted = hasAssignees && completedCount > 0 && completedCount < totalAssignees;
+
+          const first = hasAssignees ? task.assignees[0] : null;
+          const firstName = first && (first.name || first.email || '');
+          const initial = firstName ? String(firstName).trim().charAt(0).toUpperCase() : null;
+          const extraCount = hasAssignees ? Math.max(0, task.assignees.length - 1) : 0;
+
+        .card.h-100.shadow-sm(class=cardClassForPrio(task.priority))
+          .card-body
+            .d-flex.flex-column.flex-md-row.justify-content-between.align-items-start.gap-2
+              .d-flex.align-items-center.gap-2.flex-grow-1.min-w-0
+                if initial
+                  span.badge-assignee-initial= initial
+                h3.h6.card-title.mb-0.text-truncate
+                  a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
+                if extraCount > 0
+                  span.badge.rounded-pill.text-bg-secondary.ms-1(title=`+${extraCount} more assignees`)= `+${extraCount}`
+
+              if canManage(task)
+                .d-flex.flex-column.flex-md-row.gap-2
+                  if isOpen(task)
+                    // 先分成「0人完成」和「其他」兩塊，避免 else if 被註解切開
+                    if noneCompleted
+                      // 0人完成 → 只能 Archive
+                      form(action=`/api/tasks/${task.id}/archive`, method="POST", class="d-inline")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        input(type="hidden", name="status", value="ARCHIVED")
+                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive (no assignees completed)")
+                          i.bi.bi-box-arrow-down.me-1
+                          | Archive
+                    else
+                      // 這裡就只剩兩種可能：全部完成 / 部分完成
+                      if allCompleted
+                        form(action=`/api/tasks/${task.id}/close`, method="POST", class="d-inline")
+                          if typeof csrfToken !== 'undefined'
+                            input(type="hidden", name="_csrf", value=csrfToken)
+                          button.btn.btn-success.btn-sm(type="submit" title="Close (all assignees completed)")
+                            i.bi.bi-check2-circle.me-1
+                            | Close
+                      else if someCompleted && isAdminishViewer
+                        button.btn.btn-outline-danger.btn-sm(
+                          type="button"
+                          title="Force close with reason"
+                          data-bs-toggle="modal"
+                          data-bs-target=`#${forceModalId(task)}`
+                        )
+                          i.bi.bi-exclamation-triangle.me-1
+                          | Force Close
+                  else if isClosed(task)
+                    form(action=`/api/tasks/${task.id}/archive`, method="POST", class="d-inline")
+                      if typeof csrfToken !== 'undefined'
+                        input(type="hidden", name="_csrf", value=csrfToken)
+                      input(type="hidden", name="status", value="ARCHIVED")
+                      button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
+                        i.bi.bi-box-arrow-down.me-1
+                        | Archive
+                    form(action=`/api/tasks/${task.id}/restore`, method="POST", class="d-inline")
+                      if typeof csrfToken !== 'undefined'
+                        input(type="hidden", name="_csrf", value=csrfToken)
+                      input(type="hidden", name="status", value="OPEN")
+                      button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
+                        i.bi.bi-arrow-counterclockwise.me-1
+                        | Reopen
+
+            .d-flex.align-items-center.gap-2.mt-2
+              if isArchived(task)
+                span.badge.text-bg-secondary Archived
+              else if isClosed(task)
+                span.badge.text-bg-success Closed
+              else if hasAssignees && firstName
+                small.text-muted.text-truncate(title=firstName)= `Assignee: ${firstName}`
+
+            .row.mt-2.gx-2
+              .col-12.col-md-6
+                if task.allDay && task.dueLabel
+                  small.text-muted.d-block All-day: #{task.dueLabel}
+                else if task.dueLabel
+                  small.text-muted.d-block Due: #{task.dueLabel}
+              .col-12.col-md-6
+                if task.location
+                  small.text-muted.d-block.text-truncate 📍 #{task.location}
+                if task.description
+                  small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+
+            if !canManage(task)
+              .mt-2
+                a.btn.btn-sm.btn-outline-secondary(href=`/tasks/${task.id}` title="Open details to request changes")
+                  i.bi.bi-box-arrow-up-right.me-1
+                  | View details
+
+          // Force Close Modal：只有「部分完成」且 adminish 時才畫
+          if someCompleted && isAdminishViewer
+            .modal.fade(id=forceModalId(task) tabindex="-1" aria-labelledby=`${forceModalId(task)}-label` aria-hidden="true")
+              .modal-dialog
+                .modal-content
+                  .modal-header
+                    h5.modal-title(id=`${forceModalId(task)}-label`) Force Close Task
+                    button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
+                  form(action=`/api/tasks/${task.id}/close`, method="POST")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="force", value="1")
+                    .modal-body
+                      p.mb-2 This will close the task even though some assignees did not complete.
+                      .mb-3
+                        label.form-label(for=`${forceModalId(task)}-reason`) Reason (required)
+                        textarea.form-control(id=`${forceModalId(task)}-reason` name="closedReason" rows="3" required placeholder="e.g. out of scope / duplicated / emergency")
+                    .modal-footer
+                      button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
+                      button.btn.btn-danger(type="submit") Force Close
 
       // =============== Expired ===============
       section.mt-2
@@ -47,35 +188,7 @@ html(lang="en")
           .row.g-3
             each task in expired
               .col-12.col-md-6
-                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if task.status !== 'FINISHED'
-                    form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/update/status`
-                      method="POST"
-                    )
-                      if typeof csrfToken !== 'undefined'
-                        input(type="hidden" name="_csrf" value=csrfToken)
-                      input(type="hidden" name="status" value="FINISHED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
-                        i.bi.bi-check2-circle.me-1
-                        | Done
-                  .card-body
-                    h3.h6.card-title.mb-1
-                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
-                    // 時間顯示
-                    if task.allDay
-                      if task.dueLabel
-                        small.text-muted.d-block All-day: #{task.dueLabel}
-                    else
-                      if task.dueLabel
-                        small.text-muted.d-block Due: #{task.dueLabel}
-                    .row.mt-2.gx-2
-                      .col-6
-                        if task.location
-                          small.text-muted.d-block.text-truncate 📍 #{task.location}
-                      .col-6
-                        if task.description
-                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+                +taskCard(task)
         else
           p.text-muted.fst-italic No expired tasks.
 
@@ -89,34 +202,7 @@ html(lang="en")
           .row.g-3
             each task in today
               .col-12.col-md-6
-                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if task.status !== 'FINISHED'
-                    form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/update/status`
-                      method="POST"
-                    )
-                      if typeof csrfToken !== 'undefined'
-                        input(type="hidden" name="_csrf" value=csrfToken)
-                      input(type="hidden" name="status" value="FINISHED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
-                        i.bi.bi-check2-circle.me-1
-                        | Done
-                  .card-body
-                    h3.h6.card-title.mb-1
-                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
-                    if task.allDay
-                      if task.dueLabel
-                        small.text-muted.d-block All-day: #{task.dueLabel}
-                    else
-                      if task.dueLabel
-                        small.text-muted.d-block Due: #{task.dueLabel}
-                    .row.mt-2.gx-2
-                      .col-6
-                        if task.location
-                          small.text-muted.d-block.text-truncate 📍 #{task.location}
-                      .col-6
-                        if task.description
-                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+                +taskCard(task)
         else
           p.text-muted.fst-italic Nothing scheduled for today.
 
@@ -130,25 +216,7 @@ html(lang="en")
           .row.g-3
             each task in none
               .col-12.col-md-6
-                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if task.status !== 'FINISHED'
-                    form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/update/status`
-                      method="POST"
-                    )
-                      if typeof csrfToken !== 'undefined'
-                        input(type="hidden" name="_csrf" value=csrfToken)
-                      input(type="hidden" name="status" value="FINISHED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Mark as finished")
-                        i.bi.bi-check2-circle.me-1
-                        | Done
-                  .card-body
-                    h3.h6.card-title.mb-1
-                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
-                    if task.description
-                      p.mb-0.small.text-muted.text-truncate(title=task.description) ✒️ #{task.description}
-                    if task.location
-                      small.text-muted.d-block.mt-1.text-truncate 📍 #{task.location}
+                +taskCard(task)
         else
           p.text-muted.fst-italic Nothing without due date.
 
