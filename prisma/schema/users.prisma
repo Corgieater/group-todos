@@ -8,8 +8,9 @@ model User {
   issuedTokens ActionToken[] @relation("IssuedTokens")
   Task         Task[]
 
-  assignedTasks  TaskAssignee[] @relation("AssigneeUser")
-  delegatedTasks TaskAssignee[] @relation("AssignedByUser")
+  assignedTasks    TaskAssignee[]    @relation("AssigneeUser")
+  assignedSubTasks SubTaskAssignee[] @relation("SubTaskAssigneeUser")
+  delegatedTasks   TaskAssignee[]    @relation("AssignedByUser")
 
   Group       Group[]
   GroupMember GroupMember[]
