@@ -16,6 +16,7 @@ import { GroupsService } from './groups.service';
 import { buildGroupVM } from 'src/common/helpers/util';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 import { TasksService } from 'src/tasks/tasks.service';
+import { GroupsErrors } from 'src/errors';
 
 @Controller('groups')
 @UseGuards(AccessTokenGuard)
@@ -29,6 +30,21 @@ export class GroupsPageController {
   @Get('new')
   async getCreateForm(@Req() req: Request, @Res() res: Response) {
     return res.render('groups/new');
+  }
+
+  @Get('list')
+  async list(
+    @Res() res: Response,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Req() req: Request,
+  ) {
+    const membership = await this.groupsService.getGroupListByUserId(
+      user.userId,
+    );
+
+    return res.render('groups/list', {
+      groups: membership.map((m) => m.group),
+    });
   }
 
   @Get(':id/invitation')
@@ -84,71 +100,122 @@ export class GroupsPageController {
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    // 1) 一次撈回「未完成 ∧ (今天｜無期限｜逾期)」，並拿到邊界
+    // 1) 先確定使用者在群組裡，並拿到角色
+    const viewerRole = await this.groupsService.requireMemberRole(
+      id,
+      user.userId,
+    );
+    const isAdminish = this.groupsService.isAdminish(viewerRole);
+
+    // 2) 拿資料（未完成 && [今天/無截止/逾期]）
     const { items, bounds } =
       await this.tasksService.listGroupOpenTasksDueTodayNoneOrExpired(
         id,
         user.userId,
       );
-    const tasks = items;
+
     const { startUtc, endUtc, startOfTodayUtc, todayDateOnlyUtc } = bounds;
 
-    type TaskVM = (typeof tasks)[number];
-    type Buckets = { expired: TaskVM[]; today: TaskVM[]; none: TaskVM[] };
-    const buckets: Buckets = { expired: [], today: [], none: [] };
+    // 我們要把每一筆 task 加上 hasAssignees / allAssigneesDone
+    // 這裡先做成一個新的陣列，等會再丟進 buckets
+    const enriched = items.map((t) => {
+      const hasAssignees = Array.isArray(t.assignees) && t.assignees.length > 0;
 
-    // 2) 一趟 loop 分桶
-    for (const t of tasks) {
-      const isExpired =
+      // 你的邏輯：普通 close 只有「有 assignees 且全部完成」才成立
+      const allAssigneesDone = hasAssignees
+        ? t.assignees.every((a) => a.status === 'COMPLETED')
+        : false;
+
+      return {
+        ...t,
+        hasAssignees,
+        allAssigneesDone,
+      };
+    });
+
+    type T = (typeof enriched)[number];
+    const buckets: { expired: T[]; today: T[]; none: T[] } = {
+      expired: [],
+      today: [],
+      none: [],
+    };
+
+    for (const t of enriched) {
+      const expired =
         (t.dueAtUtc && t.dueAtUtc < startOfTodayUtc) ||
         (t.allDayLocalDate && t.allDayLocalDate < todayDateOnlyUtc);
-
-      if (isExpired) {
+      if (expired) {
         buckets.expired.push(t);
         continue;
       }
 
-      const isToday =
+      const today =
         (t.dueAtUtc && t.dueAtUtc >= startUtc && t.dueAtUtc <= endUtc) ||
         (t.allDayLocalDate && +t.allDayLocalDate === +todayDateOnlyUtc);
-
-      if (isToday) {
+      if (today) {
         buckets.today.push(t);
         continue;
       }
 
-      const isNone = !t.dueAtUtc && !t.allDayLocalDate;
-      if (isNone) {
+      if (!t.dueAtUtc && !t.allDayLocalDate) {
         buckets.none.push(t);
         continue;
       }
-      // 其他情況（例如未來）本 API 本來就不會回；若要保險可收集到 extra[]
     }
 
-    // 3) 排序工具：把 Date|null 轉成可比較的數字
     const ts = (d: Date | null | undefined) =>
       d ? d.getTime() : Number.POSITIVE_INFINITY;
-
-    // 今日/逾期：全日優先 → 全日日期升冪 → dueAtUtc 升冪（null 放最後）
-    const sortByDay = (a: TaskVM, b: TaskVM) =>
+    const sortByDay = (a: T, b: T) =>
       Number(b.allDay) - Number(a.allDay) ||
       ts(a.allDayLocalDate) - ts(b.allDayLocalDate) ||
       ts(a.dueAtUtc) - ts(b.dueAtUtc);
-
-    // 無期限：按建立時間或優先度自行決定
-    const sortByNone = (a: TaskVM, b: TaskVM) =>
-      ts(a.createdAt) - ts(b.createdAt);
+    const sortByNone = (a: T, b: T) => ts(a.createdAt) - ts(b.createdAt);
 
     buckets.today.sort(sortByDay);
     buckets.expired.sort(sortByDay);
     buckets.none.sort(sortByNone);
 
-    // 4) render（依你的 pug 檔名調整）
+    // 3) render：把 viewer 資訊一併丟進去（pug 需要）
     return res.render('groups/tasks-home', {
       groupId: id,
-      today: buckets.today,
+      groupName: undefined,
+      viewerId: user.userId,
+      viewerRole,
+      isAdminish,
+      csrfToken: res.locals.csrfToken,
+
       expired: buckets.expired,
+      today: buckets.today,
       none: buckets.none,
+    });
+  }
+
+  @Get(':id/tasks/create')
+  async createTask(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const member = await this.groupsService.getMember(id, user.userId);
+
+    if (!member) {
+      throw GroupsErrors.GroupNotFoundError.byId(user.userId, id);
+    }
+
+    const members = await this.groupsService.listMembersBasic(id); // [{id,name,email}, ...]
+
+    // 3) 產 CSRF（依你的架構）
+    const csrfToken = (req as any).csrfToken?.() ?? res.locals.csrfToken;
+
+    // 4) render
+    return res.render('groups/tasks-create', {
+      group: member.group,
+      members, // 不想同時指派就別傳這個
+      csrfToken,
+      form: null, // 驗證失敗回填可放這裡,
+      actionPath: `/api/groups/${member.group.id}/tasks`,
+      backPath: `/groups/${member.group.id}/tasks`,
     });
   }
 }

@@ -1,8 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import type { Task as TaskModel, User as UserModel } from '@prisma/client';
+import type {
+  Task as TaskModel,
+  User as UserModel,
+} from 'src/generated/prisma/client';
 import { TaskStatus } from './types/enum';
 import { TasksPageController } from './tasks.page.controller';
 import { TasksService } from './tasks.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { Request, Response } from 'express';
 import {
   createMockReq,
@@ -15,10 +19,11 @@ jest.mock('src/common/helpers/util', () => ({
   // keep the real stuff
   ...jest.requireActual('src/common/helpers/util'),
   // override only this
-  buildTaskVM: jest.fn((t: any, tz: string) => ({
+  buildTaskVM: jest.fn((t: any, tz: string, isAdminish: boolean) => ({
     ...t,
     mockVm: true,
     mockTz: tz,
+    mockIsAdminish: isAdminish,
   })),
 }));
 import { buildTaskVM } from 'src/common/helpers/util';
@@ -41,9 +46,18 @@ describe('TasksController', () => {
     priority: 1,
   });
 
+  const mockPrismaService = {
+    taskAssignee: {
+      findUnique: jest.fn(),
+    },
+    task: {
+      findUnique: jest.fn(),
+    },
+  };
+
   const mockTasksSerivce = {
     create: jest.fn(),
-    getTaskById: jest.fn(),
+    getTaskForViewer: jest.fn(),
     listOpenTasksDueTodayNoneOrExpired: jest.fn(),
     getTasksByStatus: jest.fn(),
     getAllFutureTasks: jest.fn(),
@@ -63,7 +77,10 @@ describe('TasksController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TasksPageController],
-      providers: [{ provide: TasksService, useValue: mockTasksSerivce }],
+      providers: [
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: TasksService, useValue: mockTasksSerivce },
+      ],
     }).compile();
 
     tasksPageController = module.get<TasksPageController>(TasksPageController);
@@ -90,7 +107,7 @@ describe('TasksController', () => {
       {
         id: 1,
         title: 'Expired all-day',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 3,
         allDay: true,
         allDayLocalDate: new Date('2025-08-31T00:00:00.000Z'),
@@ -103,7 +120,7 @@ describe('TasksController', () => {
       {
         id: 2,
         title: 'Expired timed',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 2,
         allDay: false,
         allDayLocalDate: null,
@@ -116,7 +133,7 @@ describe('TasksController', () => {
       {
         id: 3,
         title: 'Today all-day',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 1,
         allDay: true,
         allDayLocalDate: new Date('2025-09-01T00:00:00.000Z'),
@@ -129,7 +146,7 @@ describe('TasksController', () => {
       {
         id: 4,
         title: 'Today 09:00',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 3,
         allDay: false,
         allDayLocalDate: null,
@@ -142,7 +159,7 @@ describe('TasksController', () => {
       {
         id: 5,
         title: 'Today 15:00',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 4,
         allDay: false,
         allDayLocalDate: null,
@@ -155,7 +172,7 @@ describe('TasksController', () => {
       {
         id: 6,
         title: 'Undated A',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 4,
         allDay: false,
         allDayLocalDate: null,
@@ -167,7 +184,7 @@ describe('TasksController', () => {
       {
         id: 7,
         title: 'Undated B',
-        status: 'UNFINISHED',
+        status: 'OPEN',
         priority: 2,
         allDay: false,
         allDayLocalDate: null,
@@ -258,7 +275,7 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('listByStatus', () => {
-    it('should render all finished tasks', async () => {
+    it('should render all closed tasks', async () => {
       mockTasksSerivce.getTasksByStatus.mockResolvedValueOnce([
         lowTask,
         mediumTask,
@@ -266,30 +283,33 @@ describe('TasksController', () => {
       ]);
 
       await tasksPageController.listByStatus(
-        TaskStatus.FINISHED,
+        TaskStatus.CLOSED,
         currentUser,
         res,
       );
 
       expect(mockTasksSerivce.getTasksByStatus).toHaveBeenCalledWith(
         1,
-        'FINISHED',
+        'CLOSED',
       );
       expect(buildTaskVM).toHaveBeenCalledTimes(3);
       expect(buildTaskVM).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({ id: 1 }),
         'Asia/Taipei',
+        true,
       );
       expect(buildTaskVM).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ id: 2 }),
         'Asia/Taipei',
+        true,
       );
       expect(buildTaskVM).toHaveBeenNthCalledWith(
         3,
         expect.objectContaining({ id: 3 }),
         'Asia/Taipei',
+        true,
       );
 
       expect(res.render).toHaveBeenCalledTimes(1);
@@ -298,7 +318,7 @@ describe('TasksController', () => {
 
       expect(model).toEqual(
         expect.objectContaining({
-          status: 'Finished',
+          status: 'Closed',
           totalTasks: 3,
         }),
       );
@@ -309,6 +329,7 @@ describe('TasksController', () => {
           id: 1,
           mockVm: true,
           mockTz: 'Asia/Taipei',
+          mockIsAdminish: true,
         }),
       );
       expect(model.viewModel[1]).toEqual(
@@ -316,6 +337,7 @@ describe('TasksController', () => {
           id: 2,
           mockVm: true,
           mockTz: 'Asia/Taipei',
+          mockIsAdminish: true,
         }),
       );
       expect(model.viewModel[2]).toEqual(
@@ -323,6 +345,7 @@ describe('TasksController', () => {
           id: 3,
           mockVm: true,
           mockTz: 'Asia/Taipei',
+          mockIsAdminish: true,
         }),
       );
     });
@@ -330,11 +353,7 @@ describe('TasksController', () => {
     it('should return with empty array', async () => {
       mockTasksSerivce.getTasksByStatus.mockResolvedValueOnce([]);
 
-      await tasksPageController.listByStatus(
-        TaskStatus.UNFINISHED,
-        currentUser,
-        res,
-      );
+      await tasksPageController.listByStatus(TaskStatus.OPEN, currentUser, res);
 
       expect(buildTaskVM).not.toHaveBeenCalled();
 
@@ -342,7 +361,7 @@ describe('TasksController', () => {
       expect(view).toBe('tasks/list-by-status');
       expect(model).toEqual(
         expect.objectContaining({
-          status: 'Unfinished',
+          status: 'Open',
           totalTasks: 0,
         }),
       );
@@ -391,16 +410,20 @@ describe('TasksController', () => {
 
     describe('detail', () => {
       it('should renders details with VM locals', async () => {
-        mockTasksSerivce.getTaskById.mockResolvedValueOnce(lowTask);
+        mockTasksSerivce.getTaskForViewer.mockResolvedValueOnce({
+          task: lowTask,
+          isAdminish: true,
+        });
 
         await tasksPageController.detail(req, lowTask.id, currentUser, res);
 
-        expect(mockTasksSerivce.getTaskById).toHaveBeenCalledWith(1, 1);
+        expect(mockTasksSerivce.getTaskForViewer).toHaveBeenCalledWith(1, 1);
         expect(buildTaskVM).toHaveBeenCalledTimes(1);
         expect(buildTaskVM).toHaveBeenNthCalledWith(
           1,
           expect.objectContaining({ id: 1 }),
           currentUser.timeZone,
+          true,
         );
 
         expect(res.render).toHaveBeenCalledTimes(1);
@@ -410,6 +433,7 @@ describe('TasksController', () => {
           expect.objectContaining({
             mockTz: 'Asia/Taipei',
             mockVm: true,
+            mockIsAdminish: true,
             id: 1,
             title: 'low test',
           }),
@@ -427,21 +451,28 @@ describe('TasksController', () => {
 
       beforeEach(() => {
         jest.useFakeTimers().setSystemTime(fixedNow);
-        mockTasksSerivce.getTaskById.mockResolvedValue(lowTask);
+        mockTasksSerivce.getTaskForViewer.mockResolvedValue({
+          task: lowTask,
+          isAdminish: true,
+        });
       });
 
       it('should render task edit page with mapped VM and todayISO', async () => {
         await tasksPageController.edit(lowTask.id, currentUser, res);
 
         // service called correctly
-        expect(mockTasksSerivce.getTaskById).toHaveBeenCalledWith(
+        expect(mockTasksSerivce.getTaskForViewer).toHaveBeenCalledWith(
           lowTask.id,
           currentUser.userId,
         );
 
         // VM mapping called with correct tz
         expect(buildTaskVM).toHaveBeenCalledTimes(1);
-        expect(buildTaskVM).toHaveBeenCalledWith(lowTask, currentUser.timeZone);
+        expect(buildTaskVM).toHaveBeenCalledWith(
+          lowTask,
+          currentUser.timeZone,
+          true,
+        );
 
         // render checks
         expect(res.render).toHaveBeenCalledTimes(1);
@@ -455,12 +486,31 @@ describe('TasksController', () => {
             title: lowTask.title,
             mockVm: true,
             mockTz: currentUser.timeZone,
+            mockIsAdminish: true,
             todayISO: '2025-01-02',
           }),
         );
 
         expect(model).not.toBe(lowTask);
       });
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // renderCreateSubTaskPage
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('renderCreateSubTaskPage', () => {
+    it('should render create sub-task page with parentTaskId', async () => {
+      const parentTaskId = 42;
+
+      await tasksPageController.renderCreateSubTaskPage(res, parentTaskId, req);
+
+      expect(res.render).toHaveBeenCalledTimes(1);
+      const [view, model] = (res.render as jest.Mock).mock.calls[0];
+      expect(view).toBe('tasks/create-sub-task');
+      expect(model).toEqual(
+        expect.objectContaining({ parentTaskId: parentTaskId }),
+      );
     });
   });
 });

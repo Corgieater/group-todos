@@ -1,6 +1,6 @@
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
-import type { Task, Prisma } from '@prisma/client';
+import type { Task, Prisma } from 'src/generated/prisma/client';
 import { TaskPriority } from 'src/tasks/types/enum';
 import { TaskStatus } from 'src/tasks/types/enum';
 import { time } from 'console';
@@ -50,7 +50,11 @@ export function addTime(
   }
 }
 
-export function buildTaskVM<T extends Task>(task: T, tz: string): TaskVM<T> {
+export function buildTaskVM<T extends Task>(
+  task: T,
+  tz: string,
+  isAdminish: boolean,
+): TaskVM<T> {
   const toYMD = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
   const dueDateLocal = task.allDay
@@ -81,6 +85,7 @@ export function buildTaskVM<T extends Task>(task: T, tz: string): TaskVM<T> {
     updatedLabel: formatInTimeZone(task.updatedAt, tz, 'yyyy/MM/dd HH:mm:ss'),
     priorityLabel: toCapital(TaskPriority[task.priority]),
     statusLabel: toCapital(TaskStatus[task.status]),
+    isAdminish,
   };
 }
 

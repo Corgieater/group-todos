@@ -9,6 +9,7 @@ export type DomainErrorCode =
   | 'TASK_NOT_FOUND'
   | 'TASK_EMPTY_UPDATE'
   | 'TASK_STATUS_INVALID'
+  | 'TASK_FORBIDDEN'
   | 'GROUP_NOT_FOUND'
   | 'CANNOT_INVITE_SELF'
   | 'ALREADY_MEMBER'

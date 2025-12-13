@@ -1,8 +1,8 @@
-import type { Status as PrismaStatus } from '@prisma/client';
+import type { Status as PrismaStatus } from 'src/generated/prisma/client';
 
 export const TaskStatus = {
-  UNFINISHED: 'UNFINISHED',
-  FINISHED: 'FINISHED',
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
   ARCHIVED: 'ARCHIVED',
 } as const satisfies Record<PrismaStatus, PrismaStatus>;
 

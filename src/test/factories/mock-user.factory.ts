@@ -1,4 +1,4 @@
-import { User as UserModel } from '@prisma/client';
+import { User as UserModel } from 'src/generated/prisma/client';
 import { AuthSigninDto, AuthSignupDto } from 'src/auth/dto/auth.dto';
 import { CurrentUser } from 'src/common/types/current-user';
 

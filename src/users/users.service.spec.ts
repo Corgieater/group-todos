@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma } from '@prisma/client';
-import type { User as UserModel } from '@prisma/client';
+import { Prisma } from 'src/generated/prisma/client';
+import type { User as UserModel } from 'src/generated/prisma/client';
 import { UsersService } from './users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {

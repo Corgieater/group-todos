@@ -9,7 +9,8 @@ import * as argon from 'argon2';
 import { AuthService } from './auth.service';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { ActionTokenType, type User as UserModel } from '@prisma/client';
+import { ActionTokenType } from 'src/generated/prisma/enums';
+import { type User as UserModel } from 'src/generated/prisma/client';
 import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
 import {
   createMockSignupDto,

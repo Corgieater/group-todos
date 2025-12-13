@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TasksController } from './tasks.controller';
-import type { Task, User as UserModel } from '@prisma/client';
+import { CompletionPolicy } from 'src/generated/prisma/enums';
+import type { Task, User as UserModel } from 'src/generated/prisma/client';
 import { TasksAddDto, UpdateTaskDto } from './dto/tasks.dto';
 import { TaskStatus } from './types/enum';
 import { TasksService } from './tasks.service';
@@ -15,6 +16,7 @@ import { createMockUser } from 'src/test/factories/mock-user.factory';
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
 import { TaskPriority } from './types/enum';
+import { mock } from 'node:test';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
@@ -28,7 +30,8 @@ describe('TasksController', () => {
     createTask: jest.fn(),
     getAllTasks: jest.fn(),
     updateTask: jest.fn(),
-    updateTaskStatus: jest.fn(),
+    closeTask: jest.fn(),
+    archiveTask: jest.fn(),
     deleteTask: jest.fn(),
   };
 
@@ -49,7 +52,7 @@ describe('TasksController', () => {
       groupId: null,
       ownerId: user.id,
       title: 'walk cat',
-      status: TaskStatus.UNFINISHED,
+      status: TaskStatus.OPEN,
       priority: 1,
       description: null,
       location: null,
@@ -57,6 +60,11 @@ describe('TasksController', () => {
       allDay: false,
       allDayLocalDate: null,
       sourceTimeZone: null,
+      completionPolicy: CompletionPolicy.ALL_ASSIGNEES,
+      closedAt: null,
+      closedById: null,
+      closedReason: null,
+      closedWithOpenAssignees: false,
       createdAt: new Date('2025-09-01T05:46:07.462Z'),
       updatedAt: new Date('2025-09-06T10:28:48.368Z'),
     };
@@ -95,7 +103,7 @@ describe('TasksController', () => {
 
       dto2 = {
         title: 'test2',
-        status: TaskStatus.UNFINISHED,
+        status: TaskStatus.OPEN,
         priority: TaskPriority.HIGH,
         description: 'test2',
         dueDate: '2025-09-09',
@@ -129,7 +137,7 @@ describe('TasksController', () => {
       await tasksController.create(req, currentUser, dto2, res);
       const payload = {
         title: 'test2',
-        status: TaskStatus.UNFINISHED,
+        status: TaskStatus.OPEN,
         priority: 2,
         description: 'test2',
         dueDate: '2025-09-09',
@@ -183,30 +191,62 @@ describe('TasksController', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // updateStatus
+  // closeTask
   // ───────────────────────────────────────────────────────────────────────────────
 
-  describe('updateStatus', () => {
-    it('should update task status', async () => {
-      await tasksController.updateStatus(
+  // TODO: FINISHE this and SERVICE
+  describe('closeTask', () => {
+    it('should close task', async () => {
+      await tasksController.closeTask(
         req,
-        TaskStatus.FINISHED,
         currentUser,
         1,
+        undefined,
+        undefined,
         res,
       );
 
-      expect(mockTasksService.updateTaskStatus).toHaveBeenCalledWith(
+      expect(mockTasksService.closeTask).toHaveBeenCalledWith(1, 1, {
+        force: false,
+        reason: undefined,
+      });
+
+      expect(setSession).toHaveBeenCalledWith(req, 'success', 'Task closed.');
+      expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
+    });
+
+    it('should close task with force and reason', async () => {
+      await tasksController.closeTask(
+        req,
+        currentUser,
         1,
-        1,
-        'FINISHED',
+        'true',
+        'force closed',
+        res,
       );
+      expect(mockTasksService.closeTask).toHaveBeenCalledWith(1, 1, {
+        force: true,
+        reason: 'force closed',
+      });
+      expect(setSession).toHaveBeenCalledWith(req, 'success', 'Task closed.');
+      expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // archiveTask
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('archiveTask', () => {
+    it('should archive task', async () => {
+      await tasksController.archiveTask(req, currentUser, 1, res);
+
+      expect(mockTasksService.archiveTask).toHaveBeenCalledWith(1, 1);
       expect(setSession).toHaveBeenCalledWith(
         req,
         'success',
-        'Status has been changed.',
+        'Task has been archived.',
       );
-      expect(res.redirect).toHaveBeenCalledWith('/tasks/home');
+      expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
     });
   });
 

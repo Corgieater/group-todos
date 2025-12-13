@@ -56,6 +56,8 @@ export const ModelName = {
   GroupMember: 'GroupMember',
   Task: 'Task',
   TaskAssignee: 'TaskAssignee',
+  SubTask: 'SubTask',
+  SubTaskAssignee: 'SubTaskAssignee',
   User: 'User'
 } as const
 
@@ -155,6 +157,37 @@ export const TaskAssigneeScalarFieldEnum = {
 } as const
 
 export type TaskAssigneeScalarFieldEnum = (typeof TaskAssigneeScalarFieldEnum)[keyof typeof TaskAssigneeScalarFieldEnum]
+
+
+export const SubTaskScalarFieldEnum = {
+  id: 'id',
+  taskId: 'taskId',
+  title: 'title',
+  status: 'status',
+  priority: 'priority',
+  description: 'description',
+  location: 'location',
+  dueAtUtc: 'dueAtUtc',
+  allDay: 'allDay',
+  allDayLocalDate: 'allDayLocalDate',
+  sourceTimeZone: 'sourceTimeZone',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type SubTaskScalarFieldEnum = (typeof SubTaskScalarFieldEnum)[keyof typeof SubTaskScalarFieldEnum]
+
+
+export const SubTaskAssigneeScalarFieldEnum = {
+  subtaskId: 'subtaskId',
+  assigneeId: 'assigneeId',
+  status: 'status',
+  reason: 'reason',
+  assignedAt: 'assignedAt',
+  completedAt: 'completedAt'
+} as const
+
+export type SubTaskAssigneeScalarFieldEnum = (typeof SubTaskAssigneeScalarFieldEnum)[keyof typeof SubTaskAssigneeScalarFieldEnum]
 
 
 export const UserScalarFieldEnum = {

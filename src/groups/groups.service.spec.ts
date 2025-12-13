@@ -1,12 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GroupsService } from './groups.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import {
-  ActionTokenType,
-  GroupRole,
-  type Group as GroupModel,
-  type User as UsersModel,
-} from '@prisma/client';
+import { ActionTokenType, GroupRole } from 'src/generated/prisma/enums';
+import type {
+  Group as GroupModel,
+  User as UsersModel,
+} from 'src/generated/prisma/client';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { UsersService } from 'src/users/users.service';
 import {

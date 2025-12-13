@@ -140,6 +140,7 @@ export class GroupsController {
   ) {
     await this.groupsService.checkIfMember(id, user.userId);
 
+    // TODO: deal with asignees
     const payload: TasksAddPayload = {
       title: dto.title,
       status: dto.status ?? null,
@@ -154,6 +155,6 @@ export class GroupsController {
     await this.tasksService.createTask(payload, id);
     setSession(req, 'success', 'Group task added.');
     // TODO: this should be something like :id/groups/tasks
-    return res.redirect('/tasks/home');
+    return res.redirect(`/groups/${id}/tasks`);
   }
 }

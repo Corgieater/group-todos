@@ -9,10 +9,13 @@ import {
   ValidateIf,
   IsDefined,
   IsEmpty,
+  MaxLength,
 } from 'class-validator';
 import { TaskStatus, TaskStatusValues } from '../types/enum';
 import { TaskPriority } from '../types/enum';
 import { Transform, Type } from 'class-transformer';
+import { AssignmentStatus } from 'src/generated/prisma/client';
+import { OmitType } from '@nestjs/mapped-types';
 
 function toBool(val: any): boolean {
   if (typeof val === 'boolean') return val;
@@ -93,6 +96,12 @@ export class TasksAddDto {
   location?: string;
 }
 
+export class SubTasksAddDto extends TasksAddDto {
+  @IsNotEmpty()
+  @Type(() => Number)
+  parentTaskId!: number;
+}
+
 export class UpdateTaskDto {
   @IsOptional()
   @IsString()
@@ -138,7 +147,7 @@ export class UpdateTaskDto {
   priority?: TaskPriority;
 }
 
-export class UpdateTaskStatusDto {
+export class closeTaskDto {
   @IsNotEmpty()
   @IsEnum(TaskStatus, {
     message: `status must be one of: ${TaskStatusValues.join(', ')}`,
@@ -153,4 +162,14 @@ export class UpdateTaskStatusDto {
 export class ListTasksQueryDto {
   @IsEnum(TaskStatus)
   status: TaskStatus;
+}
+
+export class UpdateAssigneeStatusDto {
+  @IsEnum(AssignmentStatus)
+  status!: AssignmentStatus; // PENDING/ACCEPTED/DECLINED/COMPLETED
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string; // 例如 Declined 的理由，可選
 }

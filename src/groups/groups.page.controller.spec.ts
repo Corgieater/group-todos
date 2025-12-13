@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import type { User as UserModel, Group as GroupModel } from '@prisma/client';
+import type {
+  User as UserModel,
+  Group as GroupModel,
+} from 'src/generated/prisma/client';
 import { GroupsPageController } from './groups.page.controller';
 import { GroupsService } from './groups.service';
 import { Request, Response } from 'express';

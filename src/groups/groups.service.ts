@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UsersService } from 'src/users/users.service';
-import { ActionTokenType, GroupRole, Prisma } from '@prisma/client';
+import {
+  ActionTokenType,
+  GroupRole,
+  Prisma,
+} from 'src/generated/prisma/client';
 import {
   AuthErrors,
   GroupsErrors,
@@ -94,6 +98,24 @@ export class GroupsService {
       throw GroupsErrors.GroupNotFoundError.byId(userId, id);
     }
     return group;
+  }
+
+  async getMemberRole(id: number, userId: number): Promise<GroupRole | null> {
+    const member = await this.prismaService.groupMember.findUnique({
+      where: { groupId_userId: { groupId: id, userId } },
+      select: { role: true },
+    });
+    return member?.role ?? null;
+  }
+
+  async requireMemberRole(groupId: number, userId: number): Promise<GroupRole> {
+    const role = await this.getMemberRole(groupId, userId);
+    if (!role) throw GroupsErrors.GroupNotFoundError.byId(userId, groupId);
+    return role;
+  }
+
+  isAdminish(role: GroupRole | null | undefined): boolean {
+    return role === 'OWNER' || role === 'ADMIN';
   }
 
   async disbandGroupById(id: number, ownerId: number): Promise<void> {
@@ -453,5 +475,33 @@ export class GroupsService {
     if (!member) {
       throw GroupsErrors.GroupNotFoundError.byId(userId, id);
     }
+  }
+
+  async getMember(
+    groupId: number,
+    userId: number,
+  ): Promise<{ role: GroupRole; group: { id: number; name: string } } | null> {
+    return this.prismaService.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+      select: { role: true, group: { select: { id: true, name: true } } },
+    });
+  }
+
+  async listMembersBasic(id: number) {
+    const members = await this.prismaService.groupMember.findMany({
+      where: { groupId: id },
+      select: {
+        role: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { joinedAt: 'asc' },
+    });
+
+    return members.map((m) => ({
+      id: m.user.id,
+      name: m.user.name,
+      email: m.user.email,
+      role: m.role,
+    }));
   }
 }

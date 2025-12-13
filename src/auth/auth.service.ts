@@ -1,8 +1,11 @@
-import { ActionTokenType, Prisma } from '@prisma/client';
+import {
+  ActionTokenType,
+  Prisma,
+  User as UserModel,
+} from 'src/generated/prisma/client';
 import { Injectable } from '@nestjs/common';
 import * as argon from 'argon2';
 import crypto, { createHmac, timingSafeEqual } from 'crypto';
-import { User as UserModel } from '@prisma/client';
 
 import { AuthSignupDto } from './dto/auth.dto';
 

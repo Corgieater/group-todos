@@ -63,6 +63,16 @@ export type Task = Prisma.TaskModel
  */
 export type TaskAssignee = Prisma.TaskAssigneeModel
 /**
+ * Model SubTask
+ * 
+ */
+export type SubTask = Prisma.SubTaskModel
+/**
+ * Model SubTaskAssignee
+ * 
+ */
+export type SubTaskAssignee = Prisma.SubTaskAssigneeModel
+/**
  * Model User
  * 
  */

@@ -1,4 +1,4 @@
-import type { ActionTokenType } from '@prisma/client';
+import type { ActionTokenType } from 'src/generated/prisma/client';
 import { AuthErrors } from 'src/errors';
 
 type InviteTokenRow = {

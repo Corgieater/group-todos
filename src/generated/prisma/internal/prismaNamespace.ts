@@ -389,6 +389,8 @@ export const ModelName = {
   GroupMember: 'GroupMember',
   Task: 'Task',
   TaskAssignee: 'TaskAssignee',
+  SubTask: 'SubTask',
+  SubTaskAssignee: 'SubTaskAssignee',
   User: 'User'
 } as const
 
@@ -405,7 +407,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "actionToken" | "group" | "groupMember" | "task" | "taskAssignee" | "user"
+    modelProps: "actionToken" | "group" | "groupMember" | "task" | "taskAssignee" | "subTask" | "subTaskAssignee" | "user"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -779,6 +781,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    SubTask: {
+      payload: Prisma.$SubTaskPayload<ExtArgs>
+      fields: Prisma.SubTaskFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.SubTaskFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.SubTaskFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>
+        }
+        findFirst: {
+          args: Prisma.SubTaskFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.SubTaskFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>
+        }
+        findMany: {
+          args: Prisma.SubTaskFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>[]
+        }
+        create: {
+          args: Prisma.SubTaskCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>
+        }
+        createMany: {
+          args: Prisma.SubTaskCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.SubTaskCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>[]
+        }
+        delete: {
+          args: Prisma.SubTaskDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>
+        }
+        update: {
+          args: Prisma.SubTaskUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>
+        }
+        deleteMany: {
+          args: Prisma.SubTaskDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.SubTaskUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.SubTaskUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>[]
+        }
+        upsert: {
+          args: Prisma.SubTaskUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskPayload>
+        }
+        aggregate: {
+          args: Prisma.SubTaskAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateSubTask>
+        }
+        groupBy: {
+          args: Prisma.SubTaskGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SubTaskGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.SubTaskCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SubTaskCountAggregateOutputType> | number
+        }
+      }
+    }
+    SubTaskAssignee: {
+      payload: Prisma.$SubTaskAssigneePayload<ExtArgs>
+      fields: Prisma.SubTaskAssigneeFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.SubTaskAssigneeFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.SubTaskAssigneeFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>
+        }
+        findFirst: {
+          args: Prisma.SubTaskAssigneeFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.SubTaskAssigneeFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>
+        }
+        findMany: {
+          args: Prisma.SubTaskAssigneeFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>[]
+        }
+        create: {
+          args: Prisma.SubTaskAssigneeCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>
+        }
+        createMany: {
+          args: Prisma.SubTaskAssigneeCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.SubTaskAssigneeCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>[]
+        }
+        delete: {
+          args: Prisma.SubTaskAssigneeDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>
+        }
+        update: {
+          args: Prisma.SubTaskAssigneeUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>
+        }
+        deleteMany: {
+          args: Prisma.SubTaskAssigneeDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.SubTaskAssigneeUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.SubTaskAssigneeUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>[]
+        }
+        upsert: {
+          args: Prisma.SubTaskAssigneeUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SubTaskAssigneePayload>
+        }
+        aggregate: {
+          args: Prisma.SubTaskAssigneeAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateSubTaskAssignee>
+        }
+        groupBy: {
+          args: Prisma.SubTaskAssigneeGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SubTaskAssigneeGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.SubTaskAssigneeCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SubTaskAssigneeCountAggregateOutputType> | number
+        }
+      }
+    }
     User: {
       payload: Prisma.$UserPayload<ExtArgs>
       fields: Prisma.UserFieldRefs
@@ -972,6 +1122,37 @@ export const TaskAssigneeScalarFieldEnum = {
 } as const
 
 export type TaskAssigneeScalarFieldEnum = (typeof TaskAssigneeScalarFieldEnum)[keyof typeof TaskAssigneeScalarFieldEnum]
+
+
+export const SubTaskScalarFieldEnum = {
+  id: 'id',
+  taskId: 'taskId',
+  title: 'title',
+  status: 'status',
+  priority: 'priority',
+  description: 'description',
+  location: 'location',
+  dueAtUtc: 'dueAtUtc',
+  allDay: 'allDay',
+  allDayLocalDate: 'allDayLocalDate',
+  sourceTimeZone: 'sourceTimeZone',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type SubTaskScalarFieldEnum = (typeof SubTaskScalarFieldEnum)[keyof typeof SubTaskScalarFieldEnum]
+
+
+export const SubTaskAssigneeScalarFieldEnum = {
+  subtaskId: 'subtaskId',
+  assigneeId: 'assigneeId',
+  status: 'status',
+  reason: 'reason',
+  assignedAt: 'assignedAt',
+  completedAt: 'completedAt'
+} as const
+
+export type SubTaskAssigneeScalarFieldEnum = (typeof SubTaskAssigneeScalarFieldEnum)[keyof typeof SubTaskAssigneeScalarFieldEnum]
 
 
 export const UserScalarFieldEnum = {
@@ -1262,6 +1443,8 @@ export type GlobalOmitConfig = {
   groupMember?: Prisma.GroupMemberOmit
   task?: Prisma.TaskOmit
   taskAssignee?: Prisma.TaskAssigneeOmit
+  subTask?: Prisma.SubTaskOmit
+  subTaskAssignee?: Prisma.SubTaskAssigneeOmit
   user?: Prisma.UserOmit
 }
 

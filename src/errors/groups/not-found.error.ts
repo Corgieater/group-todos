@@ -1,7 +1,7 @@
 import { DomainError } from '../domain-error.base';
 
 // TODO: NOTE:
-// It looks like my other error should should have format like this
+// It looks like my other error should have format like this
 // or i can not log out correct id, if we can not tell which parameter belongs to which value, it useless
 
 // we need stuff like this!

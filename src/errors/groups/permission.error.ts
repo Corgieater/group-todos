@@ -1,4 +1,4 @@
-import { $Enums } from '@prisma/client';
+import { $Enums } from 'src/generated/prisma/client';
 import { DomainError } from '../domain-error.base';
 
 type GroupRole = $Enums.GroupRole;

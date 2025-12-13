@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, User as UserModel } from '@prisma/client';
+import {
+  Prisma,
+  PrismaClient,
+  User as UserModel,
+} from 'src/generated/prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
 import { UsersErrors } from 'src/errors';
 
-type tx = Prisma.TransactionClient;
+type TxLike = Prisma.TransactionClient | PrismaClient;
 
 @Injectable()
 export class UsersService {
@@ -81,8 +85,11 @@ export class UsersService {
     });
   }
 
-  async updatePasswordHash(userId: number, hash: string, tx?: tx) {
-    const db = tx ?? this.prismaService;
+  // TODO: see this and compare to other tx situations 1130
+  async updatePasswordHash(userId: number, hash: string, tx?: TxLike) {
+    const db = (tx ?? this.prismaService) as unknown as {
+      user: Prisma.UserDelegate<any>;
+    };
     return db.user.update({
       where: { id: userId },
       data: { hash },

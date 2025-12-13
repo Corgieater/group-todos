@@ -17,12 +17,16 @@ import { TasksService } from './tasks.service';
 import { TaskStatus } from './types/enum';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
 import { buildTaskVM, toCapital } from 'src/common/helpers/util';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Controller('tasks')
 @UseGuards(AccessTokenGuard)
 @UseFilters(TasksPageFilter)
 export class TasksPageController {
-  constructor(private tasksService: TasksService) {}
+  constructor(
+    private tasksService: TasksService,
+    private prismaService: PrismaService,
+  ) {}
 
   @Get('home')
   async home(
@@ -102,7 +106,7 @@ export class TasksPageController {
     @Res() res: Response,
   ) {
     const tasks = await this.tasksService.getTasksByStatus(user.userId, status);
-    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone));
+    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone, true));
     const totalTasks = tasks.length;
 
     return res.render('tasks/list-by-status', {
@@ -124,7 +128,7 @@ export class TasksPageController {
       user.userId,
       user.timeZone,
     );
-    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone));
+    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone, true));
     const totalTasks = tasks.length;
     return res.render('tasks/list-by-status', {
       totalTasks,
@@ -140,9 +144,29 @@ export class TasksPageController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    const task = await this.tasksService.getTaskById(id, user.userId);
-    const viewModel = buildTaskVM(task, user.timeZone);
-    res.render('tasks/details', viewModel);
+    const { task, isAdminish } = await this.tasksService.getTaskForViewer(
+      id,
+      user.userId,
+    );
+
+    const viewerAssignment = await this.prismaService.taskAssignee.findUnique({
+      where: { taskId_assigneeId: { taskId: id, assigneeId: user.userId } },
+      select: { assigneeId: true, status: true },
+    });
+
+    const viewModel = buildTaskVM(task, user.timeZone, isAdminish);
+
+    res.render('tasks/details', {
+      ...viewModel,
+      todayISO: new Date().toISOString().slice(0, 10),
+
+      viewerIsAssignee: !!viewerAssignment,
+      viewerAssigneeStatus: viewerAssignment?.status ?? null,
+      viewerAssigneeId: viewerAssignment?.assigneeId ?? null,
+
+      // ★ 允許自我指派（群組任務且是群組成員）
+      allowSelfAssign: !!task.groupId, // 也可更嚴謹：!!task.groupId && isMember
+    });
   }
 
   @Get(':id/edit')
@@ -151,12 +175,40 @@ export class TasksPageController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    const task = await this.tasksService.getTaskById(id, user.userId);
-    const viewModel = buildTaskVM(task, user.timeZone);
+    const { task, isAdminish } = await this.tasksService.getTaskForViewer(
+      id,
+      user.userId,
+    );
+
+    const viewerAssignment = await this.prismaService.taskAssignee.findUnique({
+      where: { taskId_assigneeId: { taskId: id, assigneeId: user.userId } },
+      select: { assigneeId: true, status: true },
+    });
+
+    const viewModel = buildTaskVM(task, user.timeZone, isAdminish);
 
     res.render('tasks/details-edit', {
       ...viewModel,
       todayISO: new Date().toISOString().slice(0, 10),
+      viewerIsAssignee: !!viewerAssignment,
+      viewerAssigneeStatus: viewerAssignment?.status ?? null,
+      viewerAssigneeId: viewerAssignment?.assigneeId ?? null,
+    });
+  }
+
+  @Get(':id/sub-tasks/create')
+  async renderCreateSubTaskPage(
+    @Res() res: Response,
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request,
+  ) {
+    const parentTask = await this.prismaService.task.findUnique({
+      where: { id },
+      select: { id: true, title: true },
+    });
+    res.render('tasks/create-sub-task', {
+      parentTaskId: id,
+      parentTaskTitle: parentTask?.title,
     });
   }
 }

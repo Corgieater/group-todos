@@ -1,4 +1,4 @@
-import { GroupRole } from '@prisma/client';
+import { GroupRole } from 'src/generated/prisma/client';
 import {
   IsEmail,
   IsEnum,
