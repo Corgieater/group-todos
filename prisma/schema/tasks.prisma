@@ -62,7 +62,7 @@ model Task {
 model TaskAssignee {
   taskId       Int
   assigneeId   Int
-  assignedById Int?
+  assignedById Int
 
   status AssignmentStatus @default(PENDING)
   reason String?
@@ -73,9 +73,9 @@ model TaskAssignee {
   completedAt DateTime? @db.Timestamptz(6)
   updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
 
-  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  assignee   User  @relation("AssigneeUser", fields: [assigneeId], references: [id], onDelete: Cascade)
-  assignedBy User? @relation("AssignedByUser", fields: [assignedById], references: [id], onDelete: SetNull)
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignee   User @relation("AssigneeUser", fields: [assigneeId], references: [id], onDelete: Cascade)
+  assignedBy User @relation("AssignedByUser", fields: [assignedById], references: [id], onDelete: SetNull)
 
   @@id([taskId, assigneeId])
   @@index([assigneeId, status])
@@ -107,23 +107,32 @@ model SubTask {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
+  closedAt   DateTime?
+  closedById Int?
+  closedBy   User?     @relation("SubTaskClosedBy", fields: [closedById], references: [id])
+
   @@index([taskId, status, priority])
 }
 
 model SubTaskAssignee {
-  subtaskId  Int
-  assigneeId Int
+  subTaskId    Int
+  assigneeId   Int
+  assignedById Int?
 
   status AssignmentStatus @default(PENDING)
   reason String?
 
   assignedAt  DateTime  @default(now())
-  completedAt DateTime?
+  acceptedAt  DateTime? @db.Timestamptz(6)
+  declinedAt  DateTime? @db.Timestamptz(6)
+  completedAt DateTime? @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
 
-  subtask SubTask @relation(fields: [subtaskId], references: [id], onDelete: Cascade)
+  subtask SubTask @relation(fields: [subTaskId], references: [id], onDelete: Cascade)
 
-  assignee User @relation("SubTaskAssigneeUser", fields: [assigneeId], references: [id], onDelete: Cascade)
+  assignee   User  @relation("SubTaskAssigneeUser", fields: [assigneeId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("SubTaskAssignedByUser", fields: [assignedById], references: [id], onDelete: SetNull)
 
-  @@id([subtaskId, assigneeId])
+  @@id([subTaskId, assigneeId])
   @@index([assigneeId, status])
 }
