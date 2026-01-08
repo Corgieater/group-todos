@@ -14,4 +14,9 @@ export const TasksPageFilter = createDomainErrorPageFilter({
     semanticStatus: HttpStatus.BAD_REQUEST,
     msg: () => 'Invalid task status',
   }),
+
+  TASK_FORBIDDEN: makeRedirectHandler('/tasks/home', {
+    semanticStatus: HttpStatus.FORBIDDEN,
+    msg: () => 'You are not allowed to perform this action on the task',
+  }),
 });

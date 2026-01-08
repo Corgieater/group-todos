@@ -1,4 +1,3 @@
-// domain-error-page.type.ts
 import { HttpStatus } from '@nestjs/common';
 import type { DomainError } from 'src/errors/domain-error.base';
 import type { Request as ExpressRequest } from 'express';
@@ -73,6 +72,6 @@ export function makeRenderHandler(
     type: opts.type ?? 'error',
     fieldErrors: opts.fieldErrors,
     preserve: opts.preserve,
-    status: opts.status ?? HttpStatus.BAD_REQUEST, // 400
+    status: opts.status ?? HttpStatus.BAD_REQUEST,
   };
 }

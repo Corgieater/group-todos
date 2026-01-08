@@ -1,9 +1,8 @@
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
-import type { Task, Prisma } from 'src/generated/prisma/client';
+import type { Prisma } from 'src/generated/prisma/client';
 import { TaskPriority } from 'src/tasks/types/enum';
 import { TaskStatus } from 'src/tasks/types/enum';
-import { time } from 'console';
 
 // TODO: NOTE:
 // I think stuff here is to messy, tidy it up
@@ -17,14 +16,33 @@ export function dayBoundsUtc(tz: string, baseDate: Date = new Date()) {
   };
 }
 
-export type TaskVM<T extends Task> = T & {
-  dueLabel: string | null; // 顯示用（全日=YYYY-MM-DD；非全日=YYYY-MM-DD HH:mm）
+export interface ITimeBasedTaskEntity {
+  id: number;
+  title: string;
+  status: string; // 實際為 Status enum，但用 string 確保通用性
+  priority: number;
+  description: string | null;
+  location: string | null;
+
+  // 時間欄位
+  dueAtUtc: Date | null;
+  allDay: boolean;
+  allDayLocalDate: Date | null;
+  sourceTimeZone: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type TaskVM<T extends ITimeBasedTaskEntity> = T & {
+  dueLabel: string | null; // 顯示用 (日期和時間的組合)
   dueDateLocal: string | null; // 表單 date 用：YYYY-MM-DD
-  dueTimeLocal: string | null; // 表單 time 用：HH:mm（全日= null）
+  dueTimeLocal: string | null; // 表單 time 用：HH:mm
   createdLabel: string;
   updatedLabel: string;
   priorityLabel: string;
   statusLabel: string;
+  isAdminish: boolean;
+  groupId?: number | null;
 };
 
 export function toCapital(str: string): string {
@@ -50,7 +68,7 @@ export function addTime(
   }
 }
 
-export function buildTaskVM<T extends Task>(
+export function buildTaskVM<T extends ITimeBasedTaskEntity>(
   task: T,
   tz: string,
   isAdminish: boolean,
@@ -75,7 +93,8 @@ export function buildTaskVM<T extends Task>(
       ? `${dueDateLocal} ${dueTimeLocal}`
       : null;
 
-  toCapital(TaskPriority[task.priority]);
+  const groupId = (task as any).groupId || (task as any).task?.groupId || null;
+
   return {
     ...task,
     dueLabel,
@@ -83,9 +102,10 @@ export function buildTaskVM<T extends Task>(
     dueTimeLocal,
     createdLabel: formatInTimeZone(task.createdAt, tz, 'yyyy/MM/dd HH:mm:ss'),
     updatedLabel: formatInTimeZone(task.updatedAt, tz, 'yyyy/MM/dd HH:mm:ss'),
-    priorityLabel: toCapital(TaskPriority[task.priority]),
-    statusLabel: toCapital(TaskStatus[task.status]),
+    priorityLabel: toCapital(TaskPriority[task.priority] || 'Medium'),
+    statusLabel: toCapital((TaskStatus as any)[task.status] || 'Open'),
     isAdminish,
+    groupId: groupId,
   };
 }
 

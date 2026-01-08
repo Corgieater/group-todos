@@ -1,4 +1,3 @@
-// create-domain-error-page-filter.ts
 import type { Request as ExpressRequest, Response } from 'express';
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { HttpStatus, Logger } from '@nestjs/common';
@@ -13,28 +12,23 @@ import { isDomainError, type DomainError } from 'src/errors/domain-error.base';
 
 const log = new Logger('DomainErrorPageFilter');
 
-/** 將 Error.cause 串成可序列化物件（避免循環 & 過長輸出） */
+/** 將 Error.cause 串成可序列化物件 */
 function serializeCause(cause: unknown): unknown {
   if (!(cause instanceof Error)) return cause;
   const out: any = { name: cause.name, message: cause.message };
-  if ((cause as any).code) out.code = (cause as any).code; // e.g. Prisma P2025
-  if ((cause as any).meta) out.meta = (cause as any).meta; // e.g. Prisma meta
+  if ((cause as any).code) out.code = (cause as any).code;
+  if ((cause as any).meta) out.meta = (cause as any).meta;
   if ((cause as any).cause) out.cause = serializeCause((cause as any).cause);
-  // 需要時再打開：out.stack = cause.stack;
   return out;
 }
 
-/** 決定日誌等級，避免所有 4xx 都是 warn 把頻道洗爆 */
-type Level = 'debug' | 'info' | 'warn' | 'error';
+/** 決定日誌等級 */
 function pickLogLevel(
   code: string | undefined,
   semanticStatus?: number,
 ): Level {
   const s = semanticStatus ?? 0;
-
   if (s >= 500) return 'error';
-
-  // 可預期使用者錯誤 → info
   const infoStatuses = new Set([400, 401, 404, 409, 422]);
   if (infoStatuses.has(s)) {
     const infoCodes = new Set([
@@ -46,18 +40,16 @@ function pickLogLevel(
     ]);
     if (!code || infoCodes.has(code)) return 'info';
   }
-
-  // 403/429 或其他需要注意的 4xx → warn
   if (s === 403 || s === 429) return 'warn';
   if (s >= 400) return 'warn';
-
   return 'info';
 }
 
-/** 對高頻事件抽樣（避免洗版）；必要時可關掉或調整 */
+type Level = 'debug' | 'info' | 'warn' | 'error';
+
+/** 對高頻事件抽樣 */
 function shouldLog(code?: string, status?: number): boolean {
   const s = status ?? 0;
-  // 登入錯誤 & 帳號不存在：很常見 → 抽樣 10%
   const noisy = new Set(['INVALID_CREDENTIAL', 'USER_NOT_FOUND']);
   if (s === 401 && code && noisy.has(code)) {
     return Math.random() < 0.1;
@@ -73,7 +65,6 @@ export function createDomainErrorPageFilter(
       if (!isDomainError(e)) throw e;
       const err = e as DomainError<any>;
 
-      // 找對應 handler；fallback：redirect 到首頁＋簡單訊息
       const handler: Handler =
         map[(err as any).code] ??
         makeRedirectHandler('/', { msg: 'Unknown error happens' });
@@ -82,7 +73,6 @@ export function createDomainErrorPageFilter(
       const req = ctx.getRequest<ExpressRequest>();
       const res = ctx.getResponse<Response>();
 
-      // ---- 統一計算 semanticStatus（語義用）與 responseStatus（實際回傳） ----
       const semanticStatus =
         handler.kind === 'redirect' ? handler.semanticStatus : handler.status;
       const responseStatus =
@@ -90,10 +80,12 @@ export function createDomainErrorPageFilter(
           ? (handler.httpStatus ?? HttpStatus.SEE_OTHER) // 303
           : (handler.status ?? HttpStatus.BAD_REQUEST); // 400
 
-      // ---- 結構化 log（有抽樣與分級）----
+      // ---- 結構化 log ----
       const payloadForLog = {
         code: (err as any).code,
         message: err.message,
+        action: err.action,
+        userId: err.actorId,
         data: (err as any).data,
         semanticStatus,
         responseStatus,
@@ -115,14 +107,31 @@ export function createDomainErrorPageFilter(
             log.warn(pretty);
             break;
           case 'info':
-            log.log(pretty); // Nest 的 info 等級用 log()
+            log.log(pretty);
             break;
           default:
             log.debug(pretty);
         }
       }
 
-      // ---- preserve：回填 form 欄位 ----
+      // ---- 🚀 關鍵修改：判斷是否為 AJAX 請求 ----
+      const isAjax =
+        req.xhr ||
+        req.headers['x-requested-with'] === 'XMLHttpRequest' ||
+        req.headers.accept?.includes('json') ||
+        req.headers['content-type']?.includes('json');
+
+      if (isAjax) {
+        // 🚀 強制回傳 JSON 並結束，不讓它跑後面的 Redirect
+        return res.status(semanticStatus || 400).json({
+          code: (err as any).code,
+          message: err.message,
+          action: err.action,
+          data: (err as any).data,
+        });
+      }
+
+      // ---- 以下為原本的 SSR 邏輯 (render 或 redirect) ----
       const form: Record<string, any> = {};
       for (const key of handler.preserve ?? []) {
         if (Object.prototype.hasOwnProperty.call(req.body ?? {}, key)) {
@@ -130,7 +139,6 @@ export function createDomainErrorPageFilter(
         }
       }
 
-      // ---- helpers：把可能是函式的 msg / fieldErrors 解值 ----
       const resolveMsg = (msg?: FlashMsg): string =>
         typeof msg === 'function'
           ? msg(err)
@@ -141,7 +149,6 @@ export function createDomainErrorPageFilter(
       ): Record<string, string> | undefined =>
         typeof fe === 'function' ? fe(err) : fe;
 
-      // ---- 分支：render or redirect ----
       if (handler.kind === 'render') {
         const h = handler;
         const message = resolveMsg(h.msg);
