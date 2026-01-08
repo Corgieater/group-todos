@@ -33,7 +33,9 @@ export interface DomainErrorParams<D = unknown> {
 export class DomainError<D = unknown> extends Error {
   readonly code: DomainErrorCode;
   readonly data?: D;
+  readonly action?: string;
   readonly cause?: unknown;
+  readonly actorId: number;
 
   constructor(name: string, params: DomainErrorParams<D>) {
     super(params.message ?? name);

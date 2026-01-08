@@ -16,10 +16,7 @@ const allowBypass = process.env.ALLOW_DEV_CSRF_BYPASS === '1';
 
 const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
   getSecret: () => process.env.CSRF_SECRET!,
-  // TODO:
-  // find a way to deal with this
-  // see hackmd CSRF TODO
-  getSessionIdentifier: () => 'global', // ★ 穩定常數，避免 GET/POST 不一致
+  getSessionIdentifier: () => 'global',
   cookieName: 'XSRF-TOKEN',
   cookieOptions: {
     httpOnly: true,
@@ -39,6 +36,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
+  app.useStaticAssets(join(__dirname, '..', 'public'), { prefix: '/' });
   app.setBaseViewsDir(join(__dirname, '..', 'views'));
   app.setViewEngine('pug');
 
