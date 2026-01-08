@@ -7,32 +7,33 @@ html(lang="en")
     include ../partials/bootstrap
     link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css") 
   body
-    // 上方訊息
     include ../partials/message
-    // 簡潔導覽列
     include ../partials/header
+    include ../partials/_assign-member-form
 
     main.container.py-4
       -
-        // ===== Helpers / 旗標 =====
         const prioColorMap = { 1: 'danger', 2: 'warning', 3: 'primary', 4: 'secondary' };
         const statusColorMap = { 'OPEN': 'warning', 'CLOSED': 'success', 'ARCHIVED': 'secondary' };
         const priorityClass = `text-bg-${prioColorMap[priority] || 'secondary'}`;
         const statusClass = `text-bg-${statusColorMap[status] || 'secondary'}`;
 
         const isGroup = typeof groupId !== 'undefined' && groupId !== null;
-        const hasAssignees = Array.isArray(assignees) && assignees.length > 0;
-
-        // controller 若有傳 canManage 則採用；否則 fallback isAdminish
+        const groupName = group ? group.name : null;
+        
         const canManageFlag = (typeof canManage !== 'undefined') ? !!canManage : !!isAdminish;
+        const taskCanClose = typeof canClose !== 'undefined' ? !!canClose : false; 
 
-        // 產生 modal id（避免重複）
+        const editModalId = `editTaskModal-${id}`;
         const forceCloseModalId = `forceCloseModal-${id}`;
         const declineModalId = `declineModal-${id}`;
 
       .row.align-items-center.mb-3
         .col
           h1.h3.mb-1= title
+          #typing-indicator.text-muted.small.fw-bold.d-none
+            i.bi.bi-pencil-fill.me-1
+            span#typing-text
           .d-flex.flex-wrap.gap-2.mt-2
             span.badge(class=priorityClass) Priority: #{priorityLabel}
             span.badge(class=statusClass) Status: #{statusLabel}
@@ -41,47 +42,37 @@ html(lang="en")
             else
               span.badge.text-bg-secondary Personal
         .col-auto
-          // ===== 右上角動作列 =====
           .d-flex.gap-2
-
-            // --- 關閉 / 重新開啟 / 封存 ---
             if status === 'OPEN' && canManageFlag
-              form(action=`/api/tasks/${id}/close`, method="POST")
+              form(action=`/api/tasks/${id}/archive`, method="POST", class="d-inline")
                 if typeof csrfToken !== 'undefined'
                   input(type="hidden", name="_csrf", value=csrfToken)
-                button.btn.btn-success(type="submit" title="Close task")
-                  i.bi.bi-check2-circle.me-1
-                  | Close
-
-              if isGroup && hasAssignees && isAdminish
-                button.btn.btn-outline-danger(
-                  type="button"
-                  title="Force close with reason"
-                  data-bs-toggle="modal"
-                  data-bs-target=`#${forceCloseModalId}`
-                )
-                  i.bi.bi-exclamation-triangle.me-1
-                  | Force Close
-
-            else if status === 'CLOSED' && canManageFlag
-              form(action=`/api/tasks/${id}/update/status`, method="POST", class="d-inline")
-                if typeof csrfToken !== 'undefined'
-                  input(type="hidden", name="_csrf", value=csrfToken)
-                input(type="hidden", name="status", value="ARCHIVED")
                 button.btn.btn-outline-secondary(type="submit" title="Archive")
                   i.bi.bi-box-arrow-down.me-1
                   | Archive
+              
+              button.btn#btn-main-close(
+                type="button" 
+                class=taskCanClose ? "btn-success" : "btn-warning"
+                title="Close task"
+              )
+                i.bi.bi-check2-circle.me-1
+                | #{taskCanClose ? 'Close' : 'Force Close'}
+
+            else if status !== 'OPEN' && canManageFlag
               form(action=`/api/tasks/${id}/restore`, method="POST", class="d-inline")
                 if typeof csrfToken !== 'undefined'
                   input(type="hidden", name="_csrf", value=csrfToken)
-                input(type="hidden", name="status", value="OPEN")
                 button.btn.btn-outline-primary(type="submit" title="Reopen")
                   i.bi.bi-arrow-counterclockwise.me-1
                   | Reopen
 
-            a.btn.btn-primary(href=`/tasks/${id}/edit`) Edit   
+            if canManageFlag
+              button.btn.btn-primary(type="button" data-bs-toggle="modal" data-bs-target=`#${editModalId}`)
+                i.bi.bi-pencil-square.me-1
+                | Edit
 
-      // ===== Task 主內容卡 =====
+      // ===== Task Main Card =====
       .card.shadow-sm.mb-3
         .card-body
           if description
@@ -104,7 +95,7 @@ html(lang="en")
                 | #{location}
               else
                 span.text-muted Not set
-            if isGroup && typeof groupName !== 'undefined'
+            if isGroup && groupName
               li.list-group-item
                 strong Group:&nbsp; 
                 | #{groupName}
@@ -112,231 +103,245 @@ html(lang="en")
               strong Created:&nbsp; #{createdLabel}
             li.list-group-item
               strong Updated:&nbsp; #{updatedLabel}
+            if closedReason
+              li.list-group-item.list-group-item-warning
+                strong Closure Reason:&nbsp; 
+                span.fst-italic= closedReason
 
-      // ===== 子任務 (SubTasks) 區塊 [新增] =====
+      // ===== Sub Tasks Section =====
       .card.shadow-sm.mb-3
         .card-body
-          .d-flex.align-items-center.justify-content-between.mb-2
+          .d-flex.align-items-center.justify-content-between.mb-3
             h2.h5.mb-0 Sub Tasks
-            // 新增子任務按鈕
             if canManageFlag
-              a.btn.btn-sm.btn-primary(href=`/tasks/${id}/sub-tasks/create` title="Add a new subtask")
-                i.bi.bi-list-task.me-1
-                | New SubTask
+              a.btn.btn-sm.btn-primary(href=`/tasks/${id}/sub-tasks/create`)
+                i.bi.bi-plus-lg.me-1
+                | Add SubTask
           
-          // 渲染子任務清單
-          // 假設 subTasks 變數從後端傳入
-          if Array.isArray(subTasks) && subTasks.length > 0
-            // [TODO: 渲染子任務列表]
-            p.text-muted.fst-italic (子任務列表將會在這裡顯示)
-          else
-            p.text-muted.fst-italic No sub tasks for this task.
+          #subtask-list-container
+            include ../partials/_subtask-list.pug
 
-
-      // ===== 群組任務：Assignees 清單 =====
+      // ===== Assignees Section =====
       if isGroup
         .card.shadow-sm.mb-3
           .card-body
-            h2.h6.mb-3 Assignees
-            if hasAssignees
-              table.table.table-sm.align-middle
-                thead
-                  tr
-                    th(scope="col") Member
-                    th(scope="col") Status
-                    th(scope="col") Assigned By
-                    th(scope="col") Assigned
-                    th(scope="col") Accepted
-                    th(scope="col") Updated
-                tbody
-                  each a in assignees
-                    -
-                      const stBadge =
-                        a.status === 'PENDING' ? 'secondary'
-                        : a.status === 'ACCEPTED' ? 'info'
-                        : a.status === 'DECLINED' ? 'warning'
-                        : a.status === 'COMPLETED' ? 'success'
-                        : 'secondary';
-
-                      const assigneeName = a.assignee?.name || null;
-                      const assigneeEmail = a.assignee?.email || null;
-                      const assignedByName = a.assignedBy?.name || null;
-                      const assignedByEmail = a.assignedBy?.email || null;
-
-                      const selfAssign = a.assignedById && a.assignedById === a.assigneeId;
-
-                      const assignedStr = (typeof a.assignedLabel !== 'undefined')
-                        ? a.assignedLabel
-                        : (a.assignedAt ? new Date(a.assignedAt).toLocaleString('zh-TW') : '');
-
-                      const acceptedStr = (typeof a.acceptedLabel !== 'undefined')
-                        ? a.acceptedLabel
-                        : (a.acceptedAt ? new Date(a.acceptedAt).toLocaleString('zh-TW') : '');
-
-                      const updatedStr = (typeof a.updatedLabel !== 'undefined')
-                        ? a.updatedLabel
-                        : (a.updatedAt ? new Date(a.updatedAt).toLocaleString('zh-TW') : '');
-
-                    tr
-                      // — Member —
-                      td
-                        if assigneeName
-                          | #{assigneeName}
-                          if assigneeEmail
-                            span.text-muted.ms-1 (#{assigneeEmail})
-                        else if assigneeEmail
-                          | #{assigneeEmail}
-                        else
-                          | User ##{a.assigneeId}
-
-                      // — Status —
-                      td
-                        span.badge(class=`text-bg-${stBadge}`)= a.status
-
-                      // — Assigned By —
-                      td
-                        if selfAssign
-                          | －
-                        else if assignedByName
-                          | #{assignedByName}
-                          if assignedByEmail
-                            span.text-muted.ms-1 (#{assignedByEmail})
-                        else if assignedByEmail
-                          | #{assignedByEmail}
-                        else
-                          span.text-muted —
-
-                      // — Assigned —
-                      td
-                        if assignedStr
-                          | #{assignedStr}
-                        else
-                          span.text-muted —
-
-                      // — Accepted —
-                      td
-                        if acceptedStr
-                          | #{acceptedStr}
-                        else
-                          span.text-muted —
-
-                      // — Updated —
-                      td
-                        if updatedStr
-                          | #{updatedStr}
-                        else
-                          span.text-muted —
-            else
-              p.text-muted.fst-italic No assignees.
-
-            // ===== 自己的狀態操作（含自我指派 Join） =====
-            if isGroup && (viewerIsAssignee || allowSelfAssign)
+            h2.h6.mb-3 Task Assignees
+            if Array.isArray(assignees) && assignees.length > 0
+              .table-responsive
+                table.table.table-sm.align-middle
+                  tbody
+                    each a in assignees
+                      - const stBadge = a.status === 'PENDING' ? 'secondary' : a.status === 'ACCEPTED' ? 'info' : a.status === 'DECLINED' ? 'warning' : a.status === 'COMPLETED' ? 'success' : 'secondary';
+                      tr
+                        td #{a.assignee ? a.assignee.name : 'Unknown'}
+                        td: span.badge(class=`text-bg-${stBadge}`)= a.status
+            
+            if isAdminish
+              .mt-3.mb-4.p-3.bg-light.rounded.border
+                h3.h6.mb-2 
+                  i.bi.bi-person-plus-fill.me-1
+                  | Assign Member
+                +assignMemberForm(`/api/tasks/${id}/assign-task`, groupMembers, csrfToken)
+            
+            hr
+            
+            if viewerIsAssignee || allowSelfAssign
               -
                 const st = viewerAssigneeStatus || 'NONE';
-                const canAccept   = st === 'PENDING' || st === 'DECLINED' || st === 'NONE';
-                const canComplete = st === 'ACCEPTED';
-                const canDecline  = st === 'PENDING' || st === 'ACCEPTED';
+                const canAccept   = st === 'PENDING' || st === 'DECLINED' || st === 'NONE';
+                const canComplete = st === 'ACCEPTED'; 
+                const canDecline  = st === 'PENDING' || st === 'ACCEPTED';
+                const canWithdraw = st === 'ACCEPTED' || st === 'DECLINED';
 
-                // 新增：可改悔/還原的條件
-                const canWithdrawToPending = st === 'ACCEPTED' || st === 'DECLINED';
-                const canReopenFromCompleted = st === 'COMPLETED' && status === 'OPEN'; // 任務還開著才能退回
-
-              hr
-              h3.h6.mb-2 Update my assignment status
+              h3.h6.mb-2 Update my status
               .d-flex.flex-wrap.gap-2
-                // Accept / Join
                 if canAccept
                   form(action=`/api/tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
                     if typeof csrfToken !== 'undefined'
                       input(type="hidden", name="_csrf", value=csrfToken)
                     input(type="hidden", name="status", value="ACCEPTED")
-                    button.btn.btn-outline-primary.btn-sm(type="submit" title=(st==='NONE' ? 'Join this task' : 'Accept assignment'))
+                    button.btn.btn-outline-primary.btn-sm(type="submit")
                       i.bi.bi-hand-thumbs-up.me-1
                       = (st === 'NONE' ? 'Join' : 'Accept')
 
-                // Completed
                 if canComplete
                   form(action=`/api/tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
                     if typeof csrfToken !== 'undefined'
                       input(type="hidden", name="_csrf", value=csrfToken)
                     input(type="hidden", name="status", value="COMPLETED")
-                    button.btn.btn-success.btn-sm(type="submit" title="Mark as completed")
+                    button.btn.btn-success.btn-sm(type="submit")
                       i.bi.bi-check2-circle.me-1
                       | Completed
 
-                // Decline（reason modal）
                 if canDecline
-                  button.btn.btn-outline-warning.btn-sm(
-                    type="button"
-                    data-bs-toggle="modal"
-                    data-bs-target=`#${declineModalId}`
-                    title="Decline with reason"
-                  )
-                    i.bi.bi-slash-circle.me-1
-                    | Decline
+                  button.btn.btn-outline-warning.btn-sm(type="button" data-bs-toggle="modal" data-bs-target=`#${declineModalId}`) Decline
 
-                // 🔄 Withdraw / Clear decision → 回到 PENDING
-                if canWithdrawToPending
-                  form(action=`/api/tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
-                    if typeof csrfToken !== 'undefined'
-                      input(type="hidden", name="_csrf", value=csrfToken)
-                    input(type="hidden", name="status", value="PENDING")
-                    button.btn.btn-outline-secondary.btn-sm(type="submit" title=(st==='ACCEPTED' ? 'Withdraw to pending' : 'Clear decision'))
-                      i.bi.bi-arrow-counterclockwise.me-1
-                      = (st === 'ACCEPTED' ? 'Withdraw' : 'Clear decision')
-
-                // ♻️ Reopen（完成 → 接受）
-                if canReopenFromCompleted
-                  form(action=`/api/tasks/${id}/restore`, method="POST", class="d-inline")
-                    if typeof csrfToken !== 'undefined'
-                      input(type="hidden", name="_csrf", value=csrfToken)
-                    input(type="hidden", name="status", value="ACCEPTED")
-                    button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen (back to accepted)")
-                      i.bi.bi-arrow-repeat.me-1
-                      | Reopen
-
-      // ===== Force Close Modal（只有群組 + 有 assignees + 管理者） =====
-      if isGroup && hasAssignees && isAdminish
-        .modal.fade(id=forceCloseModalId tabindex="-1" aria-labelledby=`${forceCloseModalId}-label` aria-hidden="true")
-          .modal-dialog
+      // ===== MODALS =====
+      if canManageFlag
+        //- 1. Edit Task Modal
+        .modal.fade(id=editModalId tabindex="-1" aria-hidden="true")
+          .modal-dialog.modal-lg
             .modal-content
               .modal-header
-                h5.modal-title(id=`${forceCloseModalId}-label`) Force Close Task
+                h5.modal-title Edit Task
                 button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
-              form(action=`/api/tasks/${id}/close`, method="POST")
-                if typeof csrfToken !== 'undefined'
-                  input(type="hidden", name="_csrf", value=csrfToken)
-                input(type="hidden", name="force", value="1")
-                .modal-body
-                  p.mb-2 This will close the task even if not all assignees have completed.
+              form(action=`/api/tasks/${id}/update`, method="POST")
+                .modal-body.p-4
+                  input(type="hidden" name="_csrf" value=csrfToken) 
                   .mb-3
-                    label.form-label(for=`${forceCloseModalId}-reason`) Reason (required)
-                    textarea.form-control(id=`${forceCloseModalId}-reason` name="closedReason" rows="3" required placeholder="e.g. Out of scope / duplicated / emergency")
+                    label.form-label(for="title") Title
+                    input#title.form-control(type="text", name="title", required, value=(title || ''))
+                  .mb-3
+                    label.form-label(for="description") Description
+                    textarea#description.form-control(name="description", rows="3")= (description || '')
+                  .row.g-3.mb-3
+                    .col-sm-6
+                      label.form-label(for="dueDate") Due date
+                      input#dueDate.form-control(type="date", name="dueDate", value=(dueDateLocal || ''), min=todayISO)
+                    .col-sm-6.d-flex.align-items-end
+                      .form-check.mb-2
+                        input#allDay.form-check-input(type="checkbox", name="allDay", checked=!!allDay)
+                        label.form-check-label(for="allDay") All day
+                  .mb-3#timeRow
+                    label.form-label(for="dueTime") Time
+                    input#dueTime.form-control(type="time", name="dueTime", value=(allDay ? '' : (dueTimeLocal || '')))
+                  .mb-3
+                    label.form-label(for="location") Location
+                    input#location.form-control(type="text", name="location", value=(location || ''))
+                  .mb-3
+                    label.form-label(for="priority") Priority
+                    select#priority.form-select(name="priority")
+                      option(value="1", selected=(priority === 1)) Urgent
+                      option(value="2", selected=(priority === 2)) High
+                      option(value="3", selected=(priority === 3)) Medium
+                      option(value="4", selected=(priority === 4)) Low
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
-                  button.btn.btn-danger(type="submit") Force Close
+                  button.btn.btn-primary(type="submit") Save Changes
 
-      // ===== Decline Reason Modal（群組 assignee 自己要 Decline 時） =====
-      if isGroup
-        .modal.fade(id=declineModalId tabindex="-1" aria-labelledby=`${declineModalId}-label` aria-hidden="true")
+        //- 2. Force Close Modal
+        .modal.fade(id=forceCloseModalId tabindex="-1" aria-hidden="true")
           .modal-dialog
             .modal-content
-              .modal-header
-                h5.modal-title(id=`${declineModalId}-label`) Decline Assignment
+              .modal-header.bg-warning.text-dark
+                h5.modal-title 
+                  i.bi.bi-exclamation-triangle-fill.me-2
+                  | Force Close Required
                 button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
-              form(action=`/api/tasks/${id}/update/assignee-status`, method="POST")
-                if typeof csrfToken !== 'undefined'
-                  input(type="hidden", name="_csrf", value=csrfToken)
-                input(type="hidden", name="status", value="DECLINED")
+              form#forceCloseForm(action=`/api/tasks/${id}/close`, method="POST")
                 .modal-body
-                  .mb-3
-                    label.form-label(for=`${declineModalId}-reason`) Reason (optional)
-                    textarea.form-control(id=`${declineModalId}-reason` name="reason" rows="3" placeholder="Optional reason for declining")
+                  p.text-muted 任務尚未全員完成。若要強制結案，請輸入理由：
+                  if typeof csrfToken !== 'undefined'
+                    input(type="hidden", name="_csrf", value=csrfToken)
+                  textarea.form-control(name="reason" rows="3" placeholder="例如：由管理員手動核准..." required)
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
-                  button.btn.btn-warning(type="submit") Decline
+                  button.btn.btn-warning#btn-confirm-force-close(type="submit") Confirm Force Close
+
+      #liveToastContainer.toast-container.position-fixed.bottom-0.end-0.p-3(style="z-index: 1080;")
 
       .mt-3
-        a.link-secondary(href="/tasks/home") ← Back to all tasks
+        a.link-secondary(href="/tasks/home") ← Back to home
 
-    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")
+    // ===== SCRIPTS =====
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+    script(src="https://cdn.socket.io/4.7.2/socket.io.min.js")
+    
+    script.
+      (function () {
+        const socket = io();
+        const taskId = "#{id}";
+        const currentUserId = "#{currentUserId}";
+        const currentUserName = "#{currentUserName || 'Someone'}"; 
+        const forceModalElement = document.getElementById("#{forceCloseModalId}");
+        const bsForceModal = forceModalElement ? new bootstrap.Modal(forceModalElement) : null;
+        
+        let typingTimer;
+        let isTypingSent = false;
+        const liveToastContainer = document.getElementById('liveToastContainer');
+
+        function showToast(msg, type = 'primary') {
+          if (!liveToastContainer) return;
+          const id = 't-' + Date.now();
+          const html = `<div id="${id}" class="toast align-items-center text-white bg-${type} border-0 mb-2" role="alert"><div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+          liveToastContainer.insertAdjacentHTML('beforeend', html);
+          new bootstrap.Toast(document.getElementById(id), { autohide: true, delay: 5000 }).show();
+        }
+
+        // Socket logic
+        socket.on('connect', () => socket.emit('joinTask', taskId));
+        socket.on('taskUpdated', async (data) => {
+          if (Number(data.actorId) === Number(currentUserId)) return;
+          if (['SUBTASK_CREATED', 'SUBTASK_CLAIMED', 'SUBTASK_UPDATED'].includes(data.type)) {
+            const container = document.getElementById('subtask-list-container');
+            if (container) {
+              const res = await fetch(`/tasks/${taskId}/sub-tasks/partial`);
+              if (res.ok) container.innerHTML = await res.text();
+            }
+          } else {
+            showToast(`${data.updatedBy} updated the task.`, 'info');
+            setTimeout(() => window.location.reload(), 1500);
+          }
+        });
+
+        // 核心：處理關閉任務 (嘗試 AJAX)
+        async function attemptClose(reason = null) {
+          try {
+            const res = await fetch(`/api/tasks/${taskId}/close`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'x-csrf-token': '#{csrfToken}'
+              },
+              body: JSON.stringify({ reason })
+            });
+
+            if (res.ok) {
+              window.location.reload();
+            } else {
+              const err = await res.json();
+              console.log('Server Error:', err.action);
+
+              if (err.action === 'FORCE_CLOSE_REASON_REQUIRED') {
+                const modalId = "#{forceCloseModalId}"; 
+    
+                const modalEl = document.getElementById(modalId);
+                if (modalEl) {
+                  const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                  bsModal.show();
+                } else {
+                  console.error('找不到 Modal 元素，請檢查 Pug 裡的 id 是否為:', modalId);
+                }
+              } else {
+                showToast(err.message || 'Error', 'danger');
+              }
+            }
+          } catch (e) {
+            showToast('Network error', 'danger');
+          }
+        }
+
+        // 監聽按鈕點擊
+        document.getElementById('btn-main-close')?.addEventListener('click', () => attemptClose());
+
+        // 監聽強制關閉表單送出
+        document.getElementById('forceCloseForm')?.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const reason = e.target.querySelector('textarea[name="reason"]').value;
+          attemptClose(reason);
+        });
+
+        // 打字偵測與其他 UI 邏輯...
+        const setupTyping = (id) => {
+          document.getElementById(id)?.addEventListener('input', () => {
+            if (!isTypingSent) {
+              socket.emit('typing', { taskId, userName: currentUserName });
+              isTypingSent = true;
+              setTimeout(() => { isTypingSent = false; }, 2000);
+            }
+          });
+        };
+        setupTyping('title'); setupTyping('description');
+      })();

@@ -1,0 +1,37 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title Response Successful - Task Management
+    include ../partials/bootstrap
+    link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css")
+    style.
+      body { background-color: #f8f9fa; }
+      .success-card { max-width: 500px; margin: 80px auto; border: none; border-radius: 15px; }
+      .success-icon { font-size: 4rem; color: #28a745; }
+
+  body
+    .container
+      .card.shadow.success-card
+        .card-body.text-center.p-5
+          .success-icon.mb-4
+            i.bi.bi-check-circle-fill
+          
+          h1.h3.mb-2 Action Completed!
+          p.lead.mb-4 Task status has been successfully updated to:
+            span.badge.ms-2(class=status === 'ACCEPTED' ? 'text-bg-success' : 'text-bg-warning') #{status}
+          
+          p.text-muted.mb-4 
+            | Your response has been synchronized. The administrator will be notified of this update.
+
+          .d-grid
+            //- 判斷是否有 subTaskId 來決定跳轉路徑
+            if subTaskId
+              a.btn.btn-primary(href=`/tasks/${taskId}/sub-tasks/${subTaskId}`) 
+                i.bi.bi-search.me-2
+                | View Sub-task Details
+            else
+              a.btn.btn-primary(href=`/tasks/${taskId}`) 
+                i.bi.bi-search.me-2
+                | View Task Details

@@ -1,0 +1,19 @@
+//- views/partials/_assign-member-form.pug
+mixin assignMemberForm(actionUrl, members, csrfToken, currentAssigneeId)
+  form(action=actionUrl, method="POST")
+    input(type="hidden", name="_csrf", value=csrfToken)
+    .input-group.input-group-sm
+      label.input-group-text(for="assigneeSelect")
+        i.bi.bi-person-plus
+      select#assigneeSelect.form-select(name="assigneeId" required)
+        option(value="" disabled selected) Choose Member...
+        each member in members
+          option(value=member.id) #{member.userName}
+      button.btn.btn-primary(type="submit") Assign
+    
+    //- 🚨 新增：緊急郵件勾選框
+    .form-check.mt-2.small
+      input#urgentEmail.form-check-input(type="checkbox" name="sendUrgentEmail" value="true")
+      label.form-check-label.text-danger.fw-bold(for="urgentEmail")
+        i.bi.bi-lightning-fill.me-1
+        | Send urgent email notification

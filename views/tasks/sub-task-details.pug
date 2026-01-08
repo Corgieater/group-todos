@@ -1,0 +1,296 @@
+doctype html
+html(lang="en")
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1")
+    title= title || 'Sub-Task Details'
+    include ../partials/bootstrap
+    link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css") 
+  body
+    include ../partials/message
+    include ../partials/header
+    include ../partials/_assign-member-form
+
+    main.container.py-4
+      -
+        const prioColorMap = { 1: 'danger', 2: 'warning', 3: 'primary', 4: 'secondary' };
+        const statusColorMap = { 'OPEN': 'warning', 'CLOSED': 'success', 'ARCHIVED': 'secondary' };
+        const priorityClass = `text-bg-${prioColorMap[priority] || 'secondary'}`;
+        const statusClass = `text-bg-${statusColorMap[status] || 'secondary'}`;
+
+        const isGroup = typeof groupId !== 'undefined' && groupId !== null;
+        const hasAssignees = Array.isArray(assignees) && assignees.length > 0;
+        const canManageFlag = (typeof canManage !== 'undefined') ? !!canManage : !!isAdminish;
+
+        const editSubModalId = `editSubTaskModal-${id}`;
+        const declineModalId = `declineModal-${id}`;
+
+      .row.align-items-center.mb-3
+        .col
+          nav(aria-label="breadcrumb")
+            ol.breadcrumb.mb-2
+              li.breadcrumb-item: a(href=`/tasks/${taskId}`) Parent Task
+              li.breadcrumb-item.active(aria-current="page") Sub-Task Details
+          
+          h1.h3.mb-1= title
+          .d-flex.flex-wrap.gap-2.mt-2
+            span.badge(class=priorityClass) Priority: #{priorityLabel}
+            span.badge(class=statusClass) Status: #{statusLabel}
+            if isGroup
+              span.badge.text-bg-info Group Sub-task
+            else
+              span.badge.text-bg-secondary Personal Sub-task
+        .col-auto
+          .d-flex.gap-2
+            if status === 'OPEN'
+              form(action=`/api/tasks/${taskId}/sub-tasks/${id}/close`, method="POST")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                button.btn.btn-success(type="submit" title="Close sub-task")
+                  i.bi.bi-check2-circle.me-1
+                  | Close
+
+            if status === 'CLOSED'
+              form(action=`/api/tasks/${taskId}/sub-tasks/${id}/restore`, method="POST", class="d-inline")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                button.btn.btn-outline-primary(type="submit" title="Reopen Sub-task")
+                  i.bi.bi-arrow-counterclockwise.me-1
+                  | Reopen
+
+            //- 💡 觸發編輯 Modal 的按鈕
+            if canManageFlag
+              button.btn.btn-primary.ms-2(type="button" data-bs-toggle="modal" data-bs-target=`#${editSubModalId}`)
+                i.bi.bi-pencil-square.me-1
+                | Edit
+
+      if status === 'CLOSED' && closedBy
+        .alert.alert-info.d-flex.align-items-center(role="alert")
+          i.bi.bi-info-circle-fill.me-2
+          div
+            | This sub-task was 
+            strong closed
+            |  by 
+            span.badge.text-bg-light #{closedBy.name}
+            |  on #{closedAtLabel || closedAt}
+
+      // ===== Sub-task Assignees Card =====
+      if isGroup
+        .card.shadow-sm.mb-3
+          .card-body
+            .d-flex.justify-content-between.align-items-center.mb-3
+              h2.h6.mb-0 Sub-task Assignees
+              if status === 'OPEN' && !viewerIsAssignee && allowSelfAssign
+                form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update/assignee-status`, method="POST")
+                  if typeof csrfToken !== 'undefined'
+                    input(type="hidden", name="_csrf", value=csrfToken)
+                  input(type="hidden", name="status", value="ACCEPTED")
+                  button.btn.btn-sm.btn-primary(type="submit")
+                    i.bi.bi-person-plus.me-1
+                    | Claim Sub-task
+
+            if hasAssignees
+              .table-responsive
+                table.table.table-sm.align-middle
+                  thead
+                    tr
+                      th Member
+                      th Status
+                      th Updated
+                  tbody
+                    each a in assignees
+                      - const stBadge = a.status === 'PENDING' ? 'secondary' : a.status === 'ACCEPTED' ? 'info' : a.status === 'DECLINED' ? 'warning' : a.status === 'COMPLETED' ? 'success' : 'secondary';
+                      tr
+                        td
+                          strong= (a.assignee ? a.assignee.name : 'Unknown')
+                          if a.assigneeId === viewerAssigneeId
+                            span.badge.rounded-pill.text-bg-success.ms-2 You
+                        td
+                          span.badge(class=`text-bg-${stBadge}`)= a.status
+                        td
+                          span.text-muted.small= a.updatedAt
+            else
+              p.text-muted.fst-italic No one is assigned yet.
+
+            if isAdminish
+              .mt-3.mb-2.p-3.bg-light.rounded.border
+                h3.h6.mb-2 
+                  i.bi.bi-person-plus-fill.me-1
+                  | Assign Member
+                +assignMemberForm(`/api/tasks/${taskId}/sub-tasks/${id}/assign-sub-task`, groupMembers, csrfToken)
+
+            if status === 'OPEN' && viewerIsAssignee
+              hr
+              h3.h6.mb-2 Update my status
+              .d-flex.flex-wrap.gap-2
+                -
+                  const st = viewerAssigneeStatus || 'NONE';
+                  const canAccept   = st === 'PENDING' || st === 'DECLINED';
+                  const canComplete = st === 'ACCEPTED';
+                  const canDecline  = st === 'PENDING' || st === 'ACCEPTED';
+
+                if canAccept
+                  form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update/assignee-status`, method="POST")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="status", value="ACCEPTED")
+                    button.btn.btn-outline-primary.btn-sm(type="submit") Accept
+
+                if canComplete
+                  form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update/assignee-status`, method="POST")
+                    if typeof csrfToken !== 'undefined'
+                      input(type="hidden", name="_csrf", value=csrfToken)
+                    input(type="hidden", name="status", value="COMPLETED")
+                    button.btn.btn-success.btn-sm(type="submit") Completed
+
+                if canDecline
+                  button.btn.btn-outline-warning.btn-sm(type="button" data-bs-toggle="modal" data-bs-target=`#${declineModalId}`) Decline
+
+      // ===== Sub-task Info Card =====
+      .card.shadow-sm.mb-3
+        .card-body
+          h2.h6.mb-3 Sub-task Info
+          if description
+            p.mb-3= description
+          else
+            p.text-muted.fst-italic.mb-3 No description.
+
+          ul.list-group.list-group-flush
+            li.list-group-item
+              strong Due:&nbsp;
+              if dueLabel
+                | #{dueLabel}
+                if allDay
+                  span.badge.text-bg-warning.ms-2 All Day
+              else
+                span.text-muted Not set
+            li.list-group-item
+              strong Location:&nbsp;
+              if location
+                | #{location}
+              else
+                span.text-muted Not set
+            li.list-group-item
+              strong Created:&nbsp; #{createdLabel}
+            li.list-group-item
+              strong Updated:&nbsp; #{updatedLabel}
+
+      // ===== ALL MODALS =====
+
+      // 💡 融入的 Edit Sub-task Modal
+      if canManageFlag
+        .modal.fade(id=editSubModalId tabindex="-1" aria-hidden="true")
+          .modal-dialog.modal-lg
+            .modal-content
+              .modal-header
+                h5.modal-title Edit Sub-task
+                button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
+              form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update`, method="POST")
+                .modal-body.p-4
+                  input(type="hidden" name="_csrf" value=csrfToken) 
+                  .mb-3
+                    label.form-label(for="title") Title
+                    input#title.form-control(type="text", name="title", required, value=(title || ''))
+                  .mb-3
+                    label.form-label(for="description") Description
+                    textarea#description.form-control(name="description", rows="3")= (description || '')
+                  .row.g-3.mb-3
+                    .col-sm-6
+                      label.form-label(for="dueDate") Due date
+                      input#dueDate.form-control(type="date", name="dueDate", value=(dueDateLocal || ''), min=todayISO)
+                    .col-sm-6.d-flex.align-items-end
+                      .form-check.mb-2
+                        input#allDay.form-check-input(type="checkbox", name="allDay", checked=!!allDay)
+                        label.form-check-label(for="allDay") All day
+                  .mb-3#timeRow
+                    label.form-label(for="dueTime") Time
+                    input#dueTime.form-control(type="time", name="dueTime", value=(allDay ? '' : (dueTimeLocal || '')))
+                  .mb-3
+                    label.form-label(for="location") Location
+                    input#location.form-control(type="text", name="location", value=(location || ''))
+                  .mb-3
+                    label.form-label(for="priority") Priority
+                    select#priority.form-select(name="priority")
+                      option(value="", selected=!priority) — None —
+                      option(value="1", selected=(priority === 1)) Urgent
+                      option(value="2", selected=(priority === 2)) High
+                      option(value="3", selected=(priority === 3)) Medium
+                      option(value="4", selected=(priority === 4)) Low
+                .modal-footer
+                  button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
+                  button.btn.btn-primary(type="submit") Save Changes
+
+      if isGroup
+        .modal.fade(id=declineModalId tabindex="-1" aria-hidden="true")
+          .modal-dialog
+            .modal-content
+              .modal-header
+                h5.modal-title Decline Sub-task
+                button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
+              form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update/assignee-status`, method="POST")
+                if typeof csrfToken !== 'undefined'
+                  input(type="hidden", name="_csrf", value=csrfToken)
+                input(type="hidden", name="status", value="DECLINED")
+                .modal-body
+                  label.form-label Reason (optional)
+                  textarea.form-control(name="reason" rows="3")
+                .modal-footer
+                  button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
+                  button.btn.btn-warning(type="submit") Decline
+
+      .mt-3
+        a.link-secondary(href=`/tasks/${taskId}`) ← Back to parent task
+
+    // ===== SCRIPTS =====
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+    script(src="https://cdn.socket.io/4.7.2/socket.io.min.js")
+    
+    //- 時間連動腳本
+    script.
+      (function () {
+        const allDay = document.getElementById('allDay');
+        const timeRow = document.getElementById('timeRow');
+        const dateInput = document.getElementById('dueDate');
+        const timeInput = document.getElementById('dueTime');
+
+        function updateTimeVisibility() {
+          if (!timeRow || !allDay) return;
+          timeRow.style.display = allDay.checked ? 'none' : '';
+          if (allDay.checked && timeInput) timeInput.value = '';
+        }
+
+        function updateTimeMin() {
+          if (!dateInput || !timeInput) return;
+          const today = new Date();
+          const selectedDate = dateInput.value ? new Date(dateInput.value) : null;
+          if (selectedDate && selectedDate.toDateString() === today.toDateString()) {
+            const pad = (n) => String(n).padStart(2,'0');
+            timeInput.min = pad(today.getHours()) + ':' + pad(today.getMinutes());
+          } else {
+            timeInput.removeAttribute('min');
+          }
+        }
+
+        if (allDay) allDay.addEventListener('change', updateTimeVisibility);
+        if (dateInput) dateInput.addEventListener('change', updateTimeMin);
+        updateTimeVisibility();
+        updateTimeMin();
+      })();
+
+    //- WebSocket 同步腳本
+    script.
+      const socket = io();
+      const taskId = "#{taskId}"; // 💡 注意：子任務頁面應聽取父任務房間以接收全局更新
+      const currentUserId = "#{currentUserId}";
+
+      socket.on('connect', () => {
+        console.log('Connected to WebSocket server!');
+        socket.emit('joinTask', taskId);
+      });
+
+      socket.on('taskUpdated', (data) => { 
+        if (Number(data.actorId) !== Number(currentUserId)) {
+          // 當父任務下任何東西變動，重新整理子任務頁面以獲得最新狀態
+          window.location.reload();
+        }
+      });

@@ -1,0 +1,89 @@
+// src/views/partials/_task-card.pug
+// 該 Mixin 包含了智慧 Close 按鈕邏輯和所有狀態的動作。
+
+// 任務卡片 Mixin
+// 接收參數：
+// - task: 任務物件，包含 canClose 屬性 (由 service 注入)
+// - csrfToken: 用於表單提交
+// - cardClassForPrio: 處理優先級樣式的 helper 函式
+mixin taskCard(task, csrfToken, cardClassForPrio)
+  -
+    // Helper 函式，用於判斷狀態
+    const isOpen = (t) => t.status === 'OPEN';
+    const isClosed = (t) => t.status === 'CLOSED';
+    const isArchived = (t) => t.status === 'ARCHIVED';
+
+  .col-12.col-md-6
+    .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
+      
+      // ───────────────────────────────────────────────────────────────────
+      // 右上角動作區域
+      .position-absolute.top-0.end-0.m-2
+        // 1. 處理 OPEN 狀態下的動作 (Close / SubTasks Open)
+        if isOpen(task)
+          // 🚨 智慧 Close 按鈕邏輯：只有在 canClose 為 true 時才顯示 Close 按鈕
+          if task.canClose
+            form(action=`/api/tasks/${task.id}/close`, method="POST")
+              if typeof csrfToken !== 'undefined'
+                input(type="hidden", name="_csrf", value=csrfToken)
+              input(type="hidden", name="status", value="CLOSED")
+              button.btn.btn-success.btn-sm(type="submit" title="Close this task")
+                i.bi.bi-check2-circle.me-1
+                | Close
+          else
+            // 任務開放，但不能關閉 (因為有 SubTask 未完成)
+            button.btn.btn-outline-secondary.btn-sm(type="button" disabled title="Requires SubTasks completion")
+              i.bi.bi-info-circle.me-1
+              | SubTasks Open
+        
+        else if isClosed(task)
+          .btn-group
+            // Archive
+            form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
+              if typeof csrfToken !== 'undefined'
+                input(type="hidden", name="_csrf", value=csrfToken)
+              input(type="hidden", name="status", value="ARCHIVED")
+              button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
+                i.bi.bi-box-arrow-down.me-1
+                | Archive
+            // Reopen
+            form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
+              if typeof csrfToken !== 'undefined'
+                input(type="hidden", name="_csrf", value=csrfToken)
+              input(type="hidden", name="status", value="OPEN")
+              button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
+                i.bi.bi-arrow-counterclockwise.me-1
+                | Reopen
+      
+      // ───────────────────────────────────────────────────────────────────
+      // 卡片主體內容
+      .card-body
+        // 狀態徽章
+        if isArchived(task)
+          span.badge.text-bg-secondary.float-end Archived
+        else if isClosed(task)
+          span.badge.text-bg-success.float-end Closed
+
+        h3.h6.card-title.mb-1
+          a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
+
+        // 截止時間
+        if task.allDay
+          if task.dueLabel
+            small.text-muted.d-block All-day: #{task.dueLabel}
+        else
+          if task.dueLabel
+            small.text-muted.d-block Due: #{task.dueLabel}
+
+        // 額外資訊 (Location / Description)
+        .row.mt-2.gx-2
+          .col-6
+            if task.location
+              small.text-muted.d-block.text-truncate 📍 #{task.location}
+          .col-6
+            if task.description
+              small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+        
+        // 查看詳情按鈕
+        .mt-3
+          a.btn.btn-sm.btn-outline-primary(href=`/tasks/${task.id}`) View Details

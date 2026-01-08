@@ -25,9 +25,7 @@ html(lang="en")
               ? ['true','on','1','yes'].includes(String(__createForm.allDay).toLowerCase())
               : true;
 
-          // 2. 表單 Action 假設指向 /api/subtasks/:parentTaskId
-          // ⚠️ 注意: 您可能需要調整您的後端路由來接收這個 POST 請求
-          form(action=`/api/tasks/${parentTaskId}/subtasks`, method="POST")
+          form(action=`/api/tasks/${parentTaskId}/sub-tasks`, method="POST")
             input(type="hidden" name="_csrf" value=csrfToken) 
             
             // 3. 隱藏欄位：傳遞 parentTaskId (必填)

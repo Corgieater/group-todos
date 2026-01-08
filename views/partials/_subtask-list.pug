@@ -1,0 +1,47 @@
+#subtask-list-content
+  if subTasks && subTasks.length > 0
+    .row.g-3
+      each sub in subTasks
+        .col-12.col-md-6 
+          .card.border-secondary-subtle.h-100(id=`subtask-card-${sub.id}`)
+            .card-body.p-3
+              .d-flex.justify-content-between.align-items-start
+                div
+                  - const subStatusClass = `text-bg-${statusColorMap[sub.status] || 'secondary'}`;
+                  span.badge.mb-2(class=subStatusClass) #{sub.status}
+                  h3.h6.mb-1
+                    a.text-decoration-none(href=`/tasks/${taskId}/sub-tasks/${sub.id}`)= sub.title
+                div.ms-2
+                  if isGroup
+                    if sub.status === 'OPEN'
+                      - const isClaimedByMe = sub.assignees && sub.assignees.some(a => a.assigneeId === viewerAssigneeId)
+                      if isClaimedByMe
+                        span.badge.text-bg-success
+                          i.bi.bi-person-check-fill.me-1
+                          | My Item
+                      else if !sub.assignees || sub.assignees.length === 0
+                        form(action=`/api/tasks/${taskId}/sub-tasks/${sub.id}/update/assignee-status`, method="POST")
+                          if typeof csrfToken !== 'undefined'
+                            input(type="hidden", name="_csrf", value=csrfToken)
+                          input(type="hidden", name="status", value="ACCEPTED")
+                          button.btn.btn-sm.btn-outline-primary(type="submit") Claim
+                  else
+                    if sub.status === 'OPEN'
+                      form(action=`/api/tasks/${taskId}/sub-tasks/${sub.id}/close`, method="POST")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        button.btn.btn-sm.btn-success(type="submit") Close
+                    else if sub.status === 'CLOSED'
+                      form(action=`/api/tasks/${taskId}/sub-tasks/${id}/restore`, method="POST")
+                        if typeof csrfToken !== 'undefined'
+                          input(type="hidden", name="_csrf", value=csrfToken)
+                        button.btn.btn-sm.btn-outline-primary(type="submit") Reopen
+              
+              if isGroup && sub.assignees && sub.assignees.length > 0
+                .mt-2.pt-2.border-top
+                  each subA in sub.assignees
+                    span.badge.rounded-pill.text-bg-light.border.me-1
+                      i.bi.bi-person.me-1
+                      | #{subA.assignee ? subA.assignee.name : 'Unknown'}
+  else
+    p.text-muted.fst-italic No sub tasks.

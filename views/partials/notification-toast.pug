@@ -1,0 +1,23 @@
+//- views/partials/notification-toast.pug
+style.
+  #toastContent {
+    max-height: 400px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .notification-link:hover {
+    background-color: #f8f9fa;
+  }
+
+.toast-container.position-fixed.bottom-0.end-0.p-3(style="z-index: 1055")
+  #taskToast.toast(role='alert' aria-live='assertive' aria-atomic='true' data-bs-autohide="false")
+    .toast-header.bg-primary.text-white
+      i.bi.bi-list-stars.me-2
+      strong.me-auto 待處理任務
+      span#taskCount.badge.bg-light.text-primary.ms-2 0 
+      button.btn-close.btn-close-white(type='button' data-bs-dismiss='toast')
+    .toast-body#toastContent
+      .text-center.text-muted 載入中...
+
+//- 確保 JS 邏輯跟著組件走
+script(src="/js/notifications.js")

@@ -1,0 +1,62 @@
+doctype html
+html
+  head
+    meta(charset="UTF-8")
+  body(style="margin: 0; padding: 0; font-family: 'Microsoft JhengHei', Helvetica, Arial, sans-serif; background-color: #f4f4f4;")
+    //- 外層容器
+    table(role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%")
+      tr
+        td(align="center" style="padding: 20px 0;")
+          //- 內容區塊
+          table(role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; border: 1px solid #dddddd; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);")
+            //- 標題列
+            tr
+              td(style="padding: 20px; background-color: #d9534f; color: #ffffff; text-align: center;")
+                h1(style="margin: 0; font-size: 24px;") 🚨 Urgent Task
+            
+            //- 內容本文
+            tr
+              td(style="padding: 30px; color: #333333; line-height: 1.6;")
+                p(style="margin: 0 0 15px;") Hi #{assigneeName} !
+                p(style="margin: 0 0 20px;") #{assignerName} from #{groupName} had assigned you the following task:
+
+                //- 任務詳情框
+                table(role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f9f9; border-left: 4px solid #d9534f; margin-bottom: 25px;")
+                  tr
+                    td(style="padding: 15px;")
+                      p(style="margin: 0 0 8px;") 
+                        strong Task Title:
+                        |  #{taskTitle}
+                      p(style="margin: 0 0 8px;") 
+                        strong Priority:
+                        span(style="color: #d9534f; font-weight: bold;")  #{priorityLabel}
+                      p(style="margin: 0 0 8px;") 
+                        strong Due Date:
+                        |  #{dueAt}
+                      p(style="margin: 0;") 
+                        strong Description:
+                        br
+                        |  #{description}
+
+                p(style="margin: 0 0 20px; text-align: center; font-weight: bold; color: #555;") Response through the buttons below:
+
+                //- 操作按鈕區
+                table(role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%")
+                  tr
+                    td(align="center" style="padding: 10px 0;")
+                      //- Accept 按鈕
+                      a(href=`${baseUrl}api/tasks/respond-from-email?token=${token}&status=ACCEPTED`
+                        style="background-color: #28a745; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; margin-right: 10px;") 
+                        | ✅ Accept
+                      
+                      //- Decline 按鈕
+                      a(href=`${baseUrl}api/tasks/respond-from-email?token=${token}&status=DECLINED`
+                        style="background-color: #dc3545; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;") 
+                        | ❌ Decline
+
+            //- 頁尾
+            tr
+              td(style="padding: 20px; text-align: center; background-color: #eeeeee; color: #777777; font-size: 12px;")
+                p(style="margin: 0 0 10px;") This is an urgent notification automatically sent by the system.
+                p(style="margin: 0;") 
+                  a(href=taskUrl style="color: #007bff; text-decoration: underline;") View task details

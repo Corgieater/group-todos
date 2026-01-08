@@ -6,6 +6,7 @@ html(lang="en")
     title Tasks
     include ../partials/bootstrap
   body
+    include ../partials/_task-card
     // 訊息與導覽列
     include ../partials/message
     include ../partials/header
@@ -18,10 +19,6 @@ html(lang="en")
         const cardClassForPrio = (p) => `${prioBgMap[p] || ''} ${prioBorderMap[p] || 'border-secondary'} border-2`;
         const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
         const totalTasks = safeLen(expired) + safeLen(today) + safeLen(none);
-
-        const isOpen = (t) => t.status === 'OPEN';
-        const isClosed = (t) => t.status === 'CLOSED';
-        const isArchived = (t) => t.status === 'ARCHIVED';
 
       // Header
       .row.mb-3
@@ -46,63 +43,8 @@ html(lang="en")
         if expired && expired.length
           .row.g-3
             each task in expired
-              .col-12.col-md-6
-                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  // 右上角動作：依狀態切換
-                  if isOpen(task)
-                    form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/close`
-                      method="POST"
-                    )
-                      if typeof csrfToken !== 'undefined'
-                        input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="CLOSED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Close this task")
-                        i.bi.bi-check2-circle.me-1
-                        | Close
-                  else if isClosed(task)
-                    .position-absolute.top-0.end-0.m-2.btn-group
-                      // Archive
-                      form(directive="archive", action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
-                        if typeof csrfToken !== 'undefined'
-                          input(type="hidden", name="_csrf", value=csrfToken)
-                        input(type="hidden", name="status", value="ARCHIVED")
-                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
-                          i.bi.bi-box-arrow-down.me-1
-                          | Archive
-                      // Reopen
-                      form(directive="reopen", action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
-                        if typeof csrfToken !== 'undefined'
-                          input(type="hidden", name="_csrf", value=csrfToken)
-                        input(type="hidden", name="status", value="OPEN")
-                        button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
-                          i.bi.bi-arrow-counterclockwise.me-1
-                          | Reopen
-
-                  .card-body
-                    // 狀態徽章
-                    if isArchived(task)
-                      span.badge.text-bg-secondary.float-end(title="Archived") Archived
-                    else if isClosed(task)
-                      span.badge.text-bg-success.float-end(title="Closed") Closed
-
-                    h3.h6.card-title.mb-1
-                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
-
-                    if task.allDay
-                      if task.dueLabel
-                        small.text-muted.d-block All-day: #{task.dueLabel}
-                    else
-                      if task.dueLabel
-                        small.text-muted.d-block Due: #{task.dueLabel}
-
-                    .row.mt-2.gx-2
-                      .col-6
-                        if task.location
-                          small.text-muted.d-block.text-truncate 📍 #{task.location}
-                      .col-6
-                        if task.description
-                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+              // 🚨 呼叫 Mixin
+              +taskCard(task, csrfToken, cardClassForPrio)
         else
           p.text-muted.fst-italic No expired tasks.
 
@@ -115,59 +57,8 @@ html(lang="en")
         if today && today.length
           .row.g-3
             each task in today
-              .col-12.col-md-6
-                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if isOpen(task)
-                    form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/close`
-                      method="POST"
-                    )
-                      if typeof csrfToken !== 'undefined'
-                        input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="CLOSED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Close this task")
-                        i.bi.bi-check2-circle.me-1
-                        | Close
-                  else if isClosed(task)
-                    .position-absolute.top-0.end-0.m-2.btn-group
-                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
-                        if typeof csrfToken !== 'undefined'
-                          input(type="hidden", name="_csrf", value=csrfToken)
-                        input(type="hidden", name="status", value="ARCHIVED")
-                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
-                          i.bi.bi-box-arrow-down.me-1
-                          | Archive
-                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
-                        if typeof csrfToken !== 'undefined'
-                          input(type="hidden", name="_csrf", value=csrfToken)
-                        input(type="hidden", name="status", value="OPEN")
-                        button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
-                          i.bi.bi-arrow-counterclockwise.me-1
-                          | Reopen
-
-                  .card-body
-                    if isArchived(task)
-                      span.badge.text-bg-secondary.float-end Archived
-                    else if isClosed(task)
-                      span.badge.text-bg-success.float-end Closed
-
-                    h3.h6.card-title.mb-1
-                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
-
-                    if task.allDay
-                      if task.dueLabel
-                        small.text-muted.d-block All-day: #{task.dueLabel}
-                    else
-                      if task.dueLabel
-                        small.text-muted.d-block Due: #{task.dueLabel}
-
-                    .row.mt-2.gx-2
-                      .col-6
-                        if task.location
-                          small.text-muted.d-block.text-truncate 📍 #{task.location}
-                      .col-6
-                        if task.description
-                          small.text-muted.d-block.text-truncate(title=task.description) ✒️ #{task.description}
+              // 🚨 呼叫 Mixin
+              +taskCard(task, csrfToken, cardClassForPrio)
         else
           p.text-muted.fst-italic Nothing scheduled for today.
 
@@ -180,49 +71,10 @@ html(lang="en")
         if none && none.length
           .row.g-3
             each task in none
-              .col-12.col-md-6
-                .card.h-100.position-relative.shadow-sm(class=cardClassForPrio(task.priority))
-                  if isOpen(task)
-                    form.position-absolute.top-0.end-0.m-2(
-                      action=`/api/tasks/${task.id}/close`
-                      method="POST"
-                    )
-                      if typeof csrfToken !== 'undefined'
-                        input(type="hidden", name="_csrf", value=csrfToken)
-                      input(type="hidden", name="status", value="CLOSED")
-                      button.btn.btn-success.btn-sm(type="submit" title="Close this task")
-                        i.bi.bi-check2-circle.me-1
-                        | Close
-                  else if isClosed(task)
-                    .position-absolute.top-0.end-0.m-2.btn-group
-                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="me-1 d-inline")
-                        if typeof csrfToken !== 'undefined'
-                          input(type="hidden", name="_csrf", value=csrfToken)
-                        input(type="hidden", name="status", value="ARCHIVED")
-                        button.btn.btn-outline-secondary.btn-sm(type="submit" title="Archive")
-                          i.bi.bi-box-arrow-down.me-1
-                          | Archive
-                      form(action=`/api/tasks/${task.id}/update/status`, method="POST", class="d-inline")
-                        if typeof csrfToken !== 'undefined'
-                          input(type="hidden", name="_csrf", value=csrfToken)
-                        input(type="hidden", name="status", value="OPEN")
-                        button.btn.btn-outline-primary.btn-sm(type="submit" title="Reopen")
-                          i.bi.bi-arrow-counterclockwise.me-1
-                          | Reopen
-
-                  .card-body
-                    if isArchived(task)
-                      span.badge.text-bg-secondary.float-end Archived
-                    else if isClosed(task)
-                      span.badge.text-bg-success.float-end Closed
-
-                    h3.h6.card-title.mb-0
-                      a.text-decoration-none(href=`/tasks/${task.id}`)= task.title || 'Untitled'
-                    if task.description
-                      p.small.text-muted.mt-1.mb-0.text-truncate(title=task.description) ✒️ #{task.description}
-                    if task.location
-                      small.text-muted.d-block.mt-1.text-truncate 📍 #{task.location}
+              // 🚨 呼叫 Mixin
+              +taskCard(task, csrfToken, cardClassForPrio)
         else
           p.text-muted.fst-italic Nothing without due date.
 
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")
+include ../partials/notification-toast

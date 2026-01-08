@@ -1,0 +1,13 @@
+doctype html
+html
+  head
+    include ./partials/bootstrap
+  body
+    include ./partials/header
+    
+    block content
+
+    //- 🚨 全站通用的通知組件
+    include ./partials/notification-toast
+
+    block scripts
