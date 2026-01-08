@@ -172,19 +172,25 @@ export const SubTaskScalarFieldEnum = {
   allDayLocalDate: 'allDayLocalDate',
   sourceTimeZone: 'sourceTimeZone',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  closedAt: 'closedAt',
+  closedById: 'closedById'
 } as const
 
 export type SubTaskScalarFieldEnum = (typeof SubTaskScalarFieldEnum)[keyof typeof SubTaskScalarFieldEnum]
 
 
 export const SubTaskAssigneeScalarFieldEnum = {
-  subtaskId: 'subtaskId',
+  subTaskId: 'subTaskId',
   assigneeId: 'assigneeId',
+  assignedById: 'assignedById',
   status: 'status',
   reason: 'reason',
   assignedAt: 'assignedAt',
-  completedAt: 'completedAt'
+  acceptedAt: 'acceptedAt',
+  declinedAt: 'declinedAt',
+  completedAt: 'completedAt',
+  updatedAt: 'updatedAt'
 } as const
 
 export type SubTaskAssigneeScalarFieldEnum = (typeof SubTaskAssigneeScalarFieldEnum)[keyof typeof SubTaskAssigneeScalarFieldEnum]

@@ -9,6 +9,8 @@ enum AssignmentStatus {
   ACCEPTED
   DECLINED
   COMPLETED
+  SKIPPED
+  DROPPED
 }
 
 enum CompletionPolicy {

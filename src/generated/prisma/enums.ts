@@ -39,7 +39,9 @@ export const AssignmentStatus = {
   PENDING: 'PENDING',
   ACCEPTED: 'ACCEPTED',
   DECLINED: 'DECLINED',
-  COMPLETED: 'COMPLETED'
+  COMPLETED: 'COMPLETED',
+  SKIPPED: 'SKIPPED',
+  DROPPED: 'DROPPED'
 } as const
 
 export type AssignmentStatus = (typeof AssignmentStatus)[keyof typeof AssignmentStatus]

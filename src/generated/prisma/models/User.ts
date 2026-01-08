@@ -222,6 +222,8 @@ export type UserWhereInput = {
   assignedTasks?: Prisma.TaskAssigneeListRelationFilter
   assignedSubTasks?: Prisma.SubTaskAssigneeListRelationFilter
   delegatedTasks?: Prisma.TaskAssigneeListRelationFilter
+  delegatedSubTasks?: Prisma.SubTaskAssigneeListRelationFilter
+  closedSubTasks?: Prisma.SubTaskListRelationFilter
   Group?: Prisma.GroupListRelationFilter
   GroupMember?: Prisma.GroupMemberListRelationFilter
 }
@@ -238,6 +240,8 @@ export type UserOrderByWithRelationInput = {
   assignedTasks?: Prisma.TaskAssigneeOrderByRelationAggregateInput
   assignedSubTasks?: Prisma.SubTaskAssigneeOrderByRelationAggregateInput
   delegatedTasks?: Prisma.TaskAssigneeOrderByRelationAggregateInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeOrderByRelationAggregateInput
+  closedSubTasks?: Prisma.SubTaskOrderByRelationAggregateInput
   Group?: Prisma.GroupOrderByRelationAggregateInput
   GroupMember?: Prisma.GroupMemberOrderByRelationAggregateInput
 }
@@ -257,6 +261,8 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   assignedTasks?: Prisma.TaskAssigneeListRelationFilter
   assignedSubTasks?: Prisma.SubTaskAssigneeListRelationFilter
   delegatedTasks?: Prisma.TaskAssigneeListRelationFilter
+  delegatedSubTasks?: Prisma.SubTaskAssigneeListRelationFilter
+  closedSubTasks?: Prisma.SubTaskListRelationFilter
   Group?: Prisma.GroupListRelationFilter
   GroupMember?: Prisma.GroupMemberListRelationFilter
 }, "id" | "email">
@@ -296,6 +302,8 @@ export type UserCreateInput = {
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -312,6 +320,8 @@ export type UserUncheckedCreateInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -327,6 +337,8 @@ export type UserUpdateInput = {
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -343,6 +355,8 @@ export type UserUncheckedUpdateInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -506,19 +520,39 @@ export type UserUpdateOneRequiredWithoutAssignedTasksNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutAssignedTasksInput, Prisma.UserUpdateWithoutAssignedTasksInput>, Prisma.UserUncheckedUpdateWithoutAssignedTasksInput>
 }
 
-export type UserUpdateOneWithoutDelegatedTasksNestedInput = {
+export type UserUpdateOneRequiredWithoutDelegatedTasksNestedInput = {
   create?: Prisma.XOR<Prisma.UserCreateWithoutDelegatedTasksInput, Prisma.UserUncheckedCreateWithoutDelegatedTasksInput>
   connectOrCreate?: Prisma.UserCreateOrConnectWithoutDelegatedTasksInput
   upsert?: Prisma.UserUpsertWithoutDelegatedTasksInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutDelegatedTasksInput, Prisma.UserUpdateWithoutDelegatedTasksInput>, Prisma.UserUncheckedUpdateWithoutDelegatedTasksInput>
+}
+
+export type UserCreateNestedOneWithoutClosedSubTasksInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutClosedSubTasksInput, Prisma.UserUncheckedCreateWithoutClosedSubTasksInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutClosedSubTasksInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneWithoutClosedSubTasksNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutClosedSubTasksInput, Prisma.UserUncheckedCreateWithoutClosedSubTasksInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutClosedSubTasksInput
+  upsert?: Prisma.UserUpsertWithoutClosedSubTasksInput
   disconnect?: Prisma.UserWhereInput | boolean
   delete?: Prisma.UserWhereInput | boolean
   connect?: Prisma.UserWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutDelegatedTasksInput, Prisma.UserUpdateWithoutDelegatedTasksInput>, Prisma.UserUncheckedUpdateWithoutDelegatedTasksInput>
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutClosedSubTasksInput, Prisma.UserUpdateWithoutClosedSubTasksInput>, Prisma.UserUncheckedUpdateWithoutClosedSubTasksInput>
 }
 
 export type UserCreateNestedOneWithoutAssignedSubTasksInput = {
   create?: Prisma.XOR<Prisma.UserCreateWithoutAssignedSubTasksInput, Prisma.UserUncheckedCreateWithoutAssignedSubTasksInput>
   connectOrCreate?: Prisma.UserCreateOrConnectWithoutAssignedSubTasksInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserCreateNestedOneWithoutDelegatedSubTasksInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutDelegatedSubTasksInput, Prisma.UserUncheckedCreateWithoutDelegatedSubTasksInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutDelegatedSubTasksInput
   connect?: Prisma.UserWhereUniqueInput
 }
 
@@ -528,6 +562,16 @@ export type UserUpdateOneRequiredWithoutAssignedSubTasksNestedInput = {
   upsert?: Prisma.UserUpsertWithoutAssignedSubTasksInput
   connect?: Prisma.UserWhereUniqueInput
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutAssignedSubTasksInput, Prisma.UserUpdateWithoutAssignedSubTasksInput>, Prisma.UserUncheckedUpdateWithoutAssignedSubTasksInput>
+}
+
+export type UserUpdateOneWithoutDelegatedSubTasksNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutDelegatedSubTasksInput, Prisma.UserUncheckedCreateWithoutDelegatedSubTasksInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutDelegatedSubTasksInput
+  upsert?: Prisma.UserUpsertWithoutDelegatedSubTasksInput
+  disconnect?: Prisma.UserWhereInput | boolean
+  delete?: Prisma.UserWhereInput | boolean
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutDelegatedSubTasksInput, Prisma.UserUpdateWithoutDelegatedSubTasksInput>, Prisma.UserUncheckedUpdateWithoutDelegatedSubTasksInput>
 }
 
 export type UserCreateWithoutActionTokensInput = {
@@ -540,6 +584,8 @@ export type UserCreateWithoutActionTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -555,6 +601,8 @@ export type UserUncheckedCreateWithoutActionTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -574,6 +622,8 @@ export type UserCreateWithoutIssuedTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -589,6 +639,8 @@ export type UserUncheckedCreateWithoutIssuedTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -619,6 +671,8 @@ export type UserUpdateWithoutActionTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -634,6 +688,8 @@ export type UserUncheckedUpdateWithoutActionTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -659,6 +715,8 @@ export type UserUpdateWithoutIssuedTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -674,6 +732,8 @@ export type UserUncheckedUpdateWithoutIssuedTokensInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -689,6 +749,8 @@ export type UserCreateWithoutGroupInput = {
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
 
@@ -704,6 +766,8 @@ export type UserUncheckedCreateWithoutGroupInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
 
@@ -734,6 +798,8 @@ export type UserUpdateWithoutGroupInput = {
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
 
@@ -749,6 +815,8 @@ export type UserUncheckedUpdateWithoutGroupInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
 
@@ -763,6 +831,8 @@ export type UserCreateWithoutGroupMemberInput = {
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
 }
 
@@ -778,6 +848,8 @@ export type UserUncheckedCreateWithoutGroupMemberInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
 }
 
@@ -808,6 +880,8 @@ export type UserUpdateWithoutGroupMemberInput = {
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
 }
 
@@ -823,6 +897,8 @@ export type UserUncheckedUpdateWithoutGroupMemberInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
 }
 
@@ -836,6 +912,8 @@ export type UserCreateWithoutTaskInput = {
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -851,6 +929,8 @@ export type UserUncheckedCreateWithoutTaskInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -881,6 +961,8 @@ export type UserUpdateWithoutTaskInput = {
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -896,6 +978,8 @@ export type UserUncheckedUpdateWithoutTaskInput = {
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -910,6 +994,8 @@ export type UserCreateWithoutAssignedTasksInput = {
   Task?: Prisma.TaskCreateNestedManyWithoutOwnerInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -925,6 +1011,8 @@ export type UserUncheckedCreateWithoutAssignedTasksInput = {
   Task?: Prisma.TaskUncheckedCreateNestedManyWithoutOwnerInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -944,6 +1032,8 @@ export type UserCreateWithoutDelegatedTasksInput = {
   Task?: Prisma.TaskCreateNestedManyWithoutOwnerInput
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -959,6 +1049,8 @@ export type UserUncheckedCreateWithoutDelegatedTasksInput = {
   Task?: Prisma.TaskUncheckedCreateNestedManyWithoutOwnerInput
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -989,6 +1081,8 @@ export type UserUpdateWithoutAssignedTasksInput = {
   Task?: Prisma.TaskUpdateManyWithoutOwnerNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -1004,6 +1098,8 @@ export type UserUncheckedUpdateWithoutAssignedTasksInput = {
   Task?: Prisma.TaskUncheckedUpdateManyWithoutOwnerNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -1029,6 +1125,8 @@ export type UserUpdateWithoutDelegatedTasksInput = {
   Task?: Prisma.TaskUpdateManyWithoutOwnerNestedInput
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -1044,6 +1142,90 @@ export type UserUncheckedUpdateWithoutDelegatedTasksInput = {
   Task?: Prisma.TaskUncheckedUpdateManyWithoutOwnerNestedInput
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
+  Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
+  GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserCreateWithoutClosedSubTasksInput = {
+  name: string
+  email: string
+  timeZone: string
+  hash: string
+  actionTokens?: Prisma.ActionTokenCreateNestedManyWithoutUserInput
+  issuedTokens?: Prisma.ActionTokenCreateNestedManyWithoutIssuedByInput
+  Task?: Prisma.TaskCreateNestedManyWithoutOwnerInput
+  assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
+  delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
+  GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutClosedSubTasksInput = {
+  id?: number
+  name: string
+  email: string
+  timeZone: string
+  hash: string
+  actionTokens?: Prisma.ActionTokenUncheckedCreateNestedManyWithoutUserInput
+  issuedTokens?: Prisma.ActionTokenUncheckedCreateNestedManyWithoutIssuedByInput
+  Task?: Prisma.TaskUncheckedCreateNestedManyWithoutOwnerInput
+  assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
+  delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
+  GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutClosedSubTasksInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutClosedSubTasksInput, Prisma.UserUncheckedCreateWithoutClosedSubTasksInput>
+}
+
+export type UserUpsertWithoutClosedSubTasksInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutClosedSubTasksInput, Prisma.UserUncheckedUpdateWithoutClosedSubTasksInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutClosedSubTasksInput, Prisma.UserUncheckedCreateWithoutClosedSubTasksInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutClosedSubTasksInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutClosedSubTasksInput, Prisma.UserUncheckedUpdateWithoutClosedSubTasksInput>
+}
+
+export type UserUpdateWithoutClosedSubTasksInput = {
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  timeZone?: Prisma.StringFieldUpdateOperationsInput | string
+  hash?: Prisma.StringFieldUpdateOperationsInput | string
+  actionTokens?: Prisma.ActionTokenUpdateManyWithoutUserNestedInput
+  issuedTokens?: Prisma.ActionTokenUpdateManyWithoutIssuedByNestedInput
+  Task?: Prisma.TaskUpdateManyWithoutOwnerNestedInput
+  assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
+  delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
+  GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutClosedSubTasksInput = {
+  id?: Prisma.IntFieldUpdateOperationsInput | number
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  timeZone?: Prisma.StringFieldUpdateOperationsInput | string
+  hash?: Prisma.StringFieldUpdateOperationsInput | string
+  actionTokens?: Prisma.ActionTokenUncheckedUpdateManyWithoutUserNestedInput
+  issuedTokens?: Prisma.ActionTokenUncheckedUpdateManyWithoutIssuedByNestedInput
+  Task?: Prisma.TaskUncheckedUpdateManyWithoutOwnerNestedInput
+  assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
+  delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -1058,6 +1240,8 @@ export type UserCreateWithoutAssignedSubTasksInput = {
   Task?: Prisma.TaskCreateNestedManyWithoutOwnerInput
   assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
 }
@@ -1073,6 +1257,8 @@ export type UserUncheckedCreateWithoutAssignedSubTasksInput = {
   Task?: Prisma.TaskUncheckedCreateNestedManyWithoutOwnerInput
   assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
   Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
   GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
 }
@@ -1080,6 +1266,44 @@ export type UserUncheckedCreateWithoutAssignedSubTasksInput = {
 export type UserCreateOrConnectWithoutAssignedSubTasksInput = {
   where: Prisma.UserWhereUniqueInput
   create: Prisma.XOR<Prisma.UserCreateWithoutAssignedSubTasksInput, Prisma.UserUncheckedCreateWithoutAssignedSubTasksInput>
+}
+
+export type UserCreateWithoutDelegatedSubTasksInput = {
+  name: string
+  email: string
+  timeZone: string
+  hash: string
+  actionTokens?: Prisma.ActionTokenCreateNestedManyWithoutUserInput
+  issuedTokens?: Prisma.ActionTokenCreateNestedManyWithoutIssuedByInput
+  Task?: Prisma.TaskCreateNestedManyWithoutOwnerInput
+  assignedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssigneeInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeCreateNestedManyWithoutAssigneeInput
+  delegatedTasks?: Prisma.TaskAssigneeCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskCreateNestedManyWithoutClosedByInput
+  Group?: Prisma.GroupCreateNestedManyWithoutOwnerInput
+  GroupMember?: Prisma.GroupMemberCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutDelegatedSubTasksInput = {
+  id?: number
+  name: string
+  email: string
+  timeZone: string
+  hash: string
+  actionTokens?: Prisma.ActionTokenUncheckedCreateNestedManyWithoutUserInput
+  issuedTokens?: Prisma.ActionTokenUncheckedCreateNestedManyWithoutIssuedByInput
+  Task?: Prisma.TaskUncheckedCreateNestedManyWithoutOwnerInput
+  assignedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedCreateNestedManyWithoutAssigneeInput
+  delegatedTasks?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutAssignedByInput
+  closedSubTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutClosedByInput
+  Group?: Prisma.GroupUncheckedCreateNestedManyWithoutOwnerInput
+  GroupMember?: Prisma.GroupMemberUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutDelegatedSubTasksInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutDelegatedSubTasksInput, Prisma.UserUncheckedCreateWithoutDelegatedSubTasksInput>
 }
 
 export type UserUpsertWithoutAssignedSubTasksInput = {
@@ -1103,6 +1327,8 @@ export type UserUpdateWithoutAssignedSubTasksInput = {
   Task?: Prisma.TaskUpdateManyWithoutOwnerNestedInput
   assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
 }
@@ -1118,6 +1344,52 @@ export type UserUncheckedUpdateWithoutAssignedSubTasksInput = {
   Task?: Prisma.TaskUncheckedUpdateManyWithoutOwnerNestedInput
   assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
   delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  delegatedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
+  Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
+  GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserUpsertWithoutDelegatedSubTasksInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutDelegatedSubTasksInput, Prisma.UserUncheckedUpdateWithoutDelegatedSubTasksInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutDelegatedSubTasksInput, Prisma.UserUncheckedCreateWithoutDelegatedSubTasksInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutDelegatedSubTasksInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutDelegatedSubTasksInput, Prisma.UserUncheckedUpdateWithoutDelegatedSubTasksInput>
+}
+
+export type UserUpdateWithoutDelegatedSubTasksInput = {
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  timeZone?: Prisma.StringFieldUpdateOperationsInput | string
+  hash?: Prisma.StringFieldUpdateOperationsInput | string
+  actionTokens?: Prisma.ActionTokenUpdateManyWithoutUserNestedInput
+  issuedTokens?: Prisma.ActionTokenUpdateManyWithoutIssuedByNestedInput
+  Task?: Prisma.TaskUpdateManyWithoutOwnerNestedInput
+  assignedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssigneeNestedInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeUpdateManyWithoutAssigneeNestedInput
+  delegatedTasks?: Prisma.TaskAssigneeUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUpdateManyWithoutClosedByNestedInput
+  Group?: Prisma.GroupUpdateManyWithoutOwnerNestedInput
+  GroupMember?: Prisma.GroupMemberUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutDelegatedSubTasksInput = {
+  id?: Prisma.IntFieldUpdateOperationsInput | number
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  timeZone?: Prisma.StringFieldUpdateOperationsInput | string
+  hash?: Prisma.StringFieldUpdateOperationsInput | string
+  actionTokens?: Prisma.ActionTokenUncheckedUpdateManyWithoutUserNestedInput
+  issuedTokens?: Prisma.ActionTokenUncheckedUpdateManyWithoutIssuedByNestedInput
+  Task?: Prisma.TaskUncheckedUpdateManyWithoutOwnerNestedInput
+  assignedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
+  assignedSubTasks?: Prisma.SubTaskAssigneeUncheckedUpdateManyWithoutAssigneeNestedInput
+  delegatedTasks?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutAssignedByNestedInput
+  closedSubTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutClosedByNestedInput
   Group?: Prisma.GroupUncheckedUpdateManyWithoutOwnerNestedInput
   GroupMember?: Prisma.GroupMemberUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -1134,6 +1406,8 @@ export type UserCountOutputType = {
   assignedTasks: number
   assignedSubTasks: number
   delegatedTasks: number
+  delegatedSubTasks: number
+  closedSubTasks: number
   Group: number
   GroupMember: number
 }
@@ -1145,6 +1419,8 @@ export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.I
   assignedTasks?: boolean | UserCountOutputTypeCountAssignedTasksArgs
   assignedSubTasks?: boolean | UserCountOutputTypeCountAssignedSubTasksArgs
   delegatedTasks?: boolean | UserCountOutputTypeCountDelegatedTasksArgs
+  delegatedSubTasks?: boolean | UserCountOutputTypeCountDelegatedSubTasksArgs
+  closedSubTasks?: boolean | UserCountOutputTypeCountClosedSubTasksArgs
   Group?: boolean | UserCountOutputTypeCountGroupArgs
   GroupMember?: boolean | UserCountOutputTypeCountGroupMemberArgs
 }
@@ -1204,6 +1480,20 @@ export type UserCountOutputTypeCountDelegatedTasksArgs<ExtArgs extends runtime.T
 /**
  * UserCountOutputType without action
  */
+export type UserCountOutputTypeCountDelegatedSubTasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.SubTaskAssigneeWhereInput
+}
+
+/**
+ * UserCountOutputType without action
+ */
+export type UserCountOutputTypeCountClosedSubTasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.SubTaskWhereInput
+}
+
+/**
+ * UserCountOutputType without action
+ */
 export type UserCountOutputTypeCountGroupArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.GroupWhereInput
 }
@@ -1228,6 +1518,8 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   assignedTasks?: boolean | Prisma.User$assignedTasksArgs<ExtArgs>
   assignedSubTasks?: boolean | Prisma.User$assignedSubTasksArgs<ExtArgs>
   delegatedTasks?: boolean | Prisma.User$delegatedTasksArgs<ExtArgs>
+  delegatedSubTasks?: boolean | Prisma.User$delegatedSubTasksArgs<ExtArgs>
+  closedSubTasks?: boolean | Prisma.User$closedSubTasksArgs<ExtArgs>
   Group?: boolean | Prisma.User$GroupArgs<ExtArgs>
   GroupMember?: boolean | Prisma.User$GroupMemberArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1265,6 +1557,8 @@ export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   assignedTasks?: boolean | Prisma.User$assignedTasksArgs<ExtArgs>
   assignedSubTasks?: boolean | Prisma.User$assignedSubTasksArgs<ExtArgs>
   delegatedTasks?: boolean | Prisma.User$delegatedTasksArgs<ExtArgs>
+  delegatedSubTasks?: boolean | Prisma.User$delegatedSubTasksArgs<ExtArgs>
+  closedSubTasks?: boolean | Prisma.User$closedSubTasksArgs<ExtArgs>
   Group?: boolean | Prisma.User$GroupArgs<ExtArgs>
   GroupMember?: boolean | Prisma.User$GroupMemberArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -1281,6 +1575,8 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     assignedTasks: Prisma.$TaskAssigneePayload<ExtArgs>[]
     assignedSubTasks: Prisma.$SubTaskAssigneePayload<ExtArgs>[]
     delegatedTasks: Prisma.$TaskAssigneePayload<ExtArgs>[]
+    delegatedSubTasks: Prisma.$SubTaskAssigneePayload<ExtArgs>[]
+    closedSubTasks: Prisma.$SubTaskPayload<ExtArgs>[]
     Group: Prisma.$GroupPayload<ExtArgs>[]
     GroupMember: Prisma.$GroupMemberPayload<ExtArgs>[]
   }
@@ -1690,6 +1986,8 @@ export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Typ
   assignedTasks<T extends Prisma.User$assignedTasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$assignedTasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskAssigneePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   assignedSubTasks<T extends Prisma.User$assignedSubTasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$assignedSubTasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SubTaskAssigneePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   delegatedTasks<T extends Prisma.User$delegatedTasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$delegatedTasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskAssigneePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  delegatedSubTasks<T extends Prisma.User$delegatedSubTasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$delegatedSubTasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SubTaskAssigneePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  closedSubTasks<T extends Prisma.User$closedSubTasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$closedSubTasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SubTaskPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   Group<T extends Prisma.User$GroupArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$GroupArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$GroupPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   GroupMember<T extends Prisma.User$GroupMemberArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$GroupMemberArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$GroupMemberPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
@@ -2255,6 +2553,54 @@ export type User$delegatedTasksArgs<ExtArgs extends runtime.Types.Extensions.Int
   take?: number
   skip?: number
   distinct?: Prisma.TaskAssigneeScalarFieldEnum | Prisma.TaskAssigneeScalarFieldEnum[]
+}
+
+/**
+ * User.delegatedSubTasks
+ */
+export type User$delegatedSubTasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the SubTaskAssignee
+   */
+  select?: Prisma.SubTaskAssigneeSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the SubTaskAssignee
+   */
+  omit?: Prisma.SubTaskAssigneeOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.SubTaskAssigneeInclude<ExtArgs> | null
+  where?: Prisma.SubTaskAssigneeWhereInput
+  orderBy?: Prisma.SubTaskAssigneeOrderByWithRelationInput | Prisma.SubTaskAssigneeOrderByWithRelationInput[]
+  cursor?: Prisma.SubTaskAssigneeWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.SubTaskAssigneeScalarFieldEnum | Prisma.SubTaskAssigneeScalarFieldEnum[]
+}
+
+/**
+ * User.closedSubTasks
+ */
+export type User$closedSubTasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the SubTask
+   */
+  select?: Prisma.SubTaskSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the SubTask
+   */
+  omit?: Prisma.SubTaskOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.SubTaskInclude<ExtArgs> | null
+  where?: Prisma.SubTaskWhereInput
+  orderBy?: Prisma.SubTaskOrderByWithRelationInput | Prisma.SubTaskOrderByWithRelationInput[]
+  cursor?: Prisma.SubTaskWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.SubTaskScalarFieldEnum | Prisma.SubTaskScalarFieldEnum[]
 }
 
 /**
