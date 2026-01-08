@@ -1,15 +1,9 @@
 import {
   ActionTokenType,
-  Prisma,
   User as UserModel,
 } from 'src/generated/prisma/client';
 import { Injectable } from '@nestjs/common';
-import * as argon from 'argon2';
-import crypto, { createHmac, timingSafeEqual } from 'crypto';
-
 import { AuthSignupDto } from './dto/auth.dto';
-
-import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
 import { MailService } from 'src/mail/mail.service';
 import {
@@ -23,41 +17,19 @@ import { ConfigService } from '@nestjs/config';
 import { AuthErrors } from 'src/errors';
 import { UsersErrors } from 'src/errors';
 import { addTime } from 'src/common/helpers/util';
+import { SecurityService } from 'src/security/security.service';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
   constructor(
     private config: ConfigService,
+    private readonly securityService: SecurityService,
+    private readonly jwtService: JwtService,
     private usersService: UsersService,
     private prismaService: PrismaService,
-    private jwtService: JwtService,
     private mailService: MailService,
   ) {}
-
-  async hash(
-    raw: string,
-    options?: argon.Options & { type?: number },
-  ): Promise<string> {
-    return await argon.hash(raw, options);
-  }
-
-  async verify(hash: string, origin: string): Promise<boolean> {
-    return await argon.verify(hash, origin);
-  }
-
-  generateUrlFriendlySecret(bytes: number): string {
-    return crypto.randomBytes(bytes).toString('base64url');
-  }
-
-  hmacToken(raw: string, secret: string): string {
-    return createHmac('sha256', secret).update(raw).digest('base64url');
-  }
-
-  safeEqualB64url(aB64: string, bB64: string): boolean {
-    const a = Buffer.from(aB64, 'base64url');
-    const b = Buffer.from(bB64, 'base64url');
-    return a.length === b.length && timingSafeEqual(a, b);
-  }
 
   async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.usersService.findByEmail(dto.email);
@@ -68,7 +40,7 @@ export class AuthService {
       name: dto.name,
       email: dto.email,
       timeZone: dto.timeZone,
-      hash: await this.hash(dto.password),
+      hash: await this.securityService.hash(dto.password),
     };
     await this.usersService.create(createUserInput);
   }
@@ -84,7 +56,7 @@ export class AuthService {
     }
     // TODO
     // is it possible to do 'forgot password <a> link </a> here?
-    if (!(await this.verify(user.hash, password))) {
+    if (!(await this.securityService.verify(user.hash, password))) {
       throw AuthErrors.InvalidCredentialError.password();
     }
     payload = {
@@ -106,15 +78,15 @@ export class AuthService {
       throw UsersErrors.UserNotFoundError.byId(payload.userId);
     }
 
-    if (!(await this.verify(user.hash, payload.oldPassword))) {
+    if (!(await this.securityService.verify(user.hash, payload.oldPassword))) {
       throw new AuthErrors.InvalidOldPasswordError();
     }
 
-    if (await this.verify(user.hash, payload.newPassword)) {
+    if (await this.securityService.verify(user.hash, payload.newPassword)) {
       throw new AuthErrors.PasswordReuseError();
     }
 
-    const newHash = await this.hash(payload.newPassword);
+    const newHash = await this.securityService.hash(payload.newPassword);
 
     await this.prismaService.$transaction(async (tx) => {
       await this.usersService.updatePasswordHash(payload.userId, newHash, tx);
@@ -152,11 +124,11 @@ export class AuthService {
 
     if (!user) return;
 
-    const rawToken = this.generateUrlFriendlySecret(32);
+    const rawToken = this.securityService.generateUrlFriendlySecret(32);
     const expiresAt = addTime(new Date(), 15, 'm');
 
     const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
-    const tokenHash = this.hmacToken(rawToken, serverSecret);
+    const tokenHash = this.securityService.hmacToken(rawToken, serverSecret);
 
     const subjectKey = `RESET_PASSWORD:user:${user.id}`;
     const { id: tokenId } = await this.prismaService.actionToken.upsert({
@@ -212,9 +184,9 @@ export class AuthService {
       throw AuthErrors.InvalidTokenError.reset();
     }
     const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
-    const candidate = this.hmacToken(token, serverSecret);
+    const candidate = this.securityService.hmacToken(token, serverSecret);
 
-    if (!this.safeEqualB64url(result.tokenHash, candidate)) {
+    if (!this.securityService.safeEqualB64url(result.tokenHash, candidate)) {
       throw AuthErrors.InvalidTokenError.verify();
     }
 
@@ -244,7 +216,7 @@ export class AuthService {
       throw UsersErrors.UserNotFoundError.byId(userId);
     }
 
-    if (await this.verify(user.hash, newPassword)) {
+    if (await this.securityService.verify(user.hash, newPassword)) {
       throw new AuthErrors.PasswordReuseError();
     }
 
@@ -252,7 +224,7 @@ export class AuthService {
       throw new AuthErrors.PasswordConfirmationMismatchError();
     }
 
-    const newHash = await this.hash(newPassword);
+    const newHash = await this.securityService.hash(newPassword);
     const NOW = new Date();
 
     await this.prismaService.$transaction(async (tx) => {

@@ -1,14 +1,6 @@
-jest.mock('argon2', () => ({
-  __esModule: true,
-  hash: jest.fn(),
-  verify: jest.fn(),
-}));
-
 import { Test, TestingModule } from '@nestjs/testing';
-import * as argon from 'argon2';
 import { AuthService } from './auth.service';
 import { UsersService } from 'src/users/users.service';
-import { JwtService } from '@nestjs/jwt';
 import { ActionTokenType } from 'src/generated/prisma/enums';
 import { type User as UserModel } from 'src/generated/prisma/client';
 import { AuthSigninDto, AuthSignupDto } from './dto/auth.dto';
@@ -26,12 +18,12 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { AuthErrors, UsersErrors } from 'src/errors';
+import { SecurityService } from 'src/security/security.service';
+import { JwtService } from '@nestjs/jwt';
 
 describe('AuthService', () => {
   let authService: AuthService;
 
-  const mockJwt = { signAsync: jest.fn() };
-  const mockArgon = jest.mocked(argon);
   let signupDto: AuthSignupDto;
   let signinDto: AuthSigninDto;
   let user: UserModel;
@@ -47,6 +39,20 @@ describe('AuthService', () => {
     updatePasswordHash: jest.fn(),
   };
 
+  const mockSecurityService = {
+    hash: jest.fn().mockReturnValue('argonHashed'),
+    verify: jest.fn(),
+    generateUrlFriendlySecret: jest
+      .fn()
+      .mockReturnValue('rawUrlFriendlySecret'),
+    hmacToken: jest.fn().mockReturnValue('base64urlHash'),
+    safeEqualB64url: jest.fn(),
+  };
+
+  const mockJwtService = {
+    signAsync: jest.fn().mockResolvedValue('jwtToken'),
+    verifyAsync: jest.fn(),
+  };
   const mockPrismaService = {
     actionToken: {
       create: jest.fn(),
@@ -71,7 +77,7 @@ describe('AuthService', () => {
 
   const mockConfigService = createMockConfig();
   const JWT_TOKEN = 'jwtToken';
-  const HASH = 'hashed';
+  const HMAC_HASHED = 'base64urlHash';
 
   beforeAll(async () => {
     // QUESTION:
@@ -94,9 +100,10 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: MailService, useValue: mockMailService },
         { provide: ConfigService, useValue: mockConfigService.mock },
+        { provide: JwtService, useValue: mockJwtService },
         {
-          provide: JwtService,
-          useValue: mockJwt,
+          provide: SecurityService,
+          useValue: mockSecurityService,
         },
       ],
     }).compile();
@@ -106,9 +113,6 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockJwt.signAsync.mockResolvedValue(JWT_TOKEN);
-    mockArgon.hash.mockResolvedValue('hashed');
-    mockArgon.verify.mockResolvedValue(true);
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -123,14 +127,11 @@ describe('AuthService', () => {
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         'test@test.com',
       );
-      expect(mockArgon.hash).toHaveBeenCalledWith(
-        signupDto.password,
-        undefined,
-      );
+      expect(mockSecurityService.hash).toHaveBeenCalledWith(signupDto.password);
       expect(mockUsersService.create).toHaveBeenCalledWith({
         name: 'test',
         email: 'test@test.com',
-        hash: 'hashed',
+        hash: 'argonHashed',
         timeZone: 'Asia/Taipei',
       });
     });
@@ -144,7 +145,7 @@ describe('AuthService', () => {
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         signupDto.email,
       );
-      expect(mockArgon.hash).not.toHaveBeenCalled();
+      expect(mockSecurityService.hash).not.toHaveBeenCalled();
       expect(mockUsersService.create).not.toHaveBeenCalled();
     });
   });
@@ -156,6 +157,7 @@ describe('AuthService', () => {
   describe('signin', () => {
     it('should sign user in and issue token', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
+      mockSecurityService.verify.mockResolvedValueOnce(true);
       const result = await authService.signin(
         signinDto.email,
         signinDto.password,
@@ -164,20 +166,20 @@ describe('AuthService', () => {
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(
         'test@test.com',
       );
-      expect(mockArgon.verify).toHaveBeenCalledWith('hashed', 'test');
-      expect(mockJwt.signAsync).toHaveBeenCalledWith(accessPayload);
+      expect(mockSecurityService.verify).toHaveBeenCalledWith('hashed', 'test');
+      expect(mockJwtService.signAsync).toHaveBeenCalledWith(accessPayload);
       expect(result).toEqual({ accessToken: JWT_TOKEN });
     });
 
     it('should throw InvalidCredentialError when password does not match', async () => {
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
-      mockArgon.verify.mockResolvedValueOnce(false);
+      mockSecurityService.verify.mockResolvedValueOnce(false);
 
       await expect(
         authService.signin(signinDto.email, signinDto.password),
       ).rejects.toBeInstanceOf(AuthErrors.InvalidCredentialError);
 
-      expect(mockJwt.signAsync).not.toHaveBeenCalled();
+      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
     });
 
     it('should throw UsersNotFoundError', async () => {
@@ -204,19 +206,21 @@ describe('AuthService', () => {
         newPassword: 'foo',
       };
     });
-    // fix all these tests since it was using tx
+
     it('should change password if old password is correct and new one is different', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      mockArgon.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      mockSecurityService.verify
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false);
 
       await authService.changePassword(payload);
       expect(mockUsersService.findById).toHaveBeenCalledWith(payload.userId);
-      expect(mockArgon.verify).toHaveBeenNthCalledWith(
+      expect(mockSecurityService.verify).toHaveBeenNthCalledWith(
         1,
         user.hash,
         payload.oldPassword,
       );
-      expect(mockArgon.verify).toHaveBeenNthCalledWith(
+      expect(mockSecurityService.verify).toHaveBeenNthCalledWith(
         2,
         user.hash,
         payload.newPassword,
@@ -225,7 +229,7 @@ describe('AuthService', () => {
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
       expect(mockUsersService.updatePasswordHash).toHaveBeenCalledWith(
         payload.userId,
-        HASH,
+        'argonHashed',
         expect.any(Object),
       );
     });
@@ -237,30 +241,33 @@ describe('AuthService', () => {
         UsersErrors.UserNotFoundError,
       );
 
-      expect(mockArgon.hash).not.toHaveBeenCalled();
+      expect(mockSecurityService.hash).not.toHaveBeenCalled();
       expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
 
     it('should throw error if old password is incorrect', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      mockArgon.verify.mockResolvedValueOnce(false);
+      mockSecurityService.verify.mockResolvedValueOnce(false);
 
       await expect(authService.changePassword(payload)).rejects.toBeInstanceOf(
         AuthErrors.InvalidOldPasswordError,
       );
 
-      expect(mockArgon.hash).not.toHaveBeenCalled();
+      expect(mockSecurityService.hash).not.toHaveBeenCalled();
       expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
 
     it('should throw error if old and new password are the same', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
+      mockSecurityService.verify
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true);
 
       await expect(authService.changePassword(payload)).rejects.toBeInstanceOf(
         AuthErrors.PasswordReuseError,
       );
 
-      expect(mockArgon.hash).not.toHaveBeenCalled();
+      expect(mockSecurityService.hash).not.toHaveBeenCalled();
       expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
@@ -277,11 +284,6 @@ describe('AuthService', () => {
     });
 
     it('should send email with link if email exists', async () => {
-      const RAW_TOKEN = 'rawUrlFriendlySecret';
-      jest
-        .spyOn(authService, 'generateUrlFriendlySecret')
-        .mockReturnValueOnce(RAW_TOKEN);
-      jest.spyOn(authService, 'hmacToken').mockReturnValueOnce(HASH);
       mockUsersService.findByEmail.mockResolvedValueOnce(user);
       mockPrismaService.actionToken.upsert.mockResolvedValueOnce({
         id: tokenId,
@@ -293,8 +295,10 @@ describe('AuthService', () => {
         'test@test.com',
       );
 
-      expect(authService.generateUrlFriendlySecret).toHaveBeenCalledWith(32);
-      expect(authService.hmacToken).toHaveBeenCalledWith(
+      expect(
+        mockSecurityService.generateUrlFriendlySecret,
+      ).toHaveBeenCalledWith(32);
+      expect(mockSecurityService.hmacToken).toHaveBeenCalledWith(
         'rawUrlFriendlySecret',
         expect.any(String),
       );
@@ -303,7 +307,7 @@ describe('AuthService', () => {
       expect(mockPrismaService.actionToken.upsert).toHaveBeenCalledWith({
         where: { subjectKey },
         update: {
-          tokenHash: HASH,
+          tokenHash: HMAC_HASHED,
           expiresAt: expect.any(Date),
           consumedAt: null,
           revokedAt: null,
@@ -311,7 +315,7 @@ describe('AuthService', () => {
         create: {
           type: ActionTokenType.RESET_PASSWORD,
           subjectKey,
-          tokenHash: HASH,
+          tokenHash: HMAC_HASHED,
           userId: user.id,
           issuedById: user.id,
           expiresAt: expect.any(Date),
@@ -357,15 +361,8 @@ describe('AuthService', () => {
         tokenHash: STORED_HASH,
         user: { id: user.id, name: user.name, email: user.email },
       });
-
-      const hmacSpy = jest
-        .spyOn(authService, 'hmacToken')
-        .mockReturnValueOnce(STORED_HASH);
-
-      // spy：safeEqual 回 true（同步 boolean，不是 Promise）
-      const eqSpy = jest
-        .spyOn(authService, 'safeEqualB64url')
-        .mockReturnValueOnce(true);
+      mockSecurityService.hmacToken.mockReturnValueOnce(STORED_HASH);
+      mockSecurityService.safeEqualB64url.mockReturnValueOnce(true);
 
       const result = await authService.verifyResetToken(tokenId, rawToken);
 
@@ -386,10 +383,16 @@ describe('AuthService', () => {
         }),
       );
 
-      expect(hmacSpy).toHaveBeenCalledWith(rawToken, expect.any(String));
-      expect(eqSpy).toHaveBeenCalledWith(STORED_HASH, STORED_HASH);
+      expect(mockSecurityService.hmacToken).toHaveBeenCalledWith(
+        rawToken,
+        expect.any(String),
+      );
+      expect(mockSecurityService.safeEqualB64url).toHaveBeenCalledWith(
+        STORED_HASH,
+        STORED_HASH,
+      );
 
-      expect(mockJwt.signAsync).toHaveBeenCalledWith(
+      expect(mockJwtService.signAsync).toHaveBeenCalledWith(
         {
           tokenUse: 'resetPassword',
           sub: user.id,
@@ -409,9 +412,9 @@ describe('AuthService', () => {
         authService.verifyResetToken(999, rawToken),
       ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
 
-      expect(authService.hmacToken).not.toHaveBeenCalled();
-      expect(authService.safeEqualB64url).not.toHaveBeenCalled();
-      expect(mockJwt.signAsync).not.toHaveBeenCalled();
+      expect(mockSecurityService.hmacToken).not.toHaveBeenCalled();
+      expect(mockSecurityService.safeEqualB64url).not.toHaveBeenCalled();
+      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
     });
 
     it('should throw InvalidTokenError if hash not matched', async () => {
@@ -421,14 +424,11 @@ describe('AuthService', () => {
         user: { id: user.id, name: user.name, email: user.email },
       });
 
-      jest.spyOn(authService, 'hmacToken').mockReturnValueOnce('candidateHash');
-      jest.spyOn(authService, 'safeEqualB64url').mockReturnValueOnce(false);
-
       await expect(
         authService.verifyResetToken(tokenId, rawToken),
       ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
 
-      expect(mockJwt.signAsync).not.toHaveBeenCalled();
+      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
     });
   });
 
@@ -455,7 +455,7 @@ describe('AuthService', () => {
       userId = user.id;
 
       mockUsersService.findById.mockResolvedValueOnce(user);
-      mockArgon.verify.mockResolvedValueOnce(false);
+      mockSecurityService.verify.mockResolvedValueOnce(false);
 
       mockPrismaService.actionToken.updateMany.mockResolvedValue({ count: 1 });
 
@@ -467,8 +467,11 @@ describe('AuthService', () => {
       );
 
       expect(mockUsersService.findById).toHaveBeenCalledWith(userId);
-      expect(mockArgon.verify).toHaveBeenCalledWith(user.hash, newPassword);
-      expect(mockArgon.hash).toHaveBeenCalledWith(newPassword, undefined);
+      expect(mockSecurityService.verify).toHaveBeenCalledWith(
+        user.hash,
+        newPassword,
+      );
+      expect(mockSecurityService.hash).toHaveBeenCalledWith(newPassword);
 
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
 
@@ -487,7 +490,7 @@ describe('AuthService', () => {
       expect(mockUsersService.updatePasswordHash).toHaveBeenCalledTimes(1);
       expect(mockUsersService.updatePasswordHash).toHaveBeenCalledWith(
         user.id,
-        HASH,
+        'argonHashed',
         expect.any(Object),
       );
     });
@@ -505,7 +508,10 @@ describe('AuthService', () => {
     });
 
     it('should throw error if reset password and old password are the same', async () => {
+      newPassword = 'password';
+      confirmPassword = 'password';
       mockUsersService.findById.mockResolvedValueOnce(user);
+      mockSecurityService.verify.mockResolvedValueOnce(true);
 
       await expect(
         authService.confirmResetPassword(
@@ -519,7 +525,7 @@ describe('AuthService', () => {
 
     it('should throw error if new password and confirm mismatch', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      mockArgon.verify.mockResolvedValueOnce(false);
+      mockSecurityService.verify.mockResolvedValueOnce(false);
 
       await expect(
         authService.confirmResetPassword(tokenId, user.id, newPassword, 'foo'),
@@ -528,7 +534,7 @@ describe('AuthService', () => {
 
     it('should throw InvalidTokenError if count !== 1', async () => {
       mockUsersService.findById.mockResolvedValueOnce(user);
-      mockArgon.verify.mockResolvedValueOnce(false);
+      mockSecurityService.verify.mockResolvedValueOnce(false);
       mockPrismaService.actionToken.updateMany.mockReturnValueOnce({
         count: 0,
       });
