@@ -12,11 +12,11 @@ import {
   MembershipErrors,
   UsersErrors,
 } from 'src/errors';
-import { AuthService } from 'src/auth/auth.service';
 import { MailService } from 'src/mail/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { addTime } from 'src/common/helpers/util';
 import { assertInviteRow } from './type/invite';
+import { SecurityService } from 'src/security/security.service';
 
 type GroupListItem = Prisma.GroupMemberGetPayload<{
   include: { group: { select: { id: true; name: true } } };
@@ -43,7 +43,7 @@ export class GroupsService {
     private readonly config: ConfigService,
     private readonly prismaService: PrismaService,
     private readonly usersService: UsersService,
-    private readonly authService: AuthService,
+    private readonly securityService: SecurityService,
     private readonly mailService: MailService,
   ) {}
 
@@ -235,10 +235,10 @@ export class GroupsService {
       throw MembershipErrors.AlreadyMemberError.byId(invitee.id, id);
     }
 
-    const rawToken = this.authService.generateUrlFriendlySecret(32);
+    const rawToken = this.securityService.generateUrlFriendlySecret(32);
     const expiresAt = addTime(new Date(), 3, 'd');
     const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
-    const tokenHash = this.authService.hmacToken(rawToken, serverSecret);
+    const tokenHash = this.securityService.hmacToken(rawToken, serverSecret);
 
     const subjectKey = `GROUP_INVITE:group:${id}|email:${email.toLowerCase()}`;
 
@@ -279,9 +279,6 @@ export class GroupsService {
   }
 
   async verifyInvitation(id: number, token: string) {
-    // QUESTION:
-    // Do i need to verify the token and db token user id?
-    // techenically it not going to happen if some other people click the email invitation???
     const now = new Date();
     const row = await this.prismaService.actionToken.findFirst({
       where: {
@@ -308,10 +305,10 @@ export class GroupsService {
     assertInviteRow(row);
 
     const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
-    const candidate = this.authService.hmacToken(token, serverSecret);
+    const candidate = this.securityService.hmacToken(token, serverSecret);
 
-    if (!this.authService.safeEqualB64url(row.tokenHash, candidate)) {
-      throw AuthErrors.InvalidTokenError.verify(); // test not cover
+    if (!this.securityService.safeEqualB64url(row.tokenHash, candidate)) {
+      throw AuthErrors.InvalidTokenError.verify();
     }
 
     await this.prismaService.$transaction(async (tx) => {
@@ -325,7 +322,7 @@ export class GroupsService {
         data: { consumedAt: now },
       });
       if (count !== 1) {
-        throw AuthErrors.InvalidTokenError.invite(); // test not cover
+        throw AuthErrors.InvalidTokenError.invite();
       }
 
       await tx.groupMember.upsert({

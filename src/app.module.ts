@@ -10,6 +10,8 @@ import { MailService } from './mail/mail.service';
 import { MailModule } from './mail/mail.module';
 import { TasksModule } from './tasks/tasks.module';
 import { PagesModule } from './pages/pages.module';
+import { GroupsModule } from './groups/groups.module';
+import { SecurityModule } from './security/security.module';
 
 @Module({
   imports: [
@@ -22,7 +24,9 @@ import { PagesModule } from './pages/pages.module';
     AuthModule,
     MailModule,
     TasksModule,
+    GroupsModule,
     PagesModule,
+    SecurityModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService, MailService],

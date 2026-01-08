@@ -8,22 +8,30 @@ import {
   Res,
   UseGuards,
   UseFilters,
+  Get,
+  Query,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
+  AssignTaskDto,
   SubTasksAddDto,
   TasksAddDto,
   UpdateAssigneeStatusDto,
   UpdateTaskDto,
 } from './dto/tasks.dto';
 import { TasksService } from './tasks.service';
-import { SubTaskAddPayload, TasksAddPayload } from './types/tasks';
+import {
+  AssignTaskPayload,
+  SubTaskAddPayload,
+  TasksAddPayload,
+} from './types/tasks';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
-import { SubTask, Task } from 'src/generated/prisma/client';
+import { Public } from 'src/common/decorators/public.decorator';
+import { AssignmentStatus } from 'src/generated/prisma/enums';
 
 @Controller('api/tasks')
 @UseGuards(AccessTokenGuard)
@@ -74,6 +82,7 @@ export class TasksController {
   // NOTE:
   // Maybe there will be more status in the future
   // I think this api should deal with update assignessTask status
+  // self-assign, claim, 指派任務
   @Post(':id/update/assignee-status')
   async updateAssigneeStatus(
     @Req() req: Request,
@@ -82,33 +91,25 @@ export class TasksController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    await this.tasksService.updateAssigneeStatus(id, user.userId, dto);
+    await this.tasksService.updateAssigneeStatus(
+      id,
+      user.userId,
+      dto,
+      user.userName,
+    );
     setSession(req, 'success', 'Status has been changed.');
-    return res.redirect('/tasks/home');
+    return res.redirect(`/tasks/${id}`);
   }
 
   @Post(':id/close')
-  async closeTask(
-    @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+  async close(
     @Param('id', ParseIntPipe) id: number,
-    @Body('force') forceRaw: string | undefined,
-    @Body('closedReason') reasonRaw: string | undefined,
-    @Res() res: Response,
+    @Body() body: { reason?: string }, // 👈 必須有這行，Nest 才能從 body 抓資料
+    @CurrentUserDecorator() user: CurrentUser,
   ) {
-    // 1) 正規化表單欄位
-    const force =
-      forceRaw === '1' || forceRaw === 'true' || forceRaw === 'on'
-        ? true
-        : false;
-
-    const reason = (reasonRaw ?? '').trim() || undefined;
-
-    await this.tasksService.closeTask(id, user.userId, { force, reason });
-
-    // 3) 回頁面（可帶 flash
-    setSession(req, 'success', 'Task closed.');
-    return res.redirect(`/tasks/${id}`);
+    return this.tasksService.closeTask(id, user.userId, {
+      reason: body.reason,
+    });
   }
 
   @Post(':id/archive')
@@ -130,9 +131,9 @@ export class TasksController {
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    await this.tasksService.restoreTask(id, user.userId);
+    await this.tasksService.restoreTask(id);
     setSession(req, 'success', 'Task has been restored.');
-    return res.redirect('/tasks/home');
+    return res.redirect(`/tasks/${id}`);
   }
 
   //NOTE:
@@ -152,7 +153,19 @@ export class TasksController {
     return res.redirect('/tasks/home');
   }
 
-  @Post(':id/subtasks')
+  // ---------------- notification ----------------
+
+  @Get('notifications')
+  async getNotifications(
+    @Req() req,
+    @CurrentUserDecorator() user: CurrentUser,
+  ) {
+    return await this.tasksService.getPendingNotifications(user.userId);
+  }
+
+  // --------------- sub-tasks --------------------
+
+  @Post(':id/sub-tasks')
   async addSubTask(
     @Req() req: Request,
     @CurrentUserDecorator() user: CurrentUser,
@@ -171,9 +184,146 @@ export class TasksController {
       location: dto.location ?? null,
       parentTaskId: id,
       actorId: user.userId,
+      updatedBy: user.userName,
     };
     await this.tasksService.createSubTask(payload);
     setSession(req, 'success', 'Sub-task added');
     return res.redirect(`/tasks/${id}`);
+  }
+
+  @Post(':taskId/sub-tasks/:id/close')
+  async closeSubTask(
+    @Req() req: Request,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('taskId') taskId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    await this.tasksService.closeSubTask(id, user.userId);
+    setSession(req, 'success', 'Sub-task closed.');
+    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+  }
+
+  // edit
+  @Post(':taskId/sub-tasks/:id/update')
+  async updateSubTask(
+    @Req() req: Request,
+    @Body() dto: UpdateTaskDto,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('taskId') taskId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const subTask = await this.tasksService.updateSubTask(id, user.userId, dto);
+    setSession(req, 'success', 'Sub-task has been updated');
+    return res.redirect(`/tasks/${taskId}/sub-tasks/${subTask.id}`);
+  }
+
+  @Post(':taskId/sub-tasks/:id/restore')
+  async restoreSubTask(
+    @Req() req: Request,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('taskId') taskId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    await this.tasksService.restoreSubTask(id);
+    setSession(req, 'success', 'Sub-task has been restored.');
+    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+  }
+
+  // claim
+  @Post(':taskId/sub-tasks/:id/update/assignee-status')
+  async updateSubTaskAssigneeStatus(
+    @Req() req: Request,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateAssigneeStatusDto,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    await this.tasksService.updateSubTaskAssigneeStatus(
+      id,
+      user.userId,
+      dto,
+      user.userName,
+    );
+    setSession(req, 'success', 'Status has been changed.');
+    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+  }
+
+  // ----------------- Assign task----------------------
+  @Post(':id/assign-task')
+  async assignTask(
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AssignTaskDto,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const payload: AssignTaskPayload = {
+      ...dto,
+      id,
+      assigneeId: dto.assigneeId,
+      assignerName: user.userName,
+      assignerId: user.userId,
+      updatedBy: user.userName,
+    };
+    await this.tasksService.assignTask(payload);
+    setSession(req, 'success', 'Task is pending now.');
+    return res.redirect(`/tasks/${id}`);
+  }
+
+  @Post(':taskId/sub-task/:id/assign-sub-task')
+  async assignSubTask(
+    @Req() req: Request,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AssignTaskDto,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
+  ) {
+    const payload: AssignTaskPayload = {
+      ...dto,
+      id,
+      assigneeId: dto.assigneeId,
+      assignerName: user.userName,
+      assignerId: user.userId,
+      updatedBy: user.userName,
+    };
+    await this.tasksService.assignSubTask(payload);
+    setSession(req, 'success', 'Task is pending now.');
+    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+  }
+
+  @Public()
+  @Get('respond-from-email')
+  async respondFromEmail(
+    @Query('token') token: string,
+    @Query('status') status: AssignmentStatus,
+    @Res() res: Response,
+  ) {
+    try {
+      // 1. 驗證 Token 並更新狀態 (邏輯封裝在 Service)
+      const { taskId, subTaskId } =
+        await this.tasksService.processEmailResponse(token, status);
+
+      // 2. 渲染成功頁面，提示使用者已處理完成
+      return res.render('tasks/email-response-success', {
+        status,
+        taskId,
+        subTaskId,
+        message:
+          status === 'ACCEPTED'
+            ? 'You have successfully accepted this task!'
+            : 'You have rejected this task.',
+      });
+    } catch (e) {
+      // 如果 Token 過期或無效，顯示錯誤頁面
+      return res.render('tasks/email-response-error', {
+        error:
+          'The link is invalid or broken. Please log in to the system to handle it manually.',
+      });
+    }
   }
 }

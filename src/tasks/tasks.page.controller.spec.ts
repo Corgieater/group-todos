@@ -53,6 +53,9 @@ describe('TasksController', () => {
     task: {
       findUnique: jest.fn(),
     },
+    subTaskAssignee: {
+      findUnique: jest.fn(),
+    },
   };
 
   const mockTasksSerivce = {
@@ -61,6 +64,7 @@ describe('TasksController', () => {
     listOpenTasksDueTodayNoneOrExpired: jest.fn(),
     getTasksByStatus: jest.fn(),
     getAllFutureTasks: jest.fn(),
+    getSubTaskForViewer: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -496,6 +500,8 @@ describe('TasksController', () => {
     });
   });
 
+  // -----------------------------subTask-----------------------------
+
   // ───────────────────────────────────────────────────────────────────────────────
   // renderCreateSubTaskPage
   // ───────────────────────────────────────────────────────────────────────────────
@@ -510,6 +516,86 @@ describe('TasksController', () => {
       expect(view).toBe('tasks/create-sub-task');
       expect(model).toEqual(
         expect.objectContaining({ parentTaskId: parentTaskId }),
+      );
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // subTaskDetail
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('editSubTaskDetail', () => {
+    const parentTaskId = 100;
+    const subTaskId = 20;
+    let actorId: number;
+
+    const mockSubTaskResult = {
+      id: subTaskId,
+      taskId: parentTaskId,
+      title: 'Mock SubTask Title',
+      allDay: false,
+      allDayLocalDate: new Date('2025-12-25'),
+      dueAtUtc: new Date('2025-12-25T10:00:00Z'),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      priority: 3,
+      status: 'OPEN',
+      assignees: [],
+    };
+
+    // 模擬 getSubTaskForViewer 的完整回傳結構
+    const mockServiceResponse = {
+      subTask: mockSubTaskResult,
+      isAdminish: false,
+      groupMembers: [],
+    };
+
+    beforeEach(() => {
+      actorId = currentUser.userId;
+      jest.clearAllMocks(); // 一次重置所有 Mock，更乾淨
+
+      // 🚀 修正：對應 Controller 呼叫的正確 Service 方法名
+      mockTasksSerivce.getSubTaskForViewer.mockResolvedValue(
+        mockServiceResponse,
+      );
+
+      // 假設 buildTaskVM 有被 jest.mock
+      (buildTaskVM as jest.Mock).mockReturnValue({
+        mockVm: true,
+        id: subTaskId,
+      });
+    });
+
+    it('should render edit page with correct viewModel and taskId context', async () => {
+      // 🚀 修正：呼叫正確的 Controller 方法
+      await tasksPageController.editSubTaskDetail(
+        res,
+        parentTaskId,
+        subTaskId,
+        req, // 雖然 Controller 標記為 _req，測試中仍需傳入
+        currentUser,
+      );
+
+      // 1. 驗證 Service 呼叫
+      expect(mockTasksSerivce.getSubTaskForViewer).toHaveBeenCalledWith(
+        parentTaskId,
+        subTaskId,
+        actorId,
+      );
+
+      // 2. 驗證 buildTaskVM (第三個參數 isAdminish 固定傳 false)
+      expect(buildTaskVM).toHaveBeenCalledWith(
+        mockSubTaskResult,
+        currentUser.timeZone,
+        false,
+      );
+
+      // 3. 驗證渲染的 View 與 Data
+      expect(res.render).toHaveBeenCalledWith(
+        'tasks/sub-task-details-edit', // 🚀 修正：與 Controller 路徑對齊
+        expect.objectContaining({
+          mockVm: true,
+          taskId: parentTaskId,
+        }),
       );
     });
   });

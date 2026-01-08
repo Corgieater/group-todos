@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { MailService } from './mail.service';
-import { ConfigService } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
 import { PugAdapter } from '@nestjs-modules/mailer/dist/adapters/pug.adapter';
+import { AuthModule } from 'src/auth/auth.module';
+import { SecurityModule } from 'src/security/security.module';
 
 @Module({
   imports: [
@@ -22,7 +24,7 @@ import { PugAdapter } from '@nestjs-modules/mailer/dist/adapters/pug.adapter';
           from: config.getOrThrow<string>('MAIL_FROM'),
         },
         template: {
-          dir: join(__dirname, '..', 'views'),
+          dir: join(process.cwd(), 'views'),
           adapter: new PugAdapter(),
           options: {
             strict: false,
@@ -30,6 +32,8 @@ import { PugAdapter } from '@nestjs-modules/mailer/dist/adapters/pug.adapter';
         },
       }),
     }),
+    ConfigModule.forRoot(),
+    SecurityModule,
   ],
   providers: [MailService],
   exports: [MailService],

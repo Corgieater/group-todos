@@ -191,45 +191,57 @@ describe('TasksController', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // closeTask
+  // close
   // ───────────────────────────────────────────────────────────────────────────────
 
-  // TODO: FINISHE this and SERVICE
-  describe('closeTask', () => {
-    it('should close task', async () => {
-      await tasksController.closeTask(
-        req,
-        currentUser,
+  describe('close', () => {
+    it('should close task without reason', async () => {
+      // 準備 Body 資料
+      const body = { reason: undefined };
+
+      // 模擬 Service 回傳結果
+      const mockResult = { id: 1, status: 'CLOSED' };
+      mockTasksService.closeTask.mockResolvedValue(mockResult);
+
+      // 執行 Controller 方法
+      const result = await tasksController.close(1, body, currentUser);
+
+      // 1. 驗證 Service 呼叫參數 (現在只有 id, actorId, 和包含 reason 的物件)
+      expect(mockTasksService.closeTask).toHaveBeenCalledWith(
         1,
-        undefined,
-        undefined,
-        res,
+        currentUser.userId,
+        {
+          reason: undefined,
+        },
       );
 
-      expect(mockTasksService.closeTask).toHaveBeenCalledWith(1, 1, {
-        force: false,
-        reason: undefined,
-      });
-
-      expect(setSession).toHaveBeenCalledWith(req, 'success', 'Task closed.');
-      expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
+      // 2. 驗證回傳值 (API 模式直接回傳物件)
+      expect(result).toEqual(mockResult);
     });
 
-    it('should close task with force and reason', async () => {
-      await tasksController.closeTask(
-        req,
-        currentUser,
+    it('should close task with a reason', async () => {
+      // 模擬前端送入的理由
+      const body = { reason: 'Force closed reason' };
+
+      const mockResult = {
+        id: 1,
+        status: 'CLOSED',
+        closedReason: 'Force closed reason',
+      };
+      mockTasksService.closeTask.mockResolvedValue(mockResult);
+
+      const result = await tasksController.close(1, body, currentUser);
+
+      // 驗證 Service 呼叫
+      expect(mockTasksService.closeTask).toHaveBeenCalledWith(
         1,
-        'true',
-        'force closed',
-        res,
+        currentUser.userId,
+        {
+          reason: 'Force closed reason',
+        },
       );
-      expect(mockTasksService.closeTask).toHaveBeenCalledWith(1, 1, {
-        force: true,
-        reason: 'force closed',
-      });
-      expect(setSession).toHaveBeenCalledWith(req, 'success', 'Task closed.');
-      expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
+
+      expect(result).toEqual(mockResult);
     });
   });
 

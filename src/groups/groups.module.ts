@@ -4,12 +4,12 @@ import { GroupsController } from './groups.controller';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { UsersModule } from 'src/users/users.module';
 import { GroupsPageController } from './groups.page.controller';
-import { AuthModule } from 'src/auth/auth.module';
 import { MailModule } from 'src/mail/mail.module';
 import { TasksModule } from 'src/tasks/tasks.module';
+import { SecurityModule } from 'src/security/security.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, MailModule, TasksModule],
+  imports: [PrismaModule, UsersModule, SecurityModule, MailModule, TasksModule],
   providers: [GroupsService],
   controllers: [GroupsController, GroupsPageController],
   exports: [GroupsService],

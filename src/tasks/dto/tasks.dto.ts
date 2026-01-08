@@ -10,6 +10,7 @@ import {
   IsDefined,
   IsEmpty,
   MaxLength,
+  IsNumber,
 } from 'class-validator';
 import { TaskStatus, TaskStatusValues } from '../types/enum';
 import { TaskPriority } from '../types/enum';
@@ -172,4 +173,15 @@ export class UpdateAssigneeStatusDto {
   @IsString()
   @MaxLength(300)
   reason?: string; // 例如 Declined 的理由，可選
+}
+
+export class AssignTaskDto {
+  @IsNotEmpty()
+  @IsNumber()
+  assigneeId: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true) // 處理 Form 送來的字串
+  sendUrgentEmail?: boolean;
 }

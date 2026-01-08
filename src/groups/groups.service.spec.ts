@@ -18,6 +18,7 @@ import { MailService } from 'src/mail/mail.service';
 import { AuthService } from 'src/auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
+import { SecurityService } from 'src/security/security.service';
 
 function createMockPrisma() {
   const prisma: any = {
@@ -64,6 +65,16 @@ describe('GroupService', () => {
     findByEmail: jest.fn(),
   };
 
+  const mockSecurityService = {
+    hash: jest.fn().mockReturnValue('argonHashed'),
+    verify: jest.fn(),
+    generateUrlFriendlySecret: jest
+      .fn()
+      .mockReturnValue('rawUrlFriendlySecret'),
+    hmacToken: jest.fn().mockReturnValue('base64urlHash'),
+    safeEqualB64url: jest.fn(),
+  };
+
   const mockMailService = {
     sendPasswordReset: jest.fn(),
     sendGroupInvite: jest.fn(),
@@ -94,6 +105,10 @@ describe('GroupService', () => {
         { provide: MailService, useValue: mockMailService },
         { provide: AuthService, useValue: mockAuthService },
         { provide: ConfigService, useValue: mockConfigService.mock },
+        {
+          provide: SecurityService,
+          useValue: mockSecurityService,
+        },
       ],
     }).compile();
 
@@ -385,7 +400,6 @@ describe('GroupService', () => {
       mockAuthService.generateUrlFriendlySecret.mockReturnValueOnce(
         'rawUrlFriendlySecret',
       );
-      mockAuthService.hmacToken.mockReturnValueOnce('hashed');
       mockPrismaService.actionToken.upsert.mockResolvedValueOnce({
         id: 5,
       });
@@ -420,12 +434,12 @@ describe('GroupService', () => {
       });
 
       // 4. generate url friendly secret
-      expect(mockAuthService.generateUrlFriendlySecret).toHaveBeenCalledWith(
-        32,
-      );
+      expect(
+        mockSecurityService.generateUrlFriendlySecret,
+      ).toHaveBeenCalledWith(32);
 
       // 5. hash secret
-      expect(mockAuthService.hmacToken).toHaveBeenCalledWith(
+      expect(mockSecurityService.hmacToken).toHaveBeenCalledWith(
         'rawUrlFriendlySecret',
         expect.any(String),
       );
@@ -436,7 +450,7 @@ describe('GroupService', () => {
       expect(mockPrismaService.actionToken.upsert).toHaveBeenCalledWith({
         where: { subjectKey },
         update: {
-          tokenHash: 'hashed',
+          tokenHash: 'base64urlHash',
           groupId: 1,
           expiresAt: expect.any(Date),
           consumedAt: null,
@@ -445,7 +459,7 @@ describe('GroupService', () => {
         create: {
           type: ActionTokenType.GROUP_INVITE,
           subjectKey,
-          tokenHash: 'hashed',
+          tokenHash: 'base64urlHash',
           groupId: 1,
           userId: invitee.id,
           issuedById: 1,
@@ -589,8 +603,7 @@ describe('GroupService', () => {
 
     it('should pass the email verification and add user to group', async () => {
       mockPrismaService.actionToken.findFirst.mockResolvedValueOnce(token);
-      mockAuthService.hmacToken.mockReturnValueOnce(STORED_HASH);
-      mockAuthService.safeEqualB64url.mockReturnValueOnce(true);
+      mockSecurityService.safeEqualB64url.mockReturnValueOnce(true);
       mockPrismaService.actionToken.updateMany.mockResolvedValueOnce({
         count: 1,
       });
@@ -615,11 +628,11 @@ describe('GroupService', () => {
           groupId: true,
         },
       });
-      expect(mockAuthService.hmacToken).toHaveBeenCalledWith(
+      expect(mockSecurityService.hmacToken).toHaveBeenCalledWith(
         RAW_TOKEN,
         expect.any(String),
       );
-      expect(mockAuthService.safeEqualB64url).toHaveBeenCalledWith(
+      expect(mockSecurityService.safeEqualB64url).toHaveBeenCalledWith(
         STORED_HASH,
         STORED_HASH,
       );

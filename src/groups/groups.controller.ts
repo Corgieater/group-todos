@@ -48,6 +48,7 @@ export class GroupsController {
     res.redirect('/users-home');
   }
 
+  // TODO: use @Public decorater, issue JWT
   @Post(':id/invitations')
   async invite(
     @Req() req: Request,
@@ -62,6 +63,7 @@ export class GroupsController {
     res.redirect(`/groups/${id}`);
   }
 
+  // TODO: use @Public decorater, issue JWTtoken
   @Get('invitation/:id/:token')
   async verifyInvitation(
     @Req() req: Request,
