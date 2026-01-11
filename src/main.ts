@@ -1,6 +1,6 @@
-// main.ts
 import express from 'express';
 import { NestFactory } from '@nestjs/core';
+import { WinstonModule } from 'nest-winston';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { doubleCsrf } from 'csrf-csrf';
@@ -11,6 +11,8 @@ import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { flashMessage } from './common/middleware/flash.middleware';
 import { UnauthorzedFilter } from './common/filters/unauthorized-redirect.filter';
+import { loggerInstance } from './common/logger/logger';
+import { AllExceptionsFilter } from './common/logger/all-exception.filter';
 
 const allowBypass = process.env.ALLOW_DEV_CSRF_BYPASS === '1';
 
@@ -33,12 +35,19 @@ const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: WinstonModule.createLogger({
+      instance: loggerInstance,
+    }),
+  });
+
   const config = app.get(ConfigService);
 
   app.useStaticAssets(join(__dirname, '..', 'public'), { prefix: '/' });
   app.setBaseViewsDir(join(__dirname, '..', 'views'));
   app.setViewEngine('pug');
+
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -67,10 +76,10 @@ async function bootstrap() {
   app.use((req, res, next) => {
     if (
       allowBypass &&
-      req.headers['x-csrf-bypass'] === process.env.BYPASS_CODE && // manual test bypass
+      req.headers['x-csrf-bypass'] === process.env.BYPASS_CODE &&
       process.env.NODE_ENV !== 'production'
     ) {
-      return next(); // skip CSRF
+      return next();
     }
     return doubleCsrfProtection(req, res, next);
   });
@@ -99,6 +108,7 @@ async function bootstrap() {
 
   app.use(flashMessage);
   app.useGlobalFilters(new UnauthorzedFilter());
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
