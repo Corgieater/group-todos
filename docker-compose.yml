@@ -1,13 +1,31 @@
 services:
-  dev-db:
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@db:5432/mytaskdb?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
     image: postgres:latest
     restart: always
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=mytaskdb
     volumes:
       - dev-db:/var/lib/postgresql/data
     ports:
       - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U admin']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   dev-db:
