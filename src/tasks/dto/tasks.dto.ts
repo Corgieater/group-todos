@@ -61,21 +61,12 @@ export class TasksAddDto {
   dueDate?: string;
 
   // check if this can be used
-  @Type(() => String)
-  @Transform(
-    ({ value }) => {
-      if (Array.isArray(value)) {
-        // hidden=0 + checkbox=1 → ['0','1'] → true
-        return value.some(isTrueLike);
-      }
-      // 單值 '0' → false；'1' → true；undefined/null → false
-      if (value == null) return false;
-      return isTrueLike(value);
-    },
-    { toClassOnly: true },
-  )
   @IsBoolean()
-  allDay!: boolean;
+  @Transform(({ value }) => {
+    // 🚀 處理來自 HTML form 的各種可能值
+    return [true, 'true', '1', 'on', 'yes'].includes(value);
+  })
+  allDay: boolean;
 
   // 規則 1：當 allDay=false，dueTime 必填且要 HH:mm
   @ValidateIf((o) => o.allDay === false)
