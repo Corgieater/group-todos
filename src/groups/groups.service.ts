@@ -100,20 +100,22 @@ export class GroupsService {
     return group;
   }
 
-  async getMemberRole(id: number, userId: number): Promise<GroupRole | null> {
+  async requireMemberRole(groupId: number, userId: number) {
     const member = await this.prismaService.groupMember.findUnique({
-      where: { groupId_userId: { groupId: id, userId } },
-      select: { role: true },
+      where: { groupId_userId: { groupId, userId } },
+      include: {
+        group: { select: { name: true } },
+      },
     });
-    return member?.role ?? null;
-  }
 
-  async requireMemberRole(groupId: number, userId: number): Promise<GroupRole> {
-    const role = await this.getMemberRole(groupId, userId);
-    if (!role) throw GroupsErrors.GroupNotFoundError.byId(userId, groupId);
-    return role;
-  }
+    if (!member)
+      throw GroupsErrors.GroupMemberNotFoundError.byId(userId, groupId);
 
+    return {
+      role: member.role,
+      groupName: member.group.name,
+    };
+  }
   isAdminish(role: GroupRole | null | undefined): boolean {
     return role === 'OWNER' || role === 'ADMIN';
   }

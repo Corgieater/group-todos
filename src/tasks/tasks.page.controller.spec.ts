@@ -3,7 +3,6 @@ import type {
   Task as TaskModel,
   User as UserModel,
 } from 'src/generated/prisma/client';
-import { TaskStatus } from './types/enum';
 import { TasksPageController } from './tasks.page.controller';
 import { TasksService } from './tasks.service';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -27,7 +26,6 @@ jest.mock('src/common/helpers/util', () => ({
   })),
 }));
 import { buildTaskVM } from 'src/common/helpers/util';
-import { TasksController } from './tasks.controller';
 
 describe('TasksController', () => {
   let tasksPageController: TasksPageController;
@@ -36,16 +34,6 @@ describe('TasksController', () => {
   let res: Response;
   let currentUser: CurrentUser;
   const lowTask: TaskModel = createMockTask();
-  const mediumTask: TaskModel = createMockTask({
-    id: 2,
-    title: 'medium test',
-    priority: 3,
-  });
-  const urgentTask: TaskModel = createMockTask({
-    id: 3,
-    title: 'urgent test',
-    priority: 1,
-  });
 
   const mockPrismaService = {
     taskAssignee: {
@@ -59,10 +47,10 @@ describe('TasksController', () => {
     },
   };
 
-  const mockTasksSerivce = {
+  const mockTasksService = {
     create: jest.fn(),
     getTaskForViewer: jest.fn(),
-    listOpenTasksDueTodayNoneOrExpired: jest.fn(),
+    getHomeDashboardData: jest.fn(),
     getTasks: jest.fn(),
     getAllFutureTasks: jest.fn(),
     getSubTaskForViewer: jest.fn(),
@@ -84,7 +72,7 @@ describe('TasksController', () => {
       controllers: [TasksPageController],
       providers: [
         { provide: PrismaService, useValue: mockPrismaService },
-        { provide: TasksService, useValue: mockTasksSerivce },
+        { provide: TasksService, useValue: mockTasksService },
       ],
     }).compile();
 
@@ -100,178 +88,50 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('home', () => {
-    const bounds = {
-      timeZone: 'Asia/Taipei',
-      startUtc: new Date('2025-09-01T00:00:00.000Z'),
-      endUtc: new Date('2025-09-01T23:59:59.999Z'),
-      startOfTodayUtc: new Date('2025-09-01T00:00:00.000Z'),
-      todayDateOnlyUtc: new Date('2025-09-01T00:00:00.000Z'),
-    };
-    const items = [
-      // EXPIRED — all-day（昨天）
-      {
-        id: 1,
-        title: 'Expired all-day',
-        status: 'OPEN',
-        priority: 3,
-        allDay: true,
-        allDayLocalDate: new Date('2025-08-31T00:00:00.000Z'),
-        dueAtUtc: null,
-        createdAt: new Date('2025-08-15T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-      // EXPIRED — 有時分（昨天晚上）
-      {
-        id: 2,
-        title: 'Expired timed',
-        status: 'OPEN',
-        priority: 2,
-        allDay: false,
-        allDayLocalDate: null,
-        dueAtUtc: new Date('2025-08-31T18:30:00.000Z'),
-        createdAt: new Date('2025-08-10T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-      // TODAY — all-day（今天）
-      {
-        id: 3,
-        title: 'Today all-day',
-        status: 'OPEN',
-        priority: 1,
-        allDay: true,
-        allDayLocalDate: new Date('2025-09-01T00:00:00.000Z'),
-        dueAtUtc: null,
-        createdAt: new Date('2025-08-20T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-      // TODAY — 有時分（今天 09:00）
-      {
-        id: 4,
-        title: 'Today 09:00',
-        status: 'OPEN',
-        priority: 3,
-        allDay: false,
-        allDayLocalDate: null,
-        dueAtUtc: new Date('2025-09-01T09:00:00.000Z'),
-        createdAt: new Date('2025-08-21T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-      // TODAY — 有時分（今天 15:00）
-      {
-        id: 5,
-        title: 'Today 15:00',
-        status: 'OPEN',
-        priority: 4,
-        allDay: false,
-        allDayLocalDate: null,
-        dueAtUtc: new Date('2025-09-01T15:00:00.000Z'),
-        createdAt: new Date('2025-08-22T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-      // NONE — 無期限
-      {
-        id: 6,
-        title: 'Undated A',
-        status: 'OPEN',
-        priority: 4,
-        allDay: false,
-        allDayLocalDate: null,
-        dueAtUtc: null,
-        createdAt: new Date('2025-08-05T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-      {
-        id: 7,
-        title: 'Undated B',
-        status: 'OPEN',
-        priority: 2,
-        allDay: false,
-        allDayLocalDate: null,
-        dueAtUtc: null,
-        createdAt: new Date('2025-08-01T00:00:00.000Z'),
-        location: null,
-        description: null,
-      },
-    ];
-
-    beforeEach(() => {
-      const now = new Date('2025-01-02T00:00:00Z');
-      jest.useFakeTimers().setSystemTime(now);
-    });
-
-    it('partitions tasks into expired/today/none and renders view with sorted buckets', async () => {
-      mockTasksSerivce.listOpenTasksDueTodayNoneOrExpired.mockResolvedValueOnce(
-        { items, bounds },
-      );
-
-      await tasksPageController.home(req, currentUser, res);
-
-      expect(
-        mockTasksSerivce.listOpenTasksDueTodayNoneOrExpired,
-      ).toHaveBeenCalledWith(currentUser.userId);
-
-      expect(
-        mockTasksSerivce.listOpenTasksDueTodayNoneOrExpired,
-      ).toHaveBeenCalledTimes(1);
-
-      expect(res.render).toHaveBeenCalledTimes(1);
-      const [view, model] = (res.render as jest.Mock).mock.calls[0];
-
-      expect(view).toBe('tasks/home');
-      expect(model).toHaveProperty('name', user.name);
-      expect(model).toHaveProperty('today');
-      expect(model).toHaveProperty('expired');
-      expect(model).toHaveProperty('none');
-
-      const { today, expired, none } = model;
-      expect(today.map((t: any) => t.id).sort()).toEqual([3, 4, 5]);
-      expect(expired.map((t: any) => t.id).sort()).toEqual([1, 2]);
-      expect(none.map((t: any) => t.id).sort()).toEqual([6, 7]);
-
-      expect(today.map((t: any) => t.id)).toEqual([3, 4, 5]);
-
-      expect(expired.map((t: any) => t.id)).toEqual([1, 2]);
-
-      expect(none.map((t: any) => t.id)).toEqual([7, 6]);
-    });
-
-    it('should renders with empty arrays', async () => {
-      const emptyBounds = {
-        timeZone: 'Asia/Taipei',
-        startUtc: new Date('2025-09-01T00:00:00.000Z'),
-        endUtc: new Date('2025-09-01T23:59:59.999Z'),
-        startOfTodayUtc: new Date('2025-09-01T00:00:00.000Z'),
-        todayDateOnlyUtc: new Date('2025-09-01T00:00:00.000Z'),
+    it('should render and load task data separately', async () => {
+      // 1. 準備測試資料
+      const mockUser = { userId: 1, userName: 'Test User' };
+      const mockDashboardData = {
+        expired: [{ id: 1, title: 'Expired Task' }],
+        today: [{ id: 2, title: 'Today Task' }],
+        none: [{ id: 3, title: 'No Date Task' }],
+        bounds: { timeZone: 'UTC' },
       };
 
-      mockTasksSerivce.listOpenTasksDueTodayNoneOrExpired.mockResolvedValueOnce(
-        {
-          items: [],
-          bounds: emptyBounds,
-        },
+      // 2. 設定 Mock Service 的回傳值
+      mockTasksService.getHomeDashboardData.mockResolvedValue(
+        mockDashboardData,
       );
 
-      await tasksPageController.home(req, currentUser, res);
+      // 3. 執行測試 (模擬 @Req, @CurrentUser, @Res)
+      await tasksPageController.home({} as any, mockUser as any, res);
 
-      expect(res.render).toHaveBeenCalledTimes(1);
-      const [view, model] = (res.render as jest.Mock).mock.calls[0];
-      expect(view).toBe('tasks/home');
+      // 4. 驗證 Service 是否被正確呼叫
+      expect(mockTasksService.getHomeDashboardData).toHaveBeenCalledWith(
+        mockUser.userId,
+      );
 
-      expect(Array.isArray(model.today)).toBe(true);
-      expect(Array.isArray(model.expired)).toBe(true);
-      expect(Array.isArray(model.none)).toBe(true);
+      // 5. 驗證 res.render 是否被呼叫，且參數正確
+      expect(res.render).toHaveBeenCalledWith(
+        'tasks/home',
+        expect.objectContaining({
+          name: 'Test User',
+          expired: mockDashboardData.expired,
+          today: mockDashboardData.today,
+          none: mockDashboardData.none,
+        }),
+      );
+    });
 
-      expect(model.today.length).toBe(0);
-      expect(model.expired.length).toBe(0);
-      expect(model.none.length).toBe(0);
+    it('should throw error if exception happens', async () => {
+      const mockUser = { userId: 1, userName: 'Test User' };
+      mockTasksService.getHomeDashboardData.mockRejectedValue(
+        new Error('DB Error'),
+      );
 
-      expect(model.name).toBe(currentUser.userName);
+      await expect(
+        tasksPageController.home({} as any, mockUser as any, res),
+      ).rejects.toThrow('DB Error');
     });
   });
 
@@ -306,13 +166,13 @@ describe('TasksController', () => {
       };
 
       // 設定 Service Mock 行為
-      mockTasksSerivce.getTasks.mockResolvedValue(mockPageDto);
+      mockTasksService.getTasks.mockResolvedValue(mockPageDto);
 
       // 執行測試
       await tasksPageController.list(mockQuery as any, mockUser as any, res);
 
       // 驗證 1: Service 是否被正確呼叫
-      expect(mockTasksSerivce.getTasks).toHaveBeenCalledWith(
+      expect(mockTasksService.getTasks).toHaveBeenCalledWith(
         1,
         'Asia/Taipei',
         expect.objectContaining({
@@ -344,14 +204,14 @@ describe('TasksController', () => {
 
     describe('detail', () => {
       it('should renders details with VM locals', async () => {
-        mockTasksSerivce.getTaskForViewer.mockResolvedValueOnce({
+        mockTasksService.getTaskForViewer.mockResolvedValueOnce({
           task: lowTask,
           isAdminish: true,
         });
 
         await tasksPageController.detail(req, lowTask.id, currentUser, res);
 
-        expect(mockTasksSerivce.getTaskForViewer).toHaveBeenCalledWith(1, 1);
+        expect(mockTasksService.getTaskForViewer).toHaveBeenCalledWith(1, 1);
         expect(buildTaskVM).toHaveBeenCalledTimes(1);
         expect(buildTaskVM).toHaveBeenNthCalledWith(
           1,
@@ -385,7 +245,7 @@ describe('TasksController', () => {
 
       beforeEach(() => {
         jest.useFakeTimers().setSystemTime(fixedNow);
-        mockTasksSerivce.getTaskForViewer.mockResolvedValue({
+        mockTasksService.getTaskForViewer.mockResolvedValue({
           task: lowTask,
           isAdminish: true,
         });
@@ -395,7 +255,7 @@ describe('TasksController', () => {
         await tasksPageController.edit(lowTask.id, currentUser, res);
 
         // service called correctly
-        expect(mockTasksSerivce.getTaskForViewer).toHaveBeenCalledWith(
+        expect(mockTasksService.getTaskForViewer).toHaveBeenCalledWith(
           lowTask.id,
           currentUser.userId,
         );
@@ -484,7 +344,7 @@ describe('TasksController', () => {
       jest.clearAllMocks(); // 一次重置所有 Mock，更乾淨
 
       // 🚀 修正：對應 Controller 呼叫的正確 Service 方法名
-      mockTasksSerivce.getSubTaskForViewer.mockResolvedValue(
+      mockTasksService.getSubTaskForViewer.mockResolvedValue(
         mockServiceResponse,
       );
 
@@ -506,7 +366,7 @@ describe('TasksController', () => {
       );
 
       // 1. 驗證 Service 呼叫
-      expect(mockTasksSerivce.getSubTaskForViewer).toHaveBeenCalledWith(
+      expect(mockTasksService.getSubTaskForViewer).toHaveBeenCalledWith(
         parentTaskId,
         subTaskId,
         actorId,

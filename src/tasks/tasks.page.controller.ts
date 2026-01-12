@@ -35,68 +35,16 @@ export class TasksPageController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    // Service 回傳的 items 已經包含了 canClose: boolean 屬性
-    const { items, bounds } =
-      await this.tasksService.listOpenTasksDueTodayNoneOrExpired(user.userId);
-
-    const tasks = items;
-    const { startUtc, endUtc, startOfTodayUtc, todayDateOnlyUtc } = bounds;
-
-    type TaskVMWithCanClose = (typeof tasks)[number] & { canClose: boolean };
-    type Buckets = {
-      expired: TaskVMWithCanClose[];
-      today: TaskVMWithCanClose[];
-      none: TaskVMWithCanClose[];
-    };
-    const buckets: Buckets = { expired: [], today: [], none: [] };
-
-    for (const t of tasks as TaskVMWithCanClose[]) {
-      const isExpired =
-        (t.dueAtUtc && t.dueAtUtc < startOfTodayUtc) ||
-        (t.allDayLocalDate && t.allDayLocalDate < todayDateOnlyUtc);
-
-      if (isExpired) {
-        buckets.expired.push(t);
-        continue;
-      }
-
-      const isToday =
-        (t.dueAtUtc && t.dueAtUtc >= startUtc && t.dueAtUtc <= endUtc) ||
-        (t.allDayLocalDate && +t.allDayLocalDate === +todayDateOnlyUtc);
-
-      if (isToday) {
-        buckets.today.push(t);
-        continue;
-      }
-
-      const isNone = !t.dueAtUtc && !t.allDayLocalDate;
-      if (isNone) {
-        buckets.none.push(t);
-        continue;
-      }
-    }
-
-    const ts = (d: Date | null | undefined) =>
-      d ? d.getTime() : Number.POSITIVE_INFINITY;
-
-    const sortByDay = (a: TaskVMWithCanClose, b: TaskVMWithCanClose) =>
-      Number(b.allDay) - Number(a.allDay) ||
-      ts(a.allDayLocalDate) - ts(b.allDayLocalDate) ||
-      ts(a.dueAtUtc) - ts(b.dueAtUtc);
-
-    const sortByNone = (a: TaskVMWithCanClose, b: TaskVMWithCanClose) =>
-      ts(a.createdAt) - ts(b.createdAt);
-
-    // 排序
-    buckets.today.sort(sortByDay);
-    buckets.expired.sort(sortByDay);
-    buckets.none.sort(sortByNone);
+    const dashboardData = await this.tasksService.getHomeDashboardData(
+      user.userId,
+    );
 
     return res.render('tasks/home', {
       name: user.userName,
-      today: buckets.today,
-      expired: buckets.expired,
-      none: buckets.none,
+      expired: dashboardData.expired,
+      today: dashboardData.today,
+      none: dashboardData.none,
+      // 如果有需要顯示「查看更多」的按鈕，也可以在這裡判斷是否達到上限
     });
   }
 
@@ -159,22 +107,6 @@ export class TasksPageController {
     });
 
     const viewModel = buildTaskVM(task, user.timeZone, isAdminish);
-    console.log({
-      ...viewModel,
-      taskId: viewModel.id,
-      todayISO: new Date().toISOString().slice(0, 10),
-
-      viewerIsAssignee: !!viewerAssignment,
-      viewerAssigneeStatus: viewerAssignment?.status ?? null,
-      viewerAssigneeId: viewerAssignment?.assigneeId ?? null,
-
-      // ★ 允許自我指派（群組任務且是群組成員）
-      allowSelfAssign: !!task.groupId, // 也可更嚴謹：!!task.groupId && isMember
-      canClose,
-      groupMembers,
-      currentUserId: user.userId,
-      currentUserName: user.userName,
-    });
     res.render('tasks/details', {
       ...viewModel,
       taskId: viewModel.id,

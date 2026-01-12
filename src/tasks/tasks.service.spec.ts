@@ -569,84 +569,6 @@ describe('TasksService', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // listOpenTasksDueTodayNoneOrExpired
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('listOpenTasksDueTodayNoneOrExpired', () => {
-    const startUtc = new Date('2025-02-01T00:00:00.000Z');
-    const endUtc = new Date('2025-02-01T23:59:59.999Z');
-    const fixedNow = new Date('2025-02-01T12:00:00.000Z');
-
-    const expectedStartOfTodayUtc = fromZonedTime(
-      '2025-02-01T00:00:00',
-      'Asia/Taipei',
-    );
-    const expectedTodayDateOnlyUtc = new Date('2025-02-01T00:00:00.000Z');
-
-    beforeEach(() => {
-      jest.useFakeTimers().setSystemTime(fixedNow);
-      jest.spyOn(Time, 'dayBoundsUtc').mockReturnValue({ startUtc, endUtc });
-      mockUsersService.findByIdOrThrow.mockResolvedValue({
-        id: 1,
-        timeZone: 'Asia/Taipei',
-      });
-      mockPrismaService.task.findMany.mockResolvedValue([]);
-    });
-
-    afterEach(() => {
-      jest.useRealTimers();
-      jest.restoreAllMocks();
-      jest.clearAllMocks();
-    });
-
-    it('builds correct where/orderBy and returns {items,bounds}', async () => {
-      await tasksService.listOpenTasksDueTodayNoneOrExpired(1);
-
-      expect(Time.dayBoundsUtc).toHaveBeenCalledWith('Asia/Taipei');
-
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            ownerId: 1,
-            status: { in: ['OPEN'] },
-            OR: expect.arrayContaining([
-              { dueAtUtc: null },
-              { dueAtUtc: { gte: startUtc, lte: endUtc } }, // TODAY timed
-              { allDayLocalDate: { equals: expectedTodayDateOnlyUtc } }, // TODAY all-day
-              {
-                dueAtUtc: expect.objectContaining({
-                  not: null,
-                  lt: expectedStartOfTodayUtc,
-                }),
-              }, // EXPIRED timed
-              {
-                allDayLocalDate: expect.objectContaining({
-                  not: null,
-                  lt: expectedTodayDateOnlyUtc,
-                }),
-              }, // EXPIRED all-day
-            ]),
-          }),
-          orderBy: [{ createdAt: 'asc' }],
-        }),
-      );
-    });
-
-    it('should not hit database if user not found', async () => {
-      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(999),
-      );
-
-      await expect(
-        tasksService.listOpenTasksDueTodayNoneOrExpired(999),
-      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
-
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.findMany).not.toHaveBeenCalled();
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
   // updateTask
   // ───────────────────────────────────────────────────────────────────────────────
 
@@ -1149,53 +1071,6 @@ describe('TasksService', () => {
 
       await expect(tasksService.deleteTask(1, user.id)).rejects.toBeInstanceOf(
         TasksErrors.TaskNotFoundError,
-      );
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // getUnfinishedTasksTodayOrNoDueDateByGroupId
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('listGroupOpenTasksDueTodayNoneOrExpired', () => {
-    const startUtc = new Date('2025-09-01T00:00:00.000Z');
-    const endUtc = new Date('2025-09-01T23:59:59.999Z');
-    const groupId = 1;
-
-    beforeEach(() => {
-      jest.spyOn(Time, 'dayBoundsUtc').mockReturnValue({ startUtc, endUtc });
-      mockPrismaService.task.findMany.mockResolvedValue([]);
-    });
-
-    it('builds correct where/orderBy and returns bounds', async () => {
-      mockPrismaService.groupMember.findFirst.mockResolvedValueOnce({
-        user: { timeZone: 'Asia/Taipei' },
-      });
-
-      const result = await tasksService.listGroupOpenTasksDueTodayNoneOrExpired(
-        groupId,
-        user.id,
-      );
-
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            groupId: 1,
-            status: { in: ['OPEN'] },
-            OR: expect.any(Array),
-          }),
-          orderBy: expect.any(Array),
-        }),
-      );
-
-      expect(result.bounds).toEqual(
-        expect.objectContaining({
-          timeZone: expect.any(String),
-          startUtc: expect.any(Date),
-          endUtc: expect.any(Date),
-          startOfTodayUtc: expect.any(Date),
-          todayDateOnlyUtc: expect.any(Date),
-        }),
       );
     });
   });

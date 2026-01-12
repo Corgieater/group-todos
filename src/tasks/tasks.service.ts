@@ -27,7 +27,7 @@ import { ConfigService } from '@nestjs/config';
 import { MailService } from 'src/mail/mail.service';
 import { SecurityService } from 'src/security/security.service';
 import { TasksGateWay } from './tasks.gateway';
-import { Order, PageOptionsDto } from 'src/common/dto/page-options.dto';
+import { Order } from 'src/common/dto/page-options.dto';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 
@@ -123,6 +123,7 @@ export class TasksService {
     if (groupId) {
       data['groupId'] = groupId;
     }
+
     await this.prismaService.task.create({ data });
   }
 
@@ -280,21 +281,77 @@ export class TasksService {
     };
   }
 
-  async listOpenTasksDueTodayNoneOrExpired(ownerId: number): Promise<{
-    items: TaskModel[];
-    bounds: {
-      timeZone: string;
-      startUtc: Date;
-      endUtc: Date;
-      startOfTodayUtc: Date;
-      todayDateOnlyUtc: Date;
+  async getHomeDashboardData(userId: number) {
+    // 這裡我們定義各區塊的顯示上限
+    const LIMITS = { EXPIRED: 5, TODAY: 15, NONE: 10 };
+
+    // 🚀 使用 Promise.all 同時執行，效率最高
+    const [expiredRes, todayRes, noneRes] = await Promise.all([
+      this.listTaskCore(
+        { kind: 'owner', ownerId: userId },
+        { status: ['OPEN'], due: ['EXPIRED'] },
+        'expiredPriority', // 這裡可以用你自定義的排序
+        LIMITS.EXPIRED,
+      ),
+      this.listTaskCore(
+        { kind: 'owner', ownerId: userId },
+        { status: ['OPEN'], due: ['TODAY'] },
+        'dueAtAscNullsLast',
+        LIMITS.TODAY,
+      ),
+      this.listTaskCore(
+        { kind: 'owner', ownerId: userId },
+        { status: ['OPEN'], due: ['NONE'] },
+        'createdAsc',
+        LIMITS.NONE,
+      ),
+    ]);
+
+    return {
+      expired: expiredRes.items,
+      today: todayRes.items,
+      none: noneRes.items,
+      // 也可以順便回傳各區塊的 bounds，如果前端需要顯示今日日期範圍
+      bounds: todayRes.bounds,
     };
-  }> {
-    return this.listTaskCore(
-      { kind: 'owner', ownerId },
-      { status: ['OPEN'], due: ['TODAY', 'NONE', 'EXPIRED'] },
-      'createdAsc',
-    );
+  }
+
+  async getGroupDashboardData(groupId: number, viewerId: number) {
+    const LIMITS = { EXPIRED: 5, TODAY: 15, NONE: 10 };
+
+    // 使用我們之前優化的 listTaskCore
+    // 它可以根據 scope.kind === 'group' 自動處理群組成員的時區與權限
+    const [expiredRes, todayRes, noneRes] = await Promise.all([
+      this.listTaskCore(
+        { kind: 'group', groupId, viewerId },
+        { status: ['OPEN'], due: ['EXPIRED'] },
+        'expiredPriority',
+        LIMITS.EXPIRED,
+      ),
+      this.listTaskCore(
+        { kind: 'group', groupId, viewerId },
+        { status: ['OPEN'], due: ['TODAY'] },
+        'dueAtAscNullsLast',
+        LIMITS.TODAY,
+      ),
+      this.listTaskCore(
+        { kind: 'group', groupId, viewerId },
+        { status: ['OPEN'], due: ['NONE'] },
+        'createdAsc',
+        LIMITS.NONE,
+      ),
+    ]);
+
+    // 💡 提示：listTaskCore 的 mapped 邏輯內應處理 canClose
+    // 針對團隊任務，canClose 的邏輯應包含：
+    // !hasOpenSubTasks && (!hasAssignees || allAssigneesDone)
+
+    return {
+      expired: expiredRes.items,
+      today: todayRes.items,
+      none: noneRes.items,
+      bounds: todayRes.bounds,
+    };
   }
 
   async updateTask(
@@ -767,21 +824,11 @@ export class TasksService {
     await this.prismaService.task.delete({ where: { id: task.id } });
   }
 
-  async listGroupOpenTasksDueTodayNoneOrExpired(
-    groupId: number,
-    userId: number,
-  ) {
-    return await this.listTaskCore(
-      { kind: 'group', groupId, viewerId: userId },
-      { status: ['OPEN'], due: ['TODAY', 'NONE', 'EXPIRED'] },
-      'createdAsc',
-    );
-  }
-
   private async listTaskCore(
     scope: ListTasksScope,
     filters: ListTasksFilters,
     orderByKey: OrderKey,
+    take?: number,
   ) {
     let timeZone!: string;
 
@@ -865,6 +912,7 @@ export class TasksService {
       where,
       orderBy,
       // 🚨 修正：使用 select 載入所有基礎欄位、assignees 和 _count
+      take,
       select: {
         // --- 必須手動選取所有 Task 基礎欄位 ---
         id: true,
@@ -886,7 +934,6 @@ export class TasksService {
         closedById: true,
         closedReason: true,
         closedWithOpenAssignees: true,
-        // -------------------------------------
 
         assignees: {
           include: {
