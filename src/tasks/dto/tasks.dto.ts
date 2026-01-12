@@ -11,12 +11,15 @@ import {
   IsEmpty,
   MaxLength,
   IsNumber,
+  Max,
+  Min,
+  IsInt,
+  IsIn,
 } from 'class-validator';
 import { TaskStatus, TaskStatusValues } from '../types/enum';
 import { TaskPriority } from '../types/enum';
 import { Transform, Type } from 'class-transformer';
 import { AssignmentStatus } from 'src/generated/prisma/client';
-import { OmitType } from '@nestjs/mapped-types';
 
 function toBool(val: any): boolean {
   if (typeof val === 'boolean') return val;
@@ -95,6 +98,32 @@ export class TasksAddDto {
   @IsOptional()
   @IsString()
   location?: string;
+}
+export class TaskQueryDto {
+  @IsOptional()
+  @IsEnum(TaskStatus, { message: 'Status must be OPEN, CLOSED or ARCHIVED' })
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  scope?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  limit?: number;
+
+  @IsOptional()
+  @IsIn(['ASC', 'DESC'])
+  order?: 'ASC' | 'DESC';
 }
 
 export class SubTasksAddDto extends TasksAddDto {

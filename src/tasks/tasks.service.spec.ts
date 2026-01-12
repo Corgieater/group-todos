@@ -29,6 +29,7 @@ import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { ConfigService } from '@nestjs/config';
 import { TasksGateWay } from './tasks.gateway';
 import { TaskForbiddenError } from 'src/errors/tasks';
+import { PageDto } from 'src/common/dto/page.dto';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
@@ -264,49 +265,6 @@ describe('TasksService', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // getAllFutureTasks
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('getAllFutureTasks', () => {
-    const startUtc = new Date('2025-09-01T00:00:00.000Z');
-    const endUtc = new Date('2025-09-01T23:59:59.999Z');
-
-    beforeEach(() => {
-      jest.spyOn(Time, 'dayBoundsUtc').mockReturnValue({ startUtc, endUtc });
-    });
-
-    it('returns unfinished future tasks', async () => {
-      // Alart: NOTE:
-      // this looks suspecious
-      const rows = [{ id: 1 }, { id: 2 }];
-      mockPrismaService.$queryRaw.mockResolvedValueOnce(rows);
-
-      const tasks = await tasksService.getAllFutureTasks(
-        user.id,
-        user.timeZone,
-      );
-
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(1);
-      expect(mockPrismaService.$queryRaw).toHaveBeenCalledTimes(1);
-
-      expect(tasks).toBe(rows);
-    });
-
-    it('should not hit database when user not found', async () => {
-      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(999),
-      );
-
-      await expect(
-        tasksService.getAllFutureTasks(999, 'Asia/Taipei'),
-      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
-
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.findMany).not.toHaveBeenCalled();
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
   // getTaskForViewer
   // ───────────────────────────────────────────────────────────────────────────────
 
@@ -525,49 +483,88 @@ describe('TasksService', () => {
     });
   });
   // ───────────────────────────────────────────────────────────────────────────────
-  // getTasksByStatus
+  // getTasks
   // ───────────────────────────────────────────────────────────────────────────────
 
-  describe('getTasksByStatus', () => {
-    let finishedTask1: TaskModel;
-    let finishedTask2: TaskModel;
+  describe('getTasks', () => {
+    const userId = 1;
+    const timeZone = 'Asia/Taipei';
 
-    beforeEach(() => {
-      finishedTask1 = { ...lowTask, status: TaskStatus.CLOSED };
-      finishedTask2 = { ...mediumTask, status: TaskStatus.CLOSED };
+    it('Should return correct paginated data (basic query)', async () => {
+      // 準備 Mock 回傳值
+      const mockTasks = [
+        { id: 1, title: 'Task 1', subTaskCount: 0, assigneeCount: 0 },
+      ];
+      const mockCount = [{ count: BigInt(1) }];
+
+      // 第一次呼叫回傳 tasks, 第二次呼叫回傳 count (Promise.all)
+      mockPrismaService.$queryRaw
+        .mockResolvedValueOnce(mockTasks)
+        .mockResolvedValueOnce(mockCount);
+
+      const result = await tasksService.getTasks(userId, timeZone, {
+        status: 'OPEN',
+        page: 1,
+        limit: 10,
+      });
+
+      // 💡 取得該次呼叫的所有參數 (包含字串片段和傳入的值)
+      const allArgs = mockPrismaService.$queryRaw.mock.calls[0];
+      const fullSqlString = JSON.stringify(allArgs);
+
+      // 現在你可以檢查是否包含這些條件了
+      expect(fullSqlString).toContain('status');
+      expect(fullSqlString).toContain('ownerId');
+      expect(fullSqlString).toContain('OPEN');
     });
 
-    it('returns tasks by status', async () => {
-      mockPrismaService.task.findMany.mockResolvedValueOnce([
-        finishedTask1,
-        finishedTask2,
-      ]);
+    it('should add time boundary when scope is future', async () => {
+      mockPrismaService.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ count: BigInt(0) }]);
 
-      const tasks = await tasksService.getTasksByStatus(
-        user.id,
-        TaskStatus.CLOSED,
-      );
+      await tasksService.getTasks(userId, timeZone, {
+        scope: 'FUTURE',
+      });
 
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderBy: [{ createdAt: 'asc' }],
-          where: { ownerId: 1, status: { in: ['CLOSED'] }, groupId: null },
-        }),
-      );
-      expect(mockPrismaService.task.findMany).toHaveBeenCalledTimes(1);
+      // 🚀 關鍵修正：將整個呼叫的所有參數（包含動態插入的 SQL 片段）字串化
+      const allArgs = mockPrismaService.$queryRaw.mock.calls[0];
+      const fullSqlContent = JSON.stringify(allArgs);
 
-      expect(tasks).toHaveLength(2);
-      expect(tasks.every((t) => t.ownerId === 1)).toBe(true);
-      expect(tasks.every((t) => t.status === TaskStatus.CLOSED)).toBe(true);
+      // 驗證是否包含 Future 專用的時間判斷 SQL Fragment
+      expect(fullSqlContent).toContain('dueAtUtc');
+      expect(fullSqlContent).toContain('allDayLocalDate');
     });
 
-    it('returns empty array if none', async () => {
-      mockPrismaService.task.findMany.mockResolvedValueOnce([]);
-      const tasks = await tasksService.getTasksByStatus(
-        user.id,
-        TaskStatus.CLOSED,
-      );
-      expect(tasks).toEqual([]);
+    it('should calculate skip and limit correctly (pagination logic)', async () => {
+      mockPrismaService.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ count: BigInt(0) }]);
+
+      const page = 3;
+      const limit = 5;
+      const expectedSkip = (page - 1) * limit; // 10
+
+      await tasksService.getTasks(userId, timeZone, { page, limit });
+
+      // 在 $queryRaw`...` 這種寫法中：
+      // 第一個參數是字串片段陣列
+      // 後續參數（索引 1, 2, ...）才是傳進去的值
+      const allArgs = mockPrismaService.$queryRaw.mock.calls[0];
+
+      // 我們檢查所有傳入的參數是否包含 limit 和 expectedSkip
+      // 因為我們不知道它們在參數列表中的確切位置（取決於 SQL 構造順序）
+      expect(allArgs).toContain(limit);
+      expect(allArgs).toContain(expectedSkip);
+    });
+
+    it('should return itemCount 0 if non count', async () => {
+      mockPrismaService.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]); // 模擬空陣列回傳
+
+      const result = await tasksService.getTasks(userId, timeZone, {});
+      expect(result.meta.itemCount).toBe(0);
     });
   });
 

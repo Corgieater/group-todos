@@ -1,27 +1,10 @@
 //- views/tasks/_tasks-list.pug
 -
-  // 安全防呆 + 小工具
   const list = Array.isArray(viewModel) ? viewModel : [];
-  // 來源優先：currentStatus → status → 'ALL'
-  const listStatus = typeof currentStatus === 'string'
-    ? currentStatus
-    : (typeof status === 'string' ? status : 'ALL');
+  const listStatus = typeof currentStatus === 'string' ? currentStatus : (typeof status === 'string' ? status : 'ALL');
   const isDoneTab = listStatus === 'FINISHED';
   const PRIORITY = { 1: 'Urgent', 2: 'High', 3: 'Medium', 4: 'Low' };
   const P_BADGE = { 1: 'danger', 2: 'warning', 3: 'info', 4: 'secondary' };
-
-  const fmtDate = (s) => {
-    if (!s) return null;
-    const d = new Date(s);
-    if (Number.isNaN(d.getTime())) return null;
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth()+1).padStart(2,'0');
-    const dd = String(d.getDate()).padStart(2,'0');
-    const HH = String(d.getHours()).padStart(2,'0');
-    const MM = String(d.getMinutes()).padStart(2,'0');
-    const hasTime = d.getHours() + d.getMinutes() !== 0;
-    return hasTime ? `${yyyy}/${mm}/${dd} ${HH}:${MM}` : `${yyyy}/${mm}/${dd}`;
-  };
 
 if !list.length
   .card.shadow-sm
@@ -33,19 +16,14 @@ else
   .card.shadow-sm
     .card-header.bg-body
       .d-flex.justify-content-between.align-items-center
-        span.fw-semibold #{list.length} task#{list.length > 1 ? 's' : ''} found
-        //- 可加上排序/分頁控制
-        // .btn-group
-        //   a.btn.btn-sm.btn-outline-secondary(href="?sort=dueAtUtc") Sort by due
-        //   a.btn.btn-sm.btn-outline-secondary(href="?sort=priority") Sort by priority
+        span.fw-semibold #{pageMeta.itemCount} task#{pageMeta.itemCount > 1 ? 's' : ''} found
     ul.list-group.list-group-flush
       each t in list
         -
           const p = PRIORITY[String(t.priority)] || '—';
           const pb = P_BADGE[String(t.priority)] || 'secondary';
-        li.list-group-item
+        li.list-group-item(id=`task-item-${t.id}`)
           .d-flex.gap-3.flex-column.flex-md-row.justify-content-between.align-items-start
-            // 左區：標題 + 次資訊
             .flex-grow-1
               .d-flex.align-items-center.gap-2.mb-1
                 if t.status === 'FINISHED' || isDoneTab
@@ -58,16 +36,19 @@ else
                     a.text-decoration-none.text-truncate.d-inline-block(
                       href=`/tasks/${t.id}`
                       style="max-width: 18ch"
-                      title=(t.title || '')
+                      title=t.title
                     )= t.title
                   else
                     span.text-muted Untitled
 
-                // 優先度 badge
                 if t.priority
                   span.badge.ms-2(class=`text-bg-${pb}`)= p
+                
+                // 💡 提示有未完成子項目
+                if t.hasOpenItems
+                  span.text-warning.ms-1(title="Has unfinished subtasks or assignees")
+                    i.bi.bi-exclamation-triangle-fill
 
-              // 次資訊列：期限 / 地點
               .text-muted.small
                 if t.dueLabel
                   span.me-3
@@ -79,31 +60,29 @@ else
                     | #{t.location}
 
               if t.description
-                p.mb-0.mt-2.text-truncate.d-inline-block(style="max-width: 18ch")= t.description
+                p.mb-0.mt-2.text-truncate.d-inline-block.small.text-muted(style="max-width: 30ch")= t.description
 
-            // 右區：操作
             .d-flex.flex-wrap.gap-2
-              // 完成分頁 → 只顯示 Restore
               if isDoneTab
                 form(action=`/api/tasks/${t.id}/restore` method="POST")
                   input(type="hidden" name="_csrf" value=csrfToken)
                   button.btn.btn-outline-secondary.btn-sm(type="submit")
                     i.bi.bi-arrow-counterclockwise.me-1
                     | Restore
-              else if t.status !== 'FINISHED'
-                form(action=`/api/tasks/${t.id}/update/status` method="POST")
-                  input(type="hidden" name="_csrf" value=csrfToken)
-                  input(type="hidden" name="status" value="FINISHED")
-                  button.btn.btn-success.btn-sm(type="submit")
-                    i.bi.bi-check2.me-1
-                    | Mark done
+              else if t.status !== 'CLOSED'
+                button.btn.btn-success.btn-sm.btn-mark-done(
+                  type="button" 
+                  data-id=t.id 
+                  data-csrf=csrfToken
+                  data-need-reason=(t.hasOpenItems ? "true" : "false")
+                )
+                  i.bi.bi-check2.me-1
+                  | Mark done
 
-              // 編輯
               a.btn.btn-outline-primary.btn-sm(href=`/tasks/${t.id}/edit`)
                 i.bi.bi-pencil-square.me-1
                 | Edit
 
-              // 刪除
               form(action=`/api/tasks/${t.id}/disband` method="POST")
                 input(type="hidden" name="_csrf" value=csrfToken)
                 button.btn.btn-outline-danger.btn-sm(
@@ -112,3 +91,46 @@ else
                 )
                   i.bi.bi-trash3.me-1
                   | Delete
+
+script.
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.btn-mark-done').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const { id, csrf, needReason } = btn.dataset;
+        
+        async function submitClose(reason = null) {
+          try {
+            const response = await fetch(`/api/tasks/${id}/close`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-csrf-token': csrf 
+              },
+              body: JSON.stringify({ reason })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+              window.location.href = '/tasks/list';
+            } else if (result.message === 'FORCE_CLOSE_REASON_REQUIRED') {
+              const userReason = prompt('This task has unfinished items. Why are you closing it?');
+              if (userReason !== null) await submitClose(userReason);
+            } else {
+              alert('Error: ' + (result.message || 'Unknown error'));
+            }
+          } catch (err) {
+            alert('Network error, please try again.');
+          }
+        }
+
+        // 如果點擊時已經知道需要理由，先跳 Prompt
+        if (needReason === 'true') {
+          const initialReason = prompt('This task has active subtasks/assignees. Provide a reason to close:');
+          if (initialReason !== null) await submitClose(initialReason);
+        } else {
+          await submitClose();
+        }
+      });
+    });
+  });

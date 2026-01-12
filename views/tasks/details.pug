@@ -230,10 +230,10 @@ html(lang="en")
                 button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
               form#forceCloseForm(action=`/api/tasks/${id}/close`, method="POST")
                 .modal-body
-                  p.text-muted 任務尚未全員完成。若要強制結案，請輸入理由：
+                  p.text-muted The task is not yet fully completed. To force closure, please enter a reason:
                   if typeof csrfToken !== 'undefined'
                     input(type="hidden", name="_csrf", value=csrfToken)
-                  textarea.form-control(name="reason" rows="3" placeholder="例如：由管理員手動核准..." required)
+                  textarea.form-control(name="reason" rows="3" placeholder="For example: manual approval by the administrator..." required)
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-warning#btn-confirm-force-close(type="submit") Confirm Force Close

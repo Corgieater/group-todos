@@ -2,8 +2,8 @@ import {
   Controller,
   Get,
   Param,
-  ParseEnumPipe,
   ParseIntPipe,
+  Query,
   Render,
   Req,
   Res,
@@ -15,11 +15,10 @@ import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { Request, Response } from 'express';
 import { TasksService } from './tasks.service';
-import { TaskStatus } from './types/enum';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
-import { buildTaskVM, toCapital } from 'src/common/helpers/util';
+import { buildTaskVM } from 'src/common/helpers/util';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { TasksErrors } from 'src/errors';
+import { TaskQueryDto } from './dto/tasks.dto';
 
 @Controller('tasks')
 @UseGuards(AccessTokenGuard)
@@ -106,43 +105,37 @@ export class TasksPageController {
     res.render('tasks/create-task');
   }
 
-  // TODO: NOTE:
-  // I think this page need a pagination
-  @Get('status/:status')
-  async listByStatus(
-    @Param('status', new ParseEnumPipe(TaskStatus)) status: TaskStatus,
+  @Get('list')
+  async list(
+    @Query() query: TaskQueryDto,
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    const tasks = await this.tasksService.getTasksByStatus(user.userId, status);
-    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone, true));
-    const totalTasks = tasks.length;
+    const page = query.page ? query.page : 1;
+    const limit = query.limit ? query.limit : 10;
 
-    return res.render('tasks/list-by-status', {
-      totalTasks,
-      status: toCapital(status),
-      viewModel,
-    });
-  }
-
-  // TODO: NOTE:
-  // I think this page need a pagination
-  @Get('list/future')
-  async listFuture(
-    @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
-    @Res() res: Response,
-  ) {
-    const tasks = await this.tasksService.getAllFutureTasks(
+    const pageDto = await this.tasksService.getTasks(
       user.userId,
       user.timeZone,
+      {
+        ...query,
+        page,
+        limit,
+      },
     );
-    const viewModel = tasks.map((t) => buildTaskVM(t, user.timeZone, true));
-    const totalTasks = tasks.length;
+
+    const viewModel = pageDto.data.map((t: any) => {
+      const vm = buildTaskVM(t, user.timeZone, true);
+      vm.hasOpenItems =
+        Number(t.subTaskCount || 0) + Number(t.assigneeCount || 0) > 0;
+      return vm;
+    });
+
     return res.render('tasks/list-by-status', {
-      totalTasks,
-      status: 'Future',
+      status: query.scope === 'FUTURE' ? 'Future' : query.status || 'All',
       viewModel,
+      pageMeta: pageDto.meta,
+      currentQuery: query,
     });
   }
 
@@ -166,7 +159,22 @@ export class TasksPageController {
     });
 
     const viewModel = buildTaskVM(task, user.timeZone, isAdminish);
+    console.log({
+      ...viewModel,
+      taskId: viewModel.id,
+      todayISO: new Date().toISOString().slice(0, 10),
 
+      viewerIsAssignee: !!viewerAssignment,
+      viewerAssigneeStatus: viewerAssignment?.status ?? null,
+      viewerAssigneeId: viewerAssignment?.assigneeId ?? null,
+
+      // ★ 允許自我指派（群組任務且是群組成員）
+      allowSelfAssign: !!task.groupId, // 也可更嚴謹：!!task.groupId && isMember
+      canClose,
+      groupMembers,
+      currentUserId: user.userId,
+      currentUserName: user.userName,
+    });
     res.render('tasks/details', {
       ...viewModel,
       taskId: viewModel.id,

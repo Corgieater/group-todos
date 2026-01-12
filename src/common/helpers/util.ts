@@ -43,6 +43,8 @@ export type TaskVM<T extends ITimeBasedTaskEntity> = T & {
   statusLabel: string;
   isAdminish: boolean;
   groupId?: number | null;
+  hasOpenItems: boolean;
+  subTaskCount?: number;
 };
 
 export function toCapital(str: string): string {
@@ -106,6 +108,7 @@ export function buildTaskVM<T extends ITimeBasedTaskEntity>(
     statusLabel: toCapital((TaskStatus as any)[task.status] || 'Open'),
     isAdminish,
     groupId: groupId,
+    hasOpenItems: false,
   };
 }
 

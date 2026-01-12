@@ -27,6 +27,7 @@ jest.mock('src/common/helpers/util', () => ({
   })),
 }));
 import { buildTaskVM } from 'src/common/helpers/util';
+import { TasksController } from './tasks.controller';
 
 describe('TasksController', () => {
   let tasksPageController: TasksPageController;
@@ -62,7 +63,7 @@ describe('TasksController', () => {
     create: jest.fn(),
     getTaskForViewer: jest.fn(),
     listOpenTasksDueTodayNoneOrExpired: jest.fn(),
-    getTasksByStatus: jest.fn(),
+    getTasks: jest.fn(),
     getAllFutureTasks: jest.fn(),
     getSubTaskForViewer: jest.fn(),
   };
@@ -275,137 +276,66 @@ describe('TasksController', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // listByStatus
+  // list
   // ───────────────────────────────────────────────────────────────────────────────
 
-  describe('listByStatus', () => {
-    it('should render all closed tasks', async () => {
-      mockTasksSerivce.getTasksByStatus.mockResolvedValueOnce([
-        lowTask,
-        mediumTask,
-        urgentTask,
-      ]);
-
-      await tasksPageController.listByStatus(
-        TaskStatus.CLOSED,
-        currentUser,
-        res,
-      );
-
-      expect(mockTasksSerivce.getTasksByStatus).toHaveBeenCalledWith(
-        1,
-        'CLOSED',
-      );
-      expect(buildTaskVM).toHaveBeenCalledTimes(3);
-      expect(buildTaskVM).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({ id: 1 }),
-        'Asia/Taipei',
-        true,
-      );
-      expect(buildTaskVM).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({ id: 2 }),
-        'Asia/Taipei',
-        true,
-      );
-      expect(buildTaskVM).toHaveBeenNthCalledWith(
-        3,
-        expect.objectContaining({ id: 3 }),
-        'Asia/Taipei',
-        true,
-      );
-
-      expect(res.render).toHaveBeenCalledTimes(1);
-      const [view, model] = (res.render as jest.Mock).mock.calls[0];
-      expect(view).toBe('tasks/list-by-status');
-
-      expect(model).toEqual(
-        expect.objectContaining({
-          status: 'Closed',
-          totalTasks: 3,
-        }),
-      );
-      expect(Array.isArray(model.viewModel)).toBe(true);
-      expect(model.viewModel).toHaveLength(3);
-      expect(model.viewModel[0]).toEqual(
-        expect.objectContaining({
-          id: 1,
-          mockVm: true,
-          mockTz: 'Asia/Taipei',
-          mockIsAdminish: true,
-        }),
-      );
-      expect(model.viewModel[1]).toEqual(
-        expect.objectContaining({
-          id: 2,
-          mockVm: true,
-          mockTz: 'Asia/Taipei',
-          mockIsAdminish: true,
-        }),
-      );
-      expect(model.viewModel[2]).toEqual(
-        expect.objectContaining({
-          id: 3,
-          mockVm: true,
-          mockTz: 'Asia/Taipei',
-          mockIsAdminish: true,
-        }),
-      );
-    });
-
-    it('should return with empty array', async () => {
-      mockTasksSerivce.getTasksByStatus.mockResolvedValueOnce([]);
-
-      await tasksPageController.listByStatus(TaskStatus.OPEN, currentUser, res);
-
-      expect(buildTaskVM).not.toHaveBeenCalled();
-
-      const [view, model] = (res.render as jest.Mock).mock.calls[0];
-      expect(view).toBe('tasks/list-by-status');
-      expect(model).toEqual(
-        expect.objectContaining({
-          status: 'Open',
-          totalTasks: 0,
-        }),
-      );
-      expect(Array.isArray(model.viewModel)).toBe(true);
-      expect(model.viewModel).toHaveLength(0);
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // listFuture
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('listFuture', () => {
-    it('should render future tasks', async () => {
-      mockTasksSerivce.getAllFutureTasks.mockResolvedValue([
-        {
-          ...lowTask,
-          allDayLocalDate: new Date('2025-09-21T00:00:00.000Z'),
+  describe('list', () => {
+    it('should render tasks/list-by-status with correct data', async () => {
+      // 準備測試資料
+      const mockUser = { userId: 1, timeZone: 'Asia/Taipei' };
+      const mockQuery = { status: 'OPEN', page: 1, limit: 10 };
+      const mockPageDto = {
+        data: [
+          {
+            id: 1,
+            title: 'Test Task',
+            subTaskCount: 1,
+            assigneeCount: 0,
+            priority: 3,
+            status: 'OPEN',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+        meta: {
+          itemCount: 1,
+          pageCount: 1,
+          hasPreviousPage: false,
+          hasNextPage: false,
         },
-      ]);
-      await tasksPageController.listFuture(req, currentUser, res);
+      };
 
-      expect(mockTasksSerivce.getAllFutureTasks).toHaveBeenCalledWith(
+      // 設定 Service Mock 行為
+      mockTasksSerivce.getTasks.mockResolvedValue(mockPageDto);
+
+      // 執行測試
+      await tasksPageController.list(mockQuery as any, mockUser as any, res);
+
+      // 驗證 1: Service 是否被正確呼叫
+      expect(mockTasksSerivce.getTasks).toHaveBeenCalledWith(
         1,
         'Asia/Taipei',
-      );
-      expect(buildTaskVM).toHaveBeenCalledTimes(1);
-      const [view, model] = (res.render as jest.Mock).mock.calls[0];
-      expect(view).toBe('tasks/list-by-status');
-      expect(model).toEqual(
         expect.objectContaining({
-          status: 'Future',
-          totalTasks: 1,
+          status: 'OPEN',
+          page: 1,
+          limit: 10,
         }),
       );
-      expect(Array.isArray(model.viewModel)).toBe(true);
-      expect(model.viewModel).toHaveLength(1);
-      expect(model.viewModel[0]).toEqual(
-        expect.objectContaining({ id: 1, mockVm: true, mockTz: 'Asia/Taipei' }),
+
+      // 驗證 2: render 是否被呼叫，且帶有正確的參數
+      expect(res.render).toHaveBeenCalledWith(
+        'tasks/list-by-status',
+        expect.objectContaining({
+          status: 'OPEN',
+          viewModel: expect.any(Array),
+          pageMeta: mockPageDto.meta,
+          currentQuery: mockQuery,
+        }),
       );
+
+      // 驗證 3: ViewModel 轉換邏輯 (hasOpenItems)
+      const renderArgs = (res.render as jest.Mock).mock.calls[0][1];
+      expect(renderArgs.viewModel[0].hasOpenItems).toBe(true);
     });
 
     // ───────────────────────────────────────────────────────────────────────────────

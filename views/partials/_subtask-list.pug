@@ -32,7 +32,7 @@
                           input(type="hidden", name="_csrf", value=csrfToken)
                         button.btn.btn-sm.btn-success(type="submit") Close
                     else if sub.status === 'CLOSED'
-                      form(action=`/api/tasks/${taskId}/sub-tasks/${id}/restore`, method="POST")
+                      form(action=`/api/tasks/${taskId}/sub-tasks/${sub.id}/restore`, method="POST")
                         if typeof csrfToken !== 'undefined'
                           input(type="hidden", name="_csrf", value=csrfToken)
                         button.btn.btn-sm.btn-outline-primary(type="submit") Reopen

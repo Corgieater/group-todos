@@ -27,6 +27,9 @@ import { ConfigService } from '@nestjs/config';
 import { MailService } from 'src/mail/mail.service';
 import { SecurityService } from 'src/security/security.service';
 import { TasksGateWay } from './tasks.gateway';
+import { Order, PageOptionsDto } from 'src/common/dto/page-options.dto';
+import { PageDto } from 'src/common/dto/page.dto';
+import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 
 type DueFilter = 'TODAY' | 'NONE' | 'EXPIRED' | 'RANGE';
 
@@ -123,27 +126,66 @@ export class TasksService {
     await this.prismaService.task.create({ data });
   }
 
-  async getAllFutureTasks(
+  async getTasks(
     userId: number,
     timeZone: string,
-  ): Promise<TaskModel[]> {
-    await this.usersService.findByIdOrThrow(userId);
+    options: {
+      status?: string;
+      scope?: string;
+      page?: number;
+      limit?: number;
+      order?: 'ASC' | 'DESC';
+    },
+  ): Promise<PageDto<any>> {
+    const { status, scope, page = 1, limit = 10, order = 'DESC' } = options;
+    const skip = (page - 1) * limit;
+
+    // 1. 處理時間邊界 (針對 Future 篩選)
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const { startUtc, endUtc: _endUtc } = dayBoundsUtc(timeZone, tomorrow);
+    const { startUtc } = dayBoundsUtc(timeZone, tomorrow);
 
-    return this.prismaService.$queryRaw<TaskModel[]>`
-    SELECT *
-    FROM "Task"
-    WHERE "ownerId" = ${userId}
-      AND "status" = 'OPEN'
-      AND (
-        "dueAtUtc" > ${startUtc}
-        OR "allDayLocalDate" > ${startUtc}
-      )
-    ORDER BY COALESCE("dueAtUtc", "allDayLocalDate") ASC
-  `;
+    // 2. 構建動態 SQL 條件 (WHERE 子句)
+    // 使用 Prisma.sql 來組合片段，確保查詢安全
+    const conditions: Prisma.Sql[] = [Prisma.sql`t."ownerId" = ${userId}`];
+
+    if (status) {
+      conditions.push(Prisma.sql`t."status" = ${status}`);
+    }
+
+    if (scope === 'FUTURE') {
+      conditions.push(
+        Prisma.sql`(t."dueAtUtc" > ${startUtc} OR t."allDayLocalDate" > ${startUtc})`,
+      );
+    }
+
+    const whereFragment = Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
+
+    // 3. 執行資料查詢與總數統計
+    const [tasks, totalResult] = await Promise.all([
+      this.prismaService.$queryRaw<any[]>`
+      SELECT t.*, 
+        (SELECT COUNT(*)::int FROM "SubTask" st WHERE st."taskId" = t.id AND st."status" != 'CLOSED') as "subTaskCount",
+        (SELECT COUNT(*)::int FROM "TaskAssignee" ta WHERE ta."taskId" = t.id AND ta."status" IN ('PENDING', 'ACCEPTED')) as "assigneeCount"
+      FROM "Task" t
+      ${whereFragment}
+      ORDER BY t."createdAt" ${Prisma.raw(order)}
+      LIMIT ${limit} OFFSET ${skip}
+    `,
+      this.prismaService.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint as count FROM "Task" t
+      ${whereFragment}
+    `,
+    ]);
+
+    // 4. 建立分頁 Meta 資料
+    const itemCount = Number(totalResult[0]?.count ?? 0);
+    const pageOptionsDto = { page, limit, skip }; // 模擬 PageOptionsDto 結構
+    const meta = new PageMetaDto(pageOptionsDto as any, itemCount);
+
+    // 5. 回傳 PageDto (此處將 tasks 傳入，型別就不再是 unknown)
+    return new PageDto(tasks, meta);
   }
 
   async getTaskForViewer(
@@ -236,18 +278,6 @@ export class TasksService {
       canClose,
       groupMembers,
     };
-  }
-
-  async getTasksByStatus(
-    ownerId: number,
-    status: TaskStatus,
-  ): Promise<TaskModel[]> {
-    const { items } = await this.listTaskCore(
-      { kind: 'owner', ownerId },
-      { status: [status] },
-      'createdAsc',
-    );
-    return items;
   }
 
   async listOpenTasksDueTodayNoneOrExpired(ownerId: number): Promise<{
@@ -1766,5 +1796,10 @@ export class TasksService {
       updatedBy,
       actorId,
     });
+  }
+
+  private getSortOrder(order?: Order): any {
+    // 如果是 undefined 或 'desc' 就回傳 DESC，否則回傳 ASC
+    return order === Order.ASC ? Prisma.sql`ASC` : Prisma.sql`DESC`;
   }
 }

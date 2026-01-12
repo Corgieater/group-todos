@@ -8,60 +8,95 @@ html(lang="en")
 
   body
     .container.py-4
-      // flash 訊息（從 locals.flash 讀）
+      // flash 訊息
       include ../partials/message
 
-      // 頁首（從 locals.name / totalTasks 讀）
+      // 頁首
       include ../partials/header
 
-      // 狀態切籤
+      // 狀態篩選切換 (Tabs)
       .card.shadow-sm.mb-4
         .card-body.py-2
           -
-            // 既有的狀態清單（不含 Future）
-            const all = (typeof statuses !== 'undefined' && Array.isArray(statuses) && statuses.length)
-              ? statuses
-              : ['OPEN','CLOSED'];
-
-            // 顯示用標籤
-            const pretty = (s) => {
-              if (!s) return '';
-              const up = String(s).toUpperCase();
-              if (up === 'OPEN') return 'Open';
-              if (up === 'CLOSED') return 'Closed';
-              return s.charAt(0) + s.slice(1).toLowerCase();
-            };
-
-            // 判斷目前 active：狀態分頁 or Future 分頁
-            const upStatus = String(status || '').toUpperCase();
-            // 從外部可傳 isFuture=true；若沒傳，就用 status === 'FUTURE' 當退路
-            const futureActive = typeof isFuture !== 'undefined' ? !!isFuture : (upStatus === 'FUTURE');
+            // 取得目前 Query 參數以判斷 active 狀態
+            // currentQuery 來自 Controller 傳入
+            const q = currentQuery || {};
+            const curStatus = String(q.status || 'OPEN').toUpperCase();
+            const curScope = String(q.scope || 'ALL').toUpperCase();
 
           ul.nav.nav-pills.justify-content-center
-            // 既有的狀態分頁（走 /tasks/status/:status）
-            each s in all
-              li.nav-item
-                a.nav-link(
-                  class=(upStatus === String(s).toUpperCase() && !futureActive ? 'active' : '')
-                  href=`/tasks/status/${s}`
-                ) #{pretty(s)}
-
-            // 新增的 Future 分頁（獨立路由 /tasks/list/future）
+            // 1. 全部開放 (Open)
             li.nav-item
               a.nav-link(
-                class=(futureActive ? 'active' : '')
-                href="/tasks/list/future"
+                class=(curStatus === 'OPEN' && curScope !== 'FUTURE' ? 'active' : '')
+                href="/tasks/list?status=OPEN"
+              ) Open
+
+            // 2. 未來任務 (Future)
+            li.nav-item
+              a.nav-link(
+                class=(curScope === 'FUTURE' ? 'active' : '')
+                href="/tasks/list?status=OPEN&scope=FUTURE"
               ) Future
+
+            // 3. 已完成 (Closed)
+            li.nav-item
+              a.nav-link(
+                class=(curStatus === 'CLOSED' ? 'active' : '')
+                href="/tasks/list?status=CLOSED"
+              ) Closed
 
       // 任務清單
       -
-        // 空清單提示：依目前所選分頁切換
-        let emptyHint = 'No tasks.';
-        if (futureActive) emptyHint = 'No future tasks.';
-        else if (upStatus === 'OPEN') emptyHint = 'No open tasks.';
-        else if (upStatus === 'CLOSED') emptyHint = 'No closed tasks.';
+        // 動態決定空清單提示
+        let emptyHint = 'No tasks found.';
+        if (curScope === 'FUTURE') emptyHint = 'No future tasks scheduled.';
+        else if (curStatus === 'OPEN') emptyHint = 'You have no open tasks.';
+        else if (curStatus === 'CLOSED') emptyHint = 'No closed tasks yet.';
 
-        var currentStatus = status; // _tasks-list 若需要可用
+        // 提供給 _tasks-list 使用的變數
+        var currentStatus = curStatus; 
+      
       include ./_tasks-list
 
-    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")
+      // --- 🚀 分頁控制區 ---
+      if pageMeta && pageMeta.pageCount > 1
+        nav.mt-4(aria-label="Task pagination")
+          ul.pagination.justify-content-center
+            // 第一頁 & 上一頁
+            li.page-item(class=(!pageMeta.hasPreviousPage ? 'disabled' : ''))
+              a.page-link(href="javascript:void(0)" onclick=`changePage(1)`) 
+                i.bi.bi-chevron-double-left
+            li.page-item(class=(!pageMeta.hasPreviousPage ? 'disabled' : ''))
+              a.page-link(href="javascript:void(0)" onclick=`changePage(${pageMeta.page - 1})`)
+                i.bi.bi-chevron-left
+
+            // 頁碼窗口邏輯
+            - let start = Math.max(1, pageMeta.page - 2)
+            - let end = Math.min(pageMeta.pageCount, start + 4)
+            if (end - start < 4)
+              - start = Math.max(1, end - 4)
+
+            each p in Array.from({length: (end - start + 1)}, (_, i) => Math.max(1, start + i))
+              li.page-item(class=(p === pageMeta.page ? 'active' : ''))
+                a.page-link(href="javascript:void(0)" onclick=`changePage(${p})`)= p
+
+            // 下一頁 & 最後一頁
+            li.page-item(class=(!pageMeta.hasNextPage ? 'disabled' : ''))
+              a.page-link(href="javascript:void(0)" onclick=`changePage(${pageMeta.page + 1})`)
+                i.bi.bi-chevron-right
+            li.page-item(class=(!pageMeta.hasNextPage ? 'disabled' : ''))
+              a.page-link(href="javascript:void(0)" onclick=`changePage(${pageMeta.pageCount})`) 
+                i.bi.bi-chevron-double-right
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+
+    // --- 🚀 腳本：保留所有篩選條件並跳轉分頁 ---
+    script.
+      function changePage(p) {
+        if (!p) return;
+        const url = new URL(window.location.href);
+        // 設定新的頁碼，同時 URL 物件會自動保留原本的 status, scope 等參數
+        url.searchParams.set('page', p);
+        window.location.href = url.toString();
+      }
