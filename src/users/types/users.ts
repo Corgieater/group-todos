@@ -11,11 +11,3 @@ export interface UserCreatePayload {
   timeZone: string;
   hash: string;
 }
-
-// we might not need this
-export interface UserUpdatePayload {
-  id: number;
-  name?: string;
-  hash?: string;
-  tokenId?: number;
-}

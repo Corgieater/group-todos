@@ -5,7 +5,7 @@ import {
   User as UserModel,
 } from 'src/generated/prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
+import { UserCreatePayload } from 'src/users/types/users';
 import { UsersErrors } from 'src/errors';
 
 type TxLike = Prisma.TransactionClient | PrismaClient;
@@ -70,19 +70,6 @@ export class UsersService {
       }
       throw e;
     }
-  }
-
-  async update(payload: UserUpdatePayload): Promise<void> {
-    // NOTE/TODO
-    // this update will be dangerous if it can called by user
-    // maybe should remove this:( or make this a unimportant stuff updating
-    const { id, ...updateField } = payload;
-    await this.prismaService.user.update({
-      where: {
-        id,
-      },
-      data: updateField,
-    });
   }
 
   // TODO: see this and compare to other tx situations 1130

@@ -5,17 +5,15 @@ import { UsersService } from './users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
   createMockCreatePayload,
-  createMockSignupDto,
   createMockSigninDto,
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
-import { UserCreatePayload, UserUpdatePayload } from 'src/users/types/users';
-import { AuthSigninDto, AuthSignupDto } from 'src/auth/dto/auth.dto';
+import { UserCreatePayload } from 'src/users/types/users';
+import { AuthSigninDto } from 'src/auth/dto/auth.dto';
 import { UsersErrors } from 'src/errors';
 
 describe('UsersService', () => {
   let usersService: UsersService;
-  let signUpDto: AuthSignupDto;
   let signinDto: AuthSigninDto;
   let createUserPayload: UserCreatePayload;
   let user: UserModel;
@@ -25,12 +23,10 @@ describe('UsersService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
-      update: jest.fn(),
     },
   };
 
   beforeAll(async () => {
-    signUpDto = createMockSignupDto();
     createUserPayload = createMockCreatePayload();
     signinDto = createMockSigninDto();
     user = createMockUser();
@@ -140,46 +136,6 @@ describe('UsersService', () => {
       await expect(
         usersService.findByIdOrThrow(user.id),
       ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
-    });
-  });
-
-  // TODO:
-  // This update might be removed or check if it only update nunessential data
-  describe('update', () => {
-    it('should update user data based on UserUpdatePayload', async () => {
-      const payload: UserUpdatePayload = {
-        id: 1,
-        name: 'foo',
-        hash: 'newHash',
-      };
-      await usersService.update(payload);
-      expect(mockPrismaService.user.update).toHaveBeenCalledTimes(1);
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: {
-          id: payload.id,
-        },
-        data: { name: payload.name, hash: payload.hash },
-      });
-      expect(
-        mockPrismaService.user.update.mock.calls[0][0].data,
-      ).not.toHaveProperty('id');
-    });
-
-    it('should update specific user field', async () => {
-      const payload: UserUpdatePayload = {
-        id: 1,
-        name: 'foo',
-      };
-      await usersService.update(payload);
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: {
-          id: payload.id,
-        },
-        data: { name: payload.name },
-      });
-      expect(
-        mockPrismaService.user.update.mock.calls[0][0].data,
-      ).not.toHaveProperty('id');
     });
   });
 });
