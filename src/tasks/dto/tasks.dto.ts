@@ -54,42 +54,30 @@ export class TasksAddDto {
   description?: string;
 
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
-  @Transform(({ value }) =>
-    value === '' || value == null ? undefined : String(value).trim(),
-  )
-  dueDate?: string;
+  @IsString()
+  dueDate?: string; // 2026-01-16
 
-  // check if this can be used
-  @IsBoolean()
+  @IsOptional()
   @Transform(({ value }) => {
-    // 🚀 處理來自 HTML form 的各種可能值
-    return [true, 'true', '1', 'on', 'yes'].includes(value);
+    // 處理 undefined 情況
+    if (value === undefined) return false;
+
+    return [true, 'true', '1', 'on', 'yes'].includes(
+      String(value).toLowerCase(),
+    );
   })
+  @IsBoolean()
   allDay: boolean;
 
-  // 規則 1：當 allDay=false，dueTime 必填且要 HH:mm
-  @ValidateIf((o) => o.allDay === false)
-  @IsDefined({ message: 'dueTime is required when allDay is false' })
-  @IsMilitaryTime()
-
-  // 規則 2：當 allDay=true，dueTime 必須為空（用 @IsEmpty 表達，不用 class-level）
-  @ValidateIf((o) => o.allDay === true)
-  @IsEmpty({ message: 'dueTime must be empty when allDay is true' })
-
-  // 防呆：若 allDay=true，後端直接清掉 dueTime
-  @Transform(({ value, obj }) => {
-    const a = Array.isArray(obj?.allDay) ? obj.allDay : [obj?.allDay];
-    const allDayTrue = a.map(toBool).some(Boolean);
-    if (allDayTrue) return undefined;
-    return value === '' || value == null ? undefined : String(value).trim();
-  })
-  dueTime?: string;
+  @IsOptional()
+  @IsString()
+  dueTime?: string; // 13:30
 
   @IsOptional()
   @IsString()
   location?: string;
 }
+
 export class TaskQueryDto {
   @IsOptional()
   @IsEnum(TaskStatus, { message: 'Status must be OPEN, CLOSED or ARCHIVED' })
@@ -126,7 +114,8 @@ export class SubTasksAddDto extends TasksAddDto {
 export class UpdateTaskDto {
   @IsOptional()
   @IsString()
-  title?: string;
+  @IsNotEmpty()
+  title: string;
 
   @IsOptional()
   @IsString()

@@ -142,3 +142,15 @@ html(lang="en")
       })();
 
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")
+    script.
+      (function validateInputs() {
+        if (!allDay.checked) {
+          // 如果不是全天任務，日期應該要必填
+          dateInput.required = true;
+        } else {
+          dateInput.required = false;
+        }
+      }
+
+      allDay.addEventListener('change', validateInputs);
+      validateInputs();) // 初始化執行一次
