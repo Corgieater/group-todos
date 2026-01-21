@@ -107,9 +107,10 @@ describe('TasksController', () => {
       await tasksPageController.home({} as any, mockUser as any, res);
 
       // 4. 驗證 Service 是否被正確呼叫
-      expect(mockTasksService.getHomeDashboardData).toHaveBeenCalledWith(
-        mockUser.userId,
-      );
+      expect(mockTasksService.getHomeDashboardData).toHaveBeenCalledWith({
+        userId: mockUser.userId,
+        userName: mockUser.userName,
+      });
 
       // 5. 驗證 res.render 是否被呼叫，且參數正確
       expect(res.render).toHaveBeenCalledWith(

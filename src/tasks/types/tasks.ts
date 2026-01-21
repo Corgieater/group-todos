@@ -2,6 +2,7 @@ import {
   Prisma,
   Task as TaskModel,
   SubTask as SubTaskModel,
+  Task,
 } from 'src/generated/prisma/client';
 import { TaskStatus } from './enum';
 import { TaskPriority } from './enum';
@@ -142,4 +143,14 @@ export interface InternalAssignOptions {
   assigneeId: number;
   assignerId: number;
   sendUrgentEmail?: boolean;
+}
+
+export interface ListTasksResult {
+  items: (Task & { assignees: any[]; canClose: boolean })[];
+  bounds: {
+    timeZone: string;
+    startUtc: Date;
+    endUtc: Date;
+    todayDateOnlyUtc: Date;
+  };
 }

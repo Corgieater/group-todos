@@ -35,9 +35,7 @@ export class TasksPageController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    const dashboardData = await this.tasksService.getHomeDashboardData(
-      user.userId,
-    );
+    const dashboardData = await this.tasksService.getHomeDashboardData(user);
 
     return res.render('tasks/home', {
       name: user.userName,

@@ -105,12 +105,14 @@ export class TasksController {
   @Post(':id/close')
   async close(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { reason?: string }, // 👈 必須有這行，Nest 才能從 body 抓資料
+    @Body() body: { reason?: string },
     @CurrentUserDecorator() user: CurrentUser,
+    @Res() res: Response,
   ) {
-    return this.tasksService.closeTask(id, user.userId, {
+    await this.tasksService.closeTask(id, user.userId, {
       reason: body.reason,
     });
+    return res.redirect(`/tasks/${id}`);
   }
 
   @Post(':id/archive')
@@ -132,26 +134,9 @@ export class TasksController {
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    await this.tasksService.restoreTask(id);
+    await this.tasksService.restoreTask(id, user.userId);
     setSession(req, 'success', 'Task has been restored.');
     return res.redirect(`/tasks/${id}`);
-  }
-
-  //NOTE:
-  // 1. We use pug, so we use Post instead of delete
-  // 2. Currently we don't warm user when task deleting .
-  // Add this when frontend separated
-  // Currently not implement
-  @Post(':id/delete')
-  async delete(
-    @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Res() res: Response,
-  ) {
-    await this.tasksService.deleteTask(id, user.userId);
-    setSession(req, 'success', 'Task has been deleted.');
-    return res.redirect('/tasks/home');
   }
 
   // ---------------- notification ----------------

@@ -1,4 +1,3 @@
-// what's the differences between import type and import { Request, Response } from 'express'?
 import type { Request, Response } from 'express';
 import type session from 'express-session';
 import type { ArgumentsHost } from '@nestjs/common';
@@ -15,12 +14,16 @@ export function createMockReq<TUser extends object>(
 export function createMockReq(overrides: Partial<Request> = {}): Request {
   const headers: AnyRec = { ...(overrides as AnyRec).headers };
 
+  const getHeader = (name: string) =>
+    headers?.[name.toLowerCase()] ?? undefined;
+
   const base: Partial<Request> = {
     method: 'POST',
     url: '/test',
     originalUrl: (overrides as AnyRec).url ?? '/test',
     headers,
-    get: (name: string) => headers?.[name.toLowerCase()] ?? undefined,
+    get: getHeader,
+    header: getHeader,
     body: {},
     query: {},
     params: {},

@@ -204,7 +204,7 @@ describe('TasksController', () => {
       mockTasksService.closeTask.mockResolvedValue(mockResult);
 
       // 執行 Controller 方法
-      const result = await tasksController.close(1, body, currentUser);
+      await tasksController.close(1, body, currentUser, res);
 
       // 1. 驗證 Service 呼叫參數 (現在只有 id, actorId, 和包含 reason 的物件)
       expect(mockTasksService.closeTask).toHaveBeenCalledWith(
@@ -214,9 +214,6 @@ describe('TasksController', () => {
           reason: undefined,
         },
       );
-
-      // 2. 驗證回傳值 (API 模式直接回傳物件)
-      expect(result).toEqual(mockResult);
     });
 
     it('should close task with a reason', async () => {
@@ -230,7 +227,7 @@ describe('TasksController', () => {
       };
       mockTasksService.closeTask.mockResolvedValue(mockResult);
 
-      const result = await tasksController.close(1, body, currentUser);
+      await tasksController.close(1, body, currentUser, res);
 
       // 驗證 Service 呼叫
       expect(mockTasksService.closeTask).toHaveBeenCalledWith(
@@ -240,8 +237,6 @@ describe('TasksController', () => {
           reason: 'Force closed reason',
         },
       );
-
-      expect(result).toEqual(mockResult);
     });
   });
 
@@ -259,24 +254,6 @@ describe('TasksController', () => {
         'Task has been archived.',
       );
       expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // delete
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('delete', () => {
-    it('should delete task', async () => {
-      await tasksController.delete(req, currentUser, 1, res);
-
-      expect(mockTasksService.deleteTask).toHaveBeenCalledWith(1, 1);
-      expect(setSession).toHaveBeenCalledWith(
-        req,
-        'success',
-        'Task has been deleted.',
-      );
-      expect(res.redirect).toHaveBeenCalledWith('/tasks/home');
     });
   });
 });

@@ -18,18 +18,15 @@ import {
   SubTaskAddPayload,
 } from './types/tasks';
 import { TaskPriority } from './types/enum';
-import { TasksErrors, UsersErrors } from 'src/errors';
+import { GroupsErrors, TasksErrors, UsersErrors } from 'src/errors';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { createMockTask } from 'src/test/factories/mock-task.factory';
-import * as Time from 'src/common/helpers/util';
-import { fromZonedTime } from 'date-fns-tz';
 import { MailService } from 'src/mail/mail.service';
 import { SecurityService } from 'src/security/security.service';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { ConfigService } from '@nestjs/config';
 import { TasksGateWay } from './tasks.gateway';
 import { TaskForbiddenError } from 'src/errors/tasks';
-import { PageDto } from 'src/common/dto/page.dto';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
@@ -37,6 +34,9 @@ describe('TasksService', () => {
   const mockUsersService = { findByIdOrThrow: jest.fn(), findById: jest.fn() };
   const mockPrismaService = {
     $queryRaw: jest.fn(),
+    user: {
+      findUnique: jest.fn(),
+    },
     task: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -190,7 +190,6 @@ describe('TasksService', () => {
         allDayLocalDate: new Date('2025-09-09T00:00:00.000Z'),
         allDay: true,
         location: null,
-        ownerId: 1,
       });
 
       expect(Object.keys(data)).toEqual(
@@ -201,7 +200,9 @@ describe('TasksService', () => {
           'allDay',
           'location',
           'allDayLocalDate',
-          'ownerId',
+          'owner',
+          'status',
+          'priority',
         ]),
       );
     });
@@ -241,8 +242,6 @@ describe('TasksService', () => {
         allDayLocalDate: new Date('2025-09-09T00:00:00.000Z'),
         allDay: true,
         location: null,
-        ownerId: 1,
-        groupId: 5,
       });
     });
 
@@ -995,10 +994,15 @@ describe('TasksService', () => {
   // restoreTask
   // ───────────────────────────────────────────────────────────────────────────────
   describe('restoreTask', () => {
+    const taskId = 1;
     it('should restore task and its archived subtasks within a transaction', async () => {
-      const taskId = 1;
-
       // 1. 設定 Mock 傳回值
+      mockPrismaService.task.findUnique.mockResolvedValueOnce({
+        id: taskId,
+        ownerId: user.id,
+        group: { id: 1, members: [{ role: GroupRole.OWNER }] },
+      });
+
       mockPrismaService.task.update.mockResolvedValueOnce({
         id: taskId,
         status: 'OPEN',
@@ -1006,7 +1010,7 @@ describe('TasksService', () => {
       mockPrismaService.subTask.updateMany.mockResolvedValueOnce({ count: 2 });
 
       // 2. 執行 Service 方法
-      await tasksService.restoreTask(taskId);
+      await tasksService.restoreTask(taskId, user.id);
 
       // 3. 斷言檢查：確認 $transaction 有被執行
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
@@ -1033,45 +1037,55 @@ describe('TasksService', () => {
       });
     });
 
+    it('should throw TaskNotFoundError', async () => {
+      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        tasksService.restoreTask(999, user.id),
+      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
+    });
+
+    it('should throw TaskNotFoundError if a personal task with wrong owner Id', async () => {
+      mockPrismaService.task.findUnique.mockResolvedValueOnce({
+        id: taskId,
+        ownerId: user.id,
+        group: null,
+      });
+      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        tasksService.restoreTask(taskId, 999),
+      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
+    });
+
+    it('should throw GroupActionForbiddenError if a member tries to restore task', async () => {
+      mockPrismaService.task.findUnique.mockResolvedValueOnce({
+        id: taskId,
+        ownerId: user.id,
+        group: { id: 1, members: [{ role: GroupRole.MEMBER }] },
+      });
+      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
+      await expect(tasksService.restoreTask(taskId, 6)).rejects.toBeInstanceOf(
+        GroupsErrors.GroupActionForbiddenError,
+      );
+    });
+
     it('should roll back if any update fails', async () => {
-      const taskId = 1;
+      mockPrismaService.task.findUnique.mockResolvedValueOnce({
+        id: taskId,
+        ownerId: user.id,
+        group: { id: 1, members: [{ role: GroupRole.OWNER }] },
+      });
 
       // 模擬主任務更新失敗
       mockPrismaService.task.update.mockRejectedValueOnce(
         new Error('Update Failed'),
       );
 
-      await expect(tasksService.restoreTask(taskId)).rejects.toThrow(
+      await expect(tasksService.restoreTask(taskId, user.id)).rejects.toThrow(
         'Update Failed',
       );
 
       // 確認子任務更新不會被執行（或隨交易一同失敗）
       // 註：在單元測試中，通常驗證 error 有噴出即可
-    });
-  });
-  // ───────────────────────────────────────────────────────────────────────────────
-  // deleteTask
-  // ───────────────────────────────────────────────────────────────────────────────
-  describe('deleteTask', () => {
-    it('deletes task', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);
-
-      await tasksService.deleteTask(1, user.id);
-
-      expect(mockPrismaService.task.findUnique).toHaveBeenCalledWith({
-        where: { id: 1, ownerId: 1 },
-      });
-      expect(mockPrismaService.task.delete).toHaveBeenCalledWith({
-        where: { id: 1 },
-      });
-    });
-
-    it('throws TaskNotFoundError', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
-
-      await expect(tasksService.deleteTask(1, user.id)).rejects.toBeInstanceOf(
-        TasksErrors.TaskNotFoundError,
-      );
     });
   });
 
@@ -1119,7 +1133,8 @@ describe('TasksService', () => {
           allDayLocalDate: new Date('2025-10-10T00:00:00.000Z'),
           allDay: true,
           location: null,
-          taskId: 1,
+          priority: 3,
+          status: 'OPEN',
         }),
       });
     });
@@ -1146,7 +1161,8 @@ describe('TasksService', () => {
           allDayLocalDate: new Date('2025-10-10T00:00:00.000Z'),
           allDay: true,
           location: null,
-          taskId: 1,
+          priority: 3,
+          status: 'OPEN',
         }),
       });
     });
