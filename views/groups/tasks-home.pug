@@ -15,6 +15,11 @@ html(lang="en")
         font-weight: 600;
         background-color: var(--bs-tertiary-bg);
       }
+      .btn-review {
+        --bs-btn-padding-y: .25rem;
+        --bs-btn-padding-x: .5rem;
+        --bs-btn-font-size: .75rem;
+      }
 
   body
     include ../partials/message
@@ -27,20 +32,18 @@ html(lang="en")
         const cardClassForPrio = (p) => `${prioBgMap[p]||''} ${prioBorderMap[p]||'border-secondary'} border-2`;
 
         const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
-        const total = safeLen(expired) + safeLen(today) + safeLen(none);
-
+        
         const ADMINISH = new Set(['OWNER','ADMIN']);
-        const isAdminishViewer = ADMINISH.has(viewerRole);
+        const isAdminishViewer = ADMINISH.has(viewerRole?.role || viewerRole);
         const canManage = (t) => (isAdminishViewer || t.ownerId === viewerId);
         
-        // 預設限制 (對應 Controller)
         const VIEW_LIMITS = { EXPIRED: 5, TODAY: 15, NONE: 10 };
 
       // Header
       .row.mb-4.align-items-center
         .col
           h1.h4.mb-1 #{groupName || 'Group'} Tasks
-          small.text-muted 👥 Role: #{viewerRole.role}
+          small.text-muted 👥 Role: #{viewerRole.role || viewerRole}
         .col-auto.text-end
           a.btn.btn-primary(href=`/groups/${groupId}/tasks/create`)
             i.bi.bi-plus-lg.me-1
@@ -65,21 +68,27 @@ html(lang="en")
                 if extraCount > 0
                   span.badge.rounded-pill.text-bg-secondary.ms-1(title=`+${extraCount} more assignees`)= `+${extraCount}`
 
-              if canManage(task)
+              if canManage(task) && task.status === 'OPEN'
                 .d-flex.gap-2
-                  if task.status === 'OPEN'
+                  if task.isSmoothClose
+                    //- 方案 C-1: 綠色 Done 按鈕 (無需理由)
                     button.btn.btn-success.btn-sm.btn-mark-done(
                       type="button"
                       data-id=task.id
                       data-csrf=csrfToken
-                      data-can-close=(task.canClose ? "true" : "false")
+                      data-mode="smooth"
                     )
                       i.bi.bi-check2-circle.me-1
                       | Done
-                  
-                  a.btn.btn-outline-primary.btn-sm(href=`/tasks/${task.id}/edit`)
-                    i.bi.bi-pencil
-
+                  else
+                    //- 方案 C-2: 藍色 Review 按鈕 (引導至詳情頁審核遺留項)
+                    a.btn.btn-outline-primary.btn-review(
+                      href=`/tasks/${task.id}`
+                      title=`${task.pendingCounts || 0} items pending. Click to review.`
+                    )
+                      i.bi.bi-search.me-1
+                      | Review
+                
             .d-flex.align-items-center.gap-2.mt-2
               if task.status === 'CLOSED'
                 span.badge.text-bg-success Closed
@@ -95,99 +104,52 @@ html(lang="en")
                   i.bi.bi-geo-alt.me-1
                   | #{task.location}
 
-      // =============== Expired ===============
-      section.mb-5
-        .d-flex.justify-content-between.align-items-center.mb-3
-          .d-flex.align-items-baseline.gap-2
-            h2.h5.mb-0.text-danger Expired
-            if safeLen(expired)
-              span.badge.rounded-pill.bg-danger #{expired.length}
-          if safeLen(expired) >= VIEW_LIMITS.EXPIRED
-            a.btn.btn-sm.btn-link(href=`/tasks/list?groupId=${groupId}&status=OPEN&scope=EXPIRED`) View all
-        
-        if expired && expired.length
-          .row.g-3
-            each task in expired
-              .col-12.col-md-6
-                +taskCard(task)
-        else
-          p.text-muted.fst-italic.ps-2 No expired tasks.
-
-      // =============== Today ===============
-      section.mb-5
-        .d-flex.justify-content-between.align-items-center.mb-3
-          .d-flex.align-items-baseline.gap-2
-            h2.h5.mb-0 Today
-            if safeLen(today)
-              span.badge.rounded-pill.bg-info.text-dark #{today.length}
-          if safeLen(today) >= VIEW_LIMITS.TODAY
-            a.btn.btn-sm.btn-link(href=`/tasks/list?groupId=${groupId}&status=OPEN&scope=TODAY`) View all
-
-        if today && today.length
-          .row.g-3
-            each task in today
-              .col-12.col-md-6
-                +taskCard(task)
-        else
-          p.text-muted.fst-italic.ps-2 Nothing scheduled for today.
-
-      // =============== No due date ===============
-      section.mb-5
-        .d-flex.justify-content-between.align-items-center.mb-3
-          .d-flex.align-items-baseline.gap-2
-            h2.h5.mb-0 No due date
-            if safeLen(none)
-              span.badge.rounded-pill.bg-secondary #{none.length}
-          if safeLen(none) >= VIEW_LIMITS.NONE
-            a.btn.btn-sm.btn-link(href=`/tasks/list?groupId=${groupId}&status=OPEN&scope=NONE`) View all
-
-        if none && none.length
-          .row.g-3
-            each task in none
-              .col-12.col-md-6
-                +taskCard(task)
-        else
-          p.text-muted.fst-italic.ps-2 Nothing without due date.
+      // =============== Sections ===============
+      each section in [{id: 'expired', label: 'Expired', data: expired, limit: VIEW_LIMITS.EXPIRED, color: 'danger'}, {id: 'today', label: 'Today', data: today, limit: VIEW_LIMITS.TODAY, color: 'info'}, {id: 'none', label: 'No due date', data: none, limit: VIEW_LIMITS.NONE, color: 'secondary'}]
+        section.mb-5
+          .d-flex.justify-content-between.align-items-center.mb-3
+            .d-flex.align-items-baseline.gap-2
+              h2.h5.mb-0(class=`text-${section.color}`)= section.label
+              if safeLen(section.data)
+                span.badge.rounded-pill(class=`bg-${section.color}`)= section.data.length
+            if safeLen(section.data) >= section.limit
+              a.btn.btn-sm.btn-link(href=`/tasks/list?groupId=${groupId}&status=OPEN&scope=${section.id.toUpperCase()}`) View all
+          
+          if section.data && section.data.length
+            .row.g-3
+              each task in section.data
+                .col-12.col-md-6
+                  +taskCard(task)
+          else
+            p.text-muted.fst-italic.ps-2 No tasks in this category.
 
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
     
-    // =============== JavaScript: 處理團隊任務的 AJAX Mark Done ===============
     script.
       document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.btn-mark-done').forEach(btn => {
           btn.addEventListener('click', async () => {
-            const { id, csrf, canClose } = btn.dataset;
+            const { id, csrf, mode } = btn.dataset;
             
-            async function submitClose(reason = null) {
-              try {
-                const response = await fetch(`/api/tasks/${id}/close`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
-                  body: JSON.stringify({ reason })
-                });
+            // 只有 isSmoothClose 的任務才會出現在這裡
+            if (mode === 'smooth') {
+              if (confirm('Everything is completed. Mark this task as done?')) {
+                try {
+                  const response = await fetch(`/api/tasks/${id}/close`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
+                    body: JSON.stringify({ reason: null })
+                  });
 
-                if (response.ok) {
-                  window.location.reload();
-                } else {
-                  const result = await response.json();
-                  if (result.message === 'FORCE_CLOSE_REASON_REQUIRED') {
-                    const r = prompt('Task assignees or subtasks are not completed. Please provide a reason to force close:');
-                    if (r !== null) await submitClose(r);
+                  if (response.ok) {
+                    window.location.reload();
                   } else {
+                    const result = await response.json();
                     alert('Error: ' + result.message);
                   }
+                } catch (err) {
+                  alert('Network error.');
                 }
-              } catch (err) {
-                alert('Network error.');
-              }
-            }
-
-            if (canClose === 'false') {
-              const reason = prompt('This team task has unfinished sub-items or assignees. Reason for closing?');
-              if (reason !== null) await submitClose(reason);
-            } else {
-              if (confirm('Mark this group task as completed?')) {
-                await submitClose();
               }
             }
           });
