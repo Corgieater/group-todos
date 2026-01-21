@@ -5,14 +5,18 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { doubleCsrf } from 'csrf-csrf';
 import { join } from 'path';
-import { HttpStatus, ValidationPipe } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpStatus,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { flashMessage } from './common/middleware/flash.middleware';
 import { UnauthorzedFilter } from './common/filters/unauthorized-redirect.filter';
 import { loggerInstance } from './common/logger/logger';
-import { AllExceptionsFilter } from './common/logger/all-exception.filter';
+import { AllExceptionsFilter } from './common/filters/all-exception.filter';
 
 const allowBypass = process.env.ALLOW_DEV_CSRF_BYPASS === '1';
 
@@ -55,6 +59,15 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      exceptionFactory: (errors) => {
+        const messages = errors.map((err) => {
+          // 🚀 使用 Object.values 之前，先確保 constraints 存在，否則給個預設值
+          return err.constraints
+            ? Object.values(err.constraints).join(', ')
+            : 'Validation error';
+        });
+        return new BadRequestException(messages);
+      },
     }),
   );
 

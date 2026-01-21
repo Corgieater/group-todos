@@ -32,8 +32,12 @@ function pickLogLevel(code: string | undefined, semanticStatus?: number) {
       'INVALID_CREDENTIAL',
       'USER_NOT_FOUND',
       'CREDENTIAL_DUPLICATED',
+      'ALREADY_MEMBER',
+      'PASSWORD_REUSE',
+      'PASSWORD_CONFIRMATION_MISMATCH',
       'GROUP_MEMBER_NOT_FOUND',
       'GROUP_NOT_FOUND',
+      'CANNOT_INVITE_SELF',
     ]);
     if (!code || infoCodes.has(code)) return 'info';
   }
@@ -64,13 +68,15 @@ export function createDomainErrorPageFilter(
       const err = e as DomainError<any>;
       const errorCode = (err as any).code;
 
-      const handler: Handler =
-        map[errorCode] ??
-        makeRedirectHandler('/', { msg: 'Unknown error happens' });
-
       const ctx = host.switchToHttp();
       const req = ctx.getRequest<ExpressRequest>();
       const res = ctx.getResponse<Response>();
+
+      const handler: Handler =
+        map[errorCode] ??
+        makeRedirectHandler(req.header('Referer') || '/', {
+          msg: err.message,
+        });
 
       const semanticStatus =
         handler.kind === 'redirect' ? handler.semanticStatus : handler.status;
@@ -130,7 +136,7 @@ export function createDomainErrorPageFilter(
       const resolveMsg = (msg?: FlashMsg): string =>
         typeof msg === 'function'
           ? msg(err)
-          : (msg ?? err.message ?? 'Unknown error');
+          : (msg ?? err.message ?? 'Unknown error happens');
       const resolveFieldErrors = (
         fe?: FieldErrs,
       ): Record<string, string> | undefined =>

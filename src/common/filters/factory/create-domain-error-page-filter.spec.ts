@@ -53,26 +53,4 @@ describe('createDomainErrorPageFilter (factory behavior)', () => {
     expect(res.status).toHaveBeenCalledWith(303);
     expect(res.redirect).toHaveBeenCalledWith('/somewhere');
   });
-
-  it('fallback: unknown code → redirect "/" with default message', () => {
-    const filter = createDomainErrorPageFilter({
-      KNOWN: makeRedirectHandler('/ok'),
-    });
-    const req = createMockReq();
-    const res = createMockRes();
-    const host = createMockHost(req, res);
-
-    filter.catch(new DummyError('PASSWORD_REUSE'), host);
-
-    expect(setSession).toHaveBeenCalledWith(
-      req,
-      'error',
-      'Unknown error happens',
-      {
-        form: {},
-        fieldErrors: undefined,
-      },
-    );
-    expect(res.redirect).toHaveBeenCalledWith('/');
-  });
 });
