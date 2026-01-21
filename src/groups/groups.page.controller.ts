@@ -110,7 +110,7 @@ export class GroupsPageController {
     // 2) 取得優化後的資料（已限量、已分類、已排序、已標記 canClose）
     const dashboardData = await this.tasksService.getGroupDashboardData(
       id,
-      user.userId,
+      user,
     );
 
     // 3) 渲染
@@ -130,81 +130,6 @@ export class GroupsPageController {
       // 傳入限制常數，方便 Pug 顯示「查看更多」按鈕
       LIMITS: { EXPIRED: 5, TODAY: 15, NONE: 10 },
     });
-    // // 1) 先確定使用者在群組裡，並拿到角色
-    // const viewerRole = await this.groupsService.requireMemberRole(
-    //   id,
-    //   user.userId,
-    // );
-    // const isAdminish = this.groupsService.isAdminish(viewerRole);
-    // // 2) 拿資料（未完成 && [今天/無截止/逾期]）
-    // const { items, bounds } =
-    //   await this.tasksService.listGroupOpenTasksDueTodayNoneOrExpired(
-    //     id,
-    //     user.userId,
-    //   );
-    // const { startUtc, endUtc, startOfTodayUtc, todayDateOnlyUtc } = bounds;
-    // // 我們要把每一筆 task 加上 hasAssignees / allAssigneesDone
-    // // 這裡先做成一個新的陣列，等會再丟進 buckets
-    // const enriched = items.map((t) => {
-    //   const hasAssignees = Array.isArray(t.assignees) && t.assignees.length > 0;
-    //   // 你的邏輯：普通 close 只有「有 assignees 且全部完成」才成立
-    //   const allAssigneesDone = hasAssignees
-    //     ? t.assignees.every((a) => a.status === 'COMPLETED')
-    //     : false;
-    //   return {
-    //     ...t,
-    //     hasAssignees,
-    //     allAssigneesDone,
-    //   };
-    // });
-    // type T = (typeof enriched)[number];
-    // const buckets: { expired: T[]; today: T[]; none: T[] } = {
-    //   expired: [],
-    //   today: [],
-    //   none: [],
-    // };
-    // for (const t of enriched) {
-    //   const expired =
-    //     (t.dueAtUtc && t.dueAtUtc < startOfTodayUtc) ||
-    //     (t.allDayLocalDate && t.allDayLocalDate < todayDateOnlyUtc);
-    //   if (expired) {
-    //     buckets.expired.push(t);
-    //     continue;
-    //   }
-    //   const today =
-    //     (t.dueAtUtc && t.dueAtUtc >= startUtc && t.dueAtUtc <= endUtc) ||
-    //     (t.allDayLocalDate && +t.allDayLocalDate === +todayDateOnlyUtc);
-    //   if (today) {
-    //     buckets.today.push(t);
-    //     continue;
-    //   }
-    //   if (!t.dueAtUtc && !t.allDayLocalDate) {
-    //     buckets.none.push(t);
-    //     continue;
-    //   }
-    // }
-    // const ts = (d: Date | null | undefined) =>
-    //   d ? d.getTime() : Number.POSITIVE_INFINITY;
-    // const sortByDay = (a: T, b: T) =>
-    //   Number(b.allDay) - Number(a.allDay) ||
-    //   ts(a.allDayLocalDate) - ts(b.allDayLocalDate) ||
-    //   ts(a.dueAtUtc) - ts(b.dueAtUtc);
-    // const sortByNone = (a: T, b: T) => ts(a.createdAt) - ts(b.createdAt);
-    // buckets.today.sort(sortByDay);
-    // buckets.expired.sort(sortByDay);
-    // buckets.none.sort(sortByNone);
-    // // 3) render：把 viewer 資訊一併丟進去（pug 需要）
-    // return res.render('groups/tasks-home', {
-    //   groupId: id,
-    //   groupName: undefined,
-    //   viewerId: user.userId,
-    //   viewerRole,
-    //   isAdminish,
-    //   csrfToken: res.locals.csrfToken,
-    //   expired: buckets.expired,
-    //   today: buckets.today,
-    //   none: buckets.none,
-    // });
   }
 
   @Get(':id/tasks/create')

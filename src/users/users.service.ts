@@ -12,7 +12,7 @@ type TxLike = Prisma.TransactionClient | PrismaClient;
 
 @Injectable()
 export class UsersService {
-  constructor(private prismaService: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService) {}
   async create(payload: UserCreatePayload): Promise<void> {
     const data = {
       name: payload.name,
@@ -72,7 +72,6 @@ export class UsersService {
     }
   }
 
-  // TODO: see this and compare to other tx situations 1130
   async updatePasswordHash(userId: number, hash: string, tx?: TxLike) {
     const db = (tx ?? this.prismaService) as unknown as {
       user: Prisma.UserDelegate<any>;

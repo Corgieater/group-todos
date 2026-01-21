@@ -23,25 +23,28 @@ import { JwtService } from '@nestjs/jwt';
 @Injectable()
 export class AuthService {
   constructor(
-    private config: ConfigService,
+    private readonly config: ConfigService,
     private readonly securityService: SecurityService,
     private readonly jwtService: JwtService,
-    private usersService: UsersService,
-    private prismaService: PrismaService,
-    private mailService: MailService,
+    private readonly usersService: UsersService,
+    private readonly prismaService: PrismaService,
+    private readonly mailService: MailService,
   ) {}
 
   async signup(dto: AuthSignupDto): Promise<void> {
     const existUser = await this.usersService.findByEmail(dto.email);
+
     if (existUser) {
       throw AuthErrors.CredentialDuplicatedError.email(dto.email);
     }
+
     const createUserInput = {
       name: dto.name,
       email: dto.email,
       timeZone: dto.timeZone,
       hash: await this.securityService.hash(dto.password),
     };
+
     await this.usersService.create(createUserInput);
   }
 
@@ -54,8 +57,7 @@ export class AuthService {
     if (!user) {
       throw UsersErrors.UserNotFoundError.byEmail(email);
     }
-    // TODO
-    // is it possible to do 'forgot password <a> link </a> here?
+
     if (!(await this.securityService.verify(user.hash, password))) {
       throw AuthErrors.InvalidCredentialError.password();
     }
@@ -156,13 +158,32 @@ export class AuthService {
       baseUrl,
     ).toString();
 
-    await this.mailService.sendPasswordReset(user, link);
+    this.mailService.sendPasswordReset(user, link);
   }
 
   async verifyResetToken(
     id: number,
-    token: string,
+    rawToken: string,
   ): Promise<{ accessToken: string }> {
+    /**
+     * Verifies the password reset token and issues a short-lived JWT for password updates.
+     * * ### Security Implementation:
+     * 1. **Integrity Check**: Re-calculates the HMAC digest of the provided `rawToken` using
+     * the `TOKEN_HMAC_SECRET` and compares it against the stored `tokenHash`.
+     * 2. **Timing Attack Protection**: Employs constant-time comparison via `safeEqualB64url`
+     * to prevent side-channel leaks.
+     * 3. **State Validation**: Ensures the token is linked to a valid user, has not expired,
+     * has not been consumed, and has not been revoked.
+     * 4. **Limited Scope**: The resulting JWT is scoped specifically for `resetPassword`
+     * and is valid for only 10 minutes.
+     *
+     * @param id - The unique identifier (Primary Key) of the ActionToken in the database.
+     * @param rawToken - The raw, URL-friendly secret string sent to the user's email.
+     * * @returns A Promise resolving to an object containing the `accessToken` (JWT).
+     * * @throws {AuthErrors.InvalidTokenError}
+     * Thrown if the token ID is not found, expired, already consumed, or if the
+     * HMAC verification fails.
+     */
     const NOW = new Date();
     const result = await this.prismaService.actionToken.findFirst({
       where: {
@@ -184,7 +205,7 @@ export class AuthService {
       throw AuthErrors.InvalidTokenError.reset();
     }
     const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
-    const candidate = this.securityService.hmacToken(token, serverSecret);
+    const candidate = this.securityService.hmacToken(rawToken, serverSecret);
 
     if (!this.securityService.safeEqualB64url(result.tokenHash, candidate)) {
       throw AuthErrors.InvalidTokenError.verify();
@@ -210,8 +231,32 @@ export class AuthService {
     userId: number,
     newPassword: string,
     confirmPassword: string,
-  ) {
+  ): Promise<void> {
+    /**
+     * Finalizes the password reset process after verifying the user's temporary token.
+     * * ### Business Logic & Security Steps:
+     * 1. **Identity Verification**: Ensures the target user exists in the system.
+     * 2. **Security Compliance**: Performs a password reuse check against the current hash
+     * to enforce security policies.
+     * 3. **Input Validation**: Ensures the new password matches the confirmation string.
+     * 4. **Secure Hashing**: Generates a new cryptographically secure hash (Argon2).
+     * 5. **Atomic Transaction**:
+     * - Marks the specific `ActionToken` as consumed to prevent Replay Attacks.
+     * - Updates the user's password hash within the same database transaction.
+     *
+     * @param tokenId - The unique identifier (Primary key) of the ActionToken record.
+     * @param userId - The ID of the user whose password is being reset.
+     * @param newPassword - The new raw password provided by the user.
+     * @param confirmPassword - A duplicate of the new password used for verification.
+     *
+     * @returns {Promise<void>} Resolves when the password has been successfully updated.
+     * * @throws {UsersErrors.UserNotFoundError} If the provided userId does not exist.
+     * @throws {AuthErrors.PasswordReuseError} If the new password is identical to the current one.
+     * @throws {AuthErrors.PasswordConfirmationMismatchError} If newPassword and confirmPassword do not match.
+     * @throws {AuthErrors.InvalidTokenError} If the token is already used, expired, or does not belong to the user.
+     */
     const user: UserModel | null = await this.usersService.findById(userId);
+
     if (!user) {
       throw UsersErrors.UserNotFoundError.byId(userId);
     }

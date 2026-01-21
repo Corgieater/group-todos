@@ -53,6 +53,7 @@ describe('AuthService', () => {
     signAsync: jest.fn().mockResolvedValue('jwtToken'),
     verifyAsync: jest.fn(),
   };
+
   const mockPrismaService = {
     actionToken: {
       create: jest.fn(),
@@ -80,8 +81,6 @@ describe('AuthService', () => {
   const HMAC_HASHED = 'base64urlHash';
 
   beforeAll(async () => {
-    // QUESTION:
-    // Do I really need these createMock? it seems they only use here
     signupDto = createMockSignupDto();
     signinDto = createMockSigninDto();
     user = createMockUser();
