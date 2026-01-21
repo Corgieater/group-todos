@@ -3,110 +3,77 @@ import { DomainError } from '../domain-error.base';
 
 type GroupRole = $Enums.GroupRole;
 
-export class NotAuthorizedToInviteMember extends DomainError {
-  readonly actorId: number;
-  readonly groupId: number;
-
-  constructor(actorId: number, groupId: number, opts?: { cause?: unknown }) {
-    super('NotAuthorizedToInviteMember', {
-      code: 'NOT_AUTHORIZED_TO_INVITE_MEMBER',
-      message: 'Only group admin or member can invite members.',
-      data: { actorId, groupId },
-      cause: opts?.cause,
-    });
-    this.actorId = actorId;
-    this.groupId = groupId;
-  }
-
-  static byId(actorId: number, groupId: number, opts?: { cause?: unknown }) {
-    return new NotAuthorizedToInviteMember(actorId, groupId, opts);
-  }
-}
-
-export class NotAuthorizedToRemoveMemberError extends DomainError {
-  constructor(opts: {
-    groupId: number;
-    actorId: number; // 執行移除的人
-    actorRole?: GroupRole; // 他的實際角色
-    allowedRoles?: GroupRole[]; // 允許執行此操作的角色集合
-    targetUserId?: number; // 被移除的人
-    cause?: unknown;
-  }) {
-    super('NotAuthorizedToRemoveMemberError', {
-      code: 'NOT_AUTHORIZED_TO_REMOVE_MEMBER',
-      message: 'You are not allowed to remove this member.',
-      data: {
-        groupId: opts.groupId,
-        actorId: opts.actorId,
-        actorRole: opts.actorRole,
-        allowedRoles: opts.allowedRoles,
-        targetUserId: opts.targetUserId,
-      },
-      cause: opts.cause,
-    });
-  }
-
-  static byRole(
-    groupId: number,
-    actorId: number,
-    actorRole: GroupRole,
-    allowedRoles: GroupRole[],
-    targetUserId?: number,
-  ) {
-    return new NotAuthorizedToRemoveMemberError({
-      groupId,
-      actorId,
-      actorRole,
-      allowedRoles,
-      targetUserId,
-    });
-  }
-
-  static byId(groupId: number, actorId: number, targetUserId: number) {
-    return new NotAuthorizedToRemoveMemberError({
-      groupId,
-      actorId,
-      targetUserId,
-    });
-  }
-}
-
-export class NotAuthorizedToUpdateMemberRoleError extends DomainError {
+export class GroupActionForbiddenError extends DomainError {
   constructor(opts: {
     groupId: number;
     actorId: number;
     actorRole?: GroupRole;
+    action: string;
     allowedRoles?: GroupRole[];
     targetUserId?: number;
     cause?: unknown;
   }) {
-    super('NotAuthorizedToUpdateMemberRoleError', {
-      code: 'NOT_AUTHORIZED_TO_UPDATE_MEMBER_ROLE',
-      message: 'You are not allowed to update member role.',
-      data: {
-        groupId: opts.groupId,
-        actorId: opts.actorId,
-        actorRole: opts.actorRole,
-        allowedRoles: opts.allowedRoles,
-        targetUserId: opts.targetUserId,
-      },
+    super('GroupActionForbiddenError', {
+      // 動態產生代碼，例如: FORBIDDEN_REMOVE_MEMBER
+      code: `FORBIDDEN_${opts.action.toUpperCase()}`,
+      message: `You are not authorized to ${opts.action.replace(/_/g, ' ')}.`,
+      data: opts,
       cause: opts.cause,
     });
   }
 
-  static byRole(
+  static updateRole(
     groupId: number,
     actorId: number,
-    actorRole: GroupRole,
-    allowedRoles: GroupRole[],
-    targetUserId?: number,
+    role: GroupRole,
+    targetId: number,
   ) {
-    return new NotAuthorizedToUpdateMemberRoleError({
+    return new GroupActionForbiddenError({
       groupId,
       actorId,
-      actorRole,
-      allowedRoles,
-      targetUserId,
+      actorRole: role,
+      targetUserId: targetId,
+      action: 'update_member_role',
+      allowedRoles: ['OWNER'],
+    });
+  }
+
+  // 靜態工廠方法：移除成員
+  static removeMember(
+    groupId: number,
+    actorId: number,
+    role: GroupRole,
+    targetId: number,
+    cause?: string,
+  ) {
+    return new GroupActionForbiddenError({
+      groupId,
+      actorId,
+      actorRole: role,
+      targetUserId: targetId,
+      action: 'remove_member',
+      allowedRoles: ['OWNER', 'ADMIN'],
+      cause,
+    });
+  }
+
+  // 靜態工廠方法：更新任務狀態 (修正你原本回傳錯誤實體的 Bug)
+  static updateTaskStatus(groupId: number, actorId: number, role: GroupRole) {
+    return new GroupActionForbiddenError({
+      groupId,
+      actorId,
+      actorRole: role,
+      action: 'update_task_status',
+      allowedRoles: ['OWNER', 'ADMIN'],
+    });
+  }
+
+  // 靜態工廠方法：邀請成員
+  static inviteMember(groupId: number, actorId: number) {
+    return new GroupActionForbiddenError({
+      groupId,
+      actorId,
+      action: 'invite_member',
     });
   }
 }

@@ -15,13 +15,9 @@ export type DomainErrorCode =
   | 'ALREADY_MEMBER'
   | 'NOT_AUTHORIZED_TO_REMOVE_MEMBER'
   | 'GROUP_MEMBER_NOT_FOUND'
-  | 'OWNER_REMOVAL_FORBIDDEN'
-  | 'GROUP_PERMISSION'
-  | 'NOT_AUTHORIZED_TO_INVITE_MEMBER'
-  | 'NOT_AUTHORIZED_TO_UPDATE_MEMBER_ROLE'
-  | 'OWNER_DOWNGRADE_FORBIDDEN'
-  | 'OWNER_ROLE_CHANGE_FORBIDDEN'
-  | 'OWNER_CAN_NOT_LEAVE_THE_GROUP';
+  | `FORBIDDEN_${string}` // 🚀 允許所有以 FORBIDDEN_ 開頭的字串
+  | `OWNER_${string}`
+  | 'OWNER_CAN_NOT_REMOVE_THEMSELVES'; // 🚀 允許所有以 OWNER_ 開頭的字串
 
 export interface DomainErrorParams<D = unknown> {
   message?: string; // developer-friendly default/override

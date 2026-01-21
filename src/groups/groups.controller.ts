@@ -156,7 +156,7 @@ export class GroupsController {
     };
     await this.tasksService.createTask(payload, id);
     setSession(req, 'success', 'Group task added.');
-    // TODO: this should be something like :id/groups/tasks
+
     return res.redirect(`/groups/${id}/tasks`);
   }
 }

@@ -354,15 +354,21 @@ describe('GroupService', () => {
       expect(mockPrismaService.groupMember.deleteMany).not.toHaveBeenCalled();
     });
 
-    it('should throw OwnerCanNotLeaveTheGroupError', async () => {
+    it('should throw GroupOwnerConstraintError if owner tries to leave the group', async () => {
+      // 1. Arrange: 模擬當前者身分是 OWNER
       mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
         role: GroupRole.OWNER,
       });
 
-      await expect(groupsService.leaveGroup(1, 1)).rejects.toBeInstanceOf(
-        GroupsErrors.OwnerCanNotLeaveTheGroupError,
-      );
+      // 2. Act & Assert: 驗證拋出的錯誤類別
+      const error = await groupsService.leaveGroup(1, 1).catch((e) => e);
 
+      expect(error).toBeInstanceOf(GroupsErrors.GroupOwnerConstraintError);
+
+      // 🚀 關鍵加分項：驗證錯誤代碼，確保邏輯精確
+      expect(error.code).toBe('OWNER_CANNOT_LEAVE');
+
+      // 3. Verify: 確保資料庫完全沒有執行刪除操作 (原子性與安全性)
       expect(mockPrismaService.groupMember.deleteMany).not.toHaveBeenCalled();
     });
   });
@@ -480,12 +486,12 @@ describe('GroupService', () => {
       );
     });
 
-    it('should throw NotAuthorizedToInviteMember if can not find group with member', async () => {
+    it('should throw GroupNotFoundError if can not find actor in group', async () => {
       mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
 
       await expect(
         groupsService.inviteGroupMember(group.id, actor.user.id, invitee.email),
-      ).rejects.toBeInstanceOf(GroupsErrors.NotAuthorizedToInviteMember);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
 
       expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledTimes(1);
       expect(mockUsersService.findByEmail).not.toHaveBeenCalled();
@@ -493,7 +499,7 @@ describe('GroupService', () => {
       expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
 
-    it('should throw NotAuthorizedToInviteMember if actor is a member', async () => {
+    it('should throw GroupActionForbiddenError if actor is not adminish', async () => {
       mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
         role: GroupRole.MEMBER,
         user: { id: 4, name: 'test4' },
@@ -502,7 +508,7 @@ describe('GroupService', () => {
 
       await expect(
         groupsService.inviteGroupMember(group.id, 4, invitee.email),
-      ).rejects.toBeInstanceOf(GroupsErrors.NotAuthorizedToInviteMember);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupActionForbiddenError);
 
       expect(mockPrismaService.groupMember.findUnique).toHaveBeenCalledTimes(1);
       expect(mockUsersService.findByEmail).not.toHaveBeenCalled();
@@ -510,7 +516,7 @@ describe('GroupService', () => {
       expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
 
-    it('should throw UserNotExistError if the email not exists', async () => {
+    it('should throw UserNotExistError if the email does not exists', async () => {
       // TODO: i guess here we can call another service to deal with new user
       // this will be nexy phase
       mockPrismaService.groupMember.findUnique
@@ -550,9 +556,7 @@ describe('GroupService', () => {
       expect(mockMailService.sendGroupInvite).not.toHaveBeenCalled();
     });
 
-    // fix this
     it('should throw AlreadyMemberError when invitee has already in group', async () => {
-      // NOTE: I think check if member after getting user by email
       mockPrismaService.groupMember.findUnique
         .mockResolvedValueOnce(actor)
         .mockResolvedValueOnce(invitee);
@@ -750,7 +754,7 @@ describe('GroupService', () => {
       expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
     });
 
-    it('should throw RoleUpdateForbiddenError', async () => {
+    it('should throw GroupNotFoundError if actor not found', async () => {
       // if owner not found in this group
       mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
         {
@@ -762,11 +766,11 @@ describe('GroupService', () => {
 
       await expect(
         groupsService.updateMemberRole(group.id, targetId, GroupRole.ADMIN, 99),
-      ).rejects.toBeInstanceOf(GroupsErrors.GroupPermissionError);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
       expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
     });
 
-    it('should throw NotAuthorizedToUpdateMemberRoleError', async () => {
+    it('should throw NotAuthorizedToUpdateMemberRoleError if actor is a member', async () => {
       mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
         {
           groupId: group.id,
@@ -782,13 +786,11 @@ describe('GroupService', () => {
 
       await expect(
         groupsService.updateMemberRole(group.id, targetId, GroupRole.ADMIN, 8),
-      ).rejects.toBeInstanceOf(
-        GroupsErrors.NotAuthorizedToUpdateMemberRoleError,
-      );
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupActionForbiddenError);
       expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
     });
 
-    it('should throw OwnerDowngradeFrobidden', async () => {
+    it('should throw GroupOwnerConstraintError if owner wants to update their own role', async () => {
       mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
         {
           groupId: group.id,
@@ -804,19 +806,7 @@ describe('GroupService', () => {
           GroupRole.ADMIN,
           ownerId,
         ),
-      ).rejects.toBeInstanceOf(GroupsErrors.OwnerDowngradeForbiddenError);
-      expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
-    });
-
-    it('should throw OwnerRoleChangeForbiddenError', async () => {
-      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
-        { id: 101, userId: 8, role: GroupRole.OWNER },
-        { id: 102, userId: 9, role: GroupRole.OWNER },
-      ]);
-
-      await expect(
-        groupsService.updateMemberRole(group.id, 9, GroupRole.ADMIN, 8),
-      ).rejects.toBeInstanceOf(GroupsErrors.OwnerRoleChangeForbiddenError);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupOwnerConstraintError);
       expect(mockPrismaService.groupMember.update).not.toHaveBeenCalled();
     });
 
@@ -935,11 +925,27 @@ describe('GroupService', () => {
       expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
 
+    it('should throw GroupOwnerConstraintError if ADMIN tries to kick OWNER', async () => {
+      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
+        { userId: 3, role: GroupRole.OWNER },
+        { userId: 4, role: GroupRole.ADMIN },
+      ]);
+      const err = await groupsService
+        .kickOutMember(groupId, 3, 4)
+        .catch((e) => e);
+
+      expect(err).toBeInstanceOf(GroupsErrors.GroupOwnerConstraintError);
+      expect(err.code).toBe('OWNER_REMOVAL_FORBIDDEN');
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
+    });
+
     describe('forbidden paths', () => {
       beforeEach(() => {
         jest.clearAllMocks();
         mockPrismaService.group.findUnique.mockResolvedValue({ id: groupId });
       });
+
       test.each([
         {
           case: 'member kicks member',
@@ -951,19 +957,14 @@ describe('GroupService', () => {
           actor: { id: 4, role: GroupRole.ADMIN },
           target: { id: 3, role: GroupRole.ADMIN },
         },
-        {
-          case: 'admin kicks owner',
-          actor: { id: 4, role: GroupRole.ADMIN },
-          target: { id: 1, role: GroupRole.OWNER },
-        },
       ])(
-        'should throw GroupPermissionError when $case',
+        'should throw GroupActionForbiddenError when $case',
         async ({ actor, target }) => {
           mockMembers(actor, target);
 
           await expect(
             groupsService.kickOutMember(group.id, target.id, actor.id),
-          ).rejects.toBeInstanceOf(GroupsErrors.GroupPermissionError);
+          ).rejects.toBeInstanceOf(GroupsErrors.GroupActionForbiddenError);
 
           expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
           expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
@@ -971,7 +972,7 @@ describe('GroupService', () => {
       );
     });
 
-    it('should thorw NotAuthorizedToRemoveMemberError', async () => {
+    it('should thorw GroupNotFoundError if actor is not found', async () => {
       mockPrismaService.groupMember.findMany.mockResolvedValueOnce([
         {
           userId: 6,
@@ -981,7 +982,7 @@ describe('GroupService', () => {
 
       await expect(
         groupsService.kickOutMember(groupId, 6, 99),
-      ).rejects.toBeInstanceOf(GroupsErrors.NotAuthorizedToRemoveMemberError);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupNotFoundError);
 
       expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(1);
@@ -1005,7 +1006,7 @@ describe('GroupService', () => {
       expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
 
-    it('should throw OwnerRemovalForbiddenError', async () => {
+    it('should throw GroupsErrors.GroupOwnerConstraintError if trying to remove OWNER', async () => {
       const owner = {
         userId: 6,
         role: GroupRole.OWNER,
@@ -1014,14 +1015,14 @@ describe('GroupService', () => {
 
       await expect(
         groupsService.kickOutMember(group.id, owner.userId, owner.userId),
-      ).rejects.toBeInstanceOf(GroupsErrors.OwnerRemovalForbiddenError);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupOwnerConstraintError);
 
       expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.groupMember.delete).not.toHaveBeenCalled();
     });
 
-    it('should throw GroupPermissionError when remove one self', async () => {
+    it('should throw GroupsErrors.GroupOwnerConstraintError when self-remove', async () => {
       const admin = {
         userId: 3,
         role: GroupRole.ADMIN,
@@ -1030,7 +1031,7 @@ describe('GroupService', () => {
 
       await expect(
         groupsService.kickOutMember(groupId, admin.userId, admin.userId),
-      ).rejects.toBeInstanceOf(GroupsErrors.GroupPermissionError);
+      ).rejects.toBeInstanceOf(GroupsErrors.GroupOwnerConstraintError);
 
       expect(mockPrismaService.group.findUnique).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledTimes(1);

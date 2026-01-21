@@ -142,16 +142,12 @@ export class GroupsService {
       }
 
       if (membership.role === GroupRole.OWNER) {
-        throw GroupsErrors.OwnerCanNotLeaveTheGroupError.self(id, userId);
+        throw GroupsErrors.GroupOwnerConstraintError.cannotLeave(id, userId);
       }
 
-      const { count } = await tx.groupMember.deleteMany({
+      await tx.groupMember.deleteMany({
         where: { groupId: id, userId, role: { not: GroupRole.OWNER } },
       });
-
-      if (count !== 1) {
-        throw GroupsErrors.OwnerCanNotLeaveTheGroupError.self(id, userId);
-      }
     });
   }
 
@@ -205,16 +201,17 @@ export class GroupsService {
     });
 
     if (!actor) {
-      throw GroupsErrors.NotAuthorizedToInviteMember.byId(actorId, id);
+      throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
     }
 
+    // task有個小工具 應該要把它放util拿來這用?
     const CAN_INVITE = new Set<GroupRole>([
       GroupRole.ADMIN,
       GroupRole.OWNER,
     ] as const);
 
     if (!CAN_INVITE.has(actor.role)) {
-      throw GroupsErrors.NotAuthorizedToInviteMember.byId(actorId, id);
+      throw GroupsErrors.GroupActionForbiddenError.inviteMember(id, actorId);
     }
 
     const invitee = await this.usersService.findByEmail(email);
@@ -361,18 +358,16 @@ export class GroupsService {
       const actor = rows.find((r) => r.userId === actorId);
       const target = rows.find((r) => r.userId === targetId);
 
+      // Not a member in group
       if (!actor) {
-        throw GroupsErrors.GroupPermissionError.updateRole(id, actorId, {
-          cause: 'Can not find actor in this group',
-        });
+        throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
       }
 
       if (actor.role !== GroupRole.OWNER) {
-        throw GroupsErrors.NotAuthorizedToUpdateMemberRoleError.byRole(
+        throw GroupsErrors.GroupActionForbiddenError.updateRole(
           id,
           actorId,
           actor.role,
-          [GroupRole.OWNER],
           targetId,
         );
       }
@@ -381,15 +376,20 @@ export class GroupsService {
         throw GroupsErrors.GroupMemberNotFoundError.byId(targetId, id);
       }
 
+      // If we need to deal with group transfer, we need to change this logic
       if (actor.userId === target.userId) {
-        throw GroupsErrors.OwnerDowngradeForbiddenError.self(id, actorId);
+        throw GroupsErrors.GroupOwnerConstraintError.ownerRoleCanNotBeUpdated(
+          id,
+          targetId,
+          actorId,
+        );
       }
 
       if (target.role === GroupRole.OWNER) {
-        throw GroupsErrors.OwnerRoleChangeForbiddenError.targetIsOwner(
+        throw GroupsErrors.GroupOwnerConstraintError.ownerRoleCanNotBeUpdated(
           id,
+          targetId,
           actorId,
-          target.userId,
         );
       }
 
@@ -419,44 +419,66 @@ export class GroupsService {
         throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
       }
       const rows = await tx.groupMember.findMany({
-        where: { groupId: id, userId: { in: [actorId, targetId] } },
+        where: { groupId: group.id, userId: { in: [actorId, targetId] } },
         select: { userId: true, role: true },
       });
 
       const actor = rows.find((r) => r.userId === actorId);
       if (!actor) {
         // actor not a group member
-        throw GroupsErrors.NotAuthorizedToRemoveMemberError.byId(
+        throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
+      }
+
+      // If actor is only a member, we don't need to check other things anymore
+      if (actor.role === GroupRole.MEMBER) {
+        throw GroupsErrors.GroupActionForbiddenError.removeMember(
           id,
           actorId,
+          actor.role,
           targetId,
         );
       }
 
       const target = rows.find((r) => r.userId === targetId);
+
       if (!target) {
         // target not in group
         throw GroupsErrors.GroupMemberNotFoundError.byId(targetId, id);
       }
 
-      if (actor.userId === target.userId) {
-        if (actor.role === 'OWNER') {
-          // can not remove owner
-          throw GroupsErrors.OwnerRemovalForbiddenError.self(id, actorId);
-        }
-        // can not remove self
-        throw GroupsErrors.GroupPermissionError.remove(id, actorId);
+      if (target.role === 'OWNER') {
+        // can not remove owner
+        throw GroupsErrors.GroupOwnerConstraintError.cannotBeRemoved(
+          id,
+          actorId,
+        );
       }
 
-      if (
-        actor.role === 'ADMIN' &&
-        (target.role === 'ADMIN' || target.role === 'OWNER')
-      ) {
-        throw GroupsErrors.GroupPermissionError.remove(id, actorId);
+      if (actor.userId === target.userId) {
+        // can not remove self
+        throw GroupsErrors.GroupOwnerConstraintError.ownerCanNotRemoveThemselves(
+          id,
+          actorId,
+        );
+      }
+
+      if (actor.role === GroupRole.ADMIN && target.role === GroupRole.ADMIN) {
+        throw GroupsErrors.GroupActionForbiddenError.removeMember(
+          id,
+          actorId,
+          actor.role,
+          targetId,
+          'ADMINISH_TRIES_TO_REMOVE_OTHER_ADMINISH',
+        );
       }
 
       if (!this.canRemove(actor.role, target.role)) {
-        throw GroupsErrors.GroupPermissionError.remove(id, actorId);
+        throw GroupsErrors.GroupActionForbiddenError.removeMember(
+          id,
+          actorId,
+          actor.role,
+          targetId,
+        );
       }
 
       await tx.groupMember.delete({
