@@ -6,9 +6,6 @@ import {
   IsBoolean,
   Matches,
   IsMilitaryTime,
-  ValidateIf,
-  IsDefined,
-  IsEmpty,
   MaxLength,
   IsNumber,
   Max,
@@ -28,12 +25,6 @@ function toBool(val: any): boolean {
     .toLowerCase();
   if (['true', '1', 'on', 'yes', 'y'].includes(s)) return true;
   return false; // 其他都算 false（包含 '', '0', 'off', 'no'）
-}
-
-const TRUE_LIKE = new Set(['1', 'true', 'on', 'yes', 'y', 't']);
-function isTrueLike(v: unknown): boolean {
-  const s = String(v).trim().toLowerCase();
-  return TRUE_LIKE.has(s);
 }
 
 export class TasksAddDto {

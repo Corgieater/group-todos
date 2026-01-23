@@ -12,9 +12,7 @@ export class InvalidTokenError extends DomainError<{
       cause: opts?.cause,
     });
   }
-  // TODO:
-  // how to make them more infomative? like adding what the cause?
-  // reset doesn't sounds clear? who? how reset what?
+
   static reset(opts?: { cause?: unknown }) {
     return new InvalidTokenError('reset', opts);
   }
