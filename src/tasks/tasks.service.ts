@@ -21,7 +21,7 @@ import {
 } from 'src/generated/prisma/client';
 import type { SubTask, Task } from 'src/generated/prisma/client';
 import { TaskStatus } from './types/enum';
-import { GroupsErrors, TasksErrors } from 'src/errors';
+import { TasksErrors, UsersErrors } from 'src/errors';
 import { dayBoundsUtc } from 'src/common/helpers/util';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { ConfigService } from '@nestjs/config';
@@ -31,6 +31,8 @@ import { TasksGateWay } from './tasks.gateway';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 import { CurrentUser } from 'src/common/types/current-user';
+import { isA } from 'jest-mock-extended';
+import { group } from 'console';
 
 type DueFilter = 'TODAY' | 'NONE' | 'EXPIRED' | 'RANGE';
 
@@ -79,33 +81,88 @@ export class TasksService {
     private readonly securityService: SecurityService,
     private readonly tasksGateway: TasksGateWay,
   ) {}
+  private static readonly TASK_STATUS_MAP: Record<TaskStatus, TaskStatus[]> = {
+    [TaskStatus.OPEN]: [TaskStatus.CLOSED, TaskStatus.ARCHIVED],
+    [TaskStatus.CLOSED]: [TaskStatus.OPEN, TaskStatus.ARCHIVED],
+    [TaskStatus.ARCHIVED]: [TaskStatus.OPEN],
+  };
+
+  private static readonly ASSIGNMENT_RULES: Record<
+    AssignmentStatus,
+    AssignmentStatus[]
+  > = {
+    [AssignmentStatus.PENDING]: [
+      AssignmentStatus.ACCEPTED,
+      AssignmentStatus.DECLINED,
+      AssignmentStatus.SKIPPED,
+    ],
+    [AssignmentStatus.ACCEPTED]: [
+      AssignmentStatus.COMPLETED,
+      AssignmentStatus.DECLINED,
+      AssignmentStatus.PENDING,
+      AssignmentStatus.DROPPED,
+    ],
+    [AssignmentStatus.DECLINED]: [
+      AssignmentStatus.ACCEPTED,
+      AssignmentStatus.PENDING,
+    ],
+    [AssignmentStatus.SKIPPED]: [],
+    [AssignmentStatus.DROPPED]: [],
+    [AssignmentStatus.COMPLETED]: [],
+  };
 
   async createTask(
     payload: TasksAddPayload,
     groupId: number | null = null,
   ): Promise<void> {
+    /**
+     * Creates a new task (parent task) which can contain multiple sub-tasks.
+     *
+     * @description
+     * 1. Validates the existence of the user and retrieves their preferred time zone.
+     * 2. Handles temporal logic:
+     * - All-day tasks: Stored as a local calendar date (allDayLocalDate), ignoring time zone shifts.
+     * - Specific time tasks: Converted from the user's local time to a UTC timestamp (dueAtUtc).
+     *
+     * @param payload - The data transfer object containing task details (title, status, priority, etc.).
+     * @param groupId - Optional. The ID of the group this task belongs to. Defaults to null for personal tasks.
+     * @returns A Promise that resolves when the task is successfully created.
+     */
+
+    // 1. Fetch user data and handle time zone fallback
     const user = await this.usersService.findByIdOrThrow(payload.userId);
-    const userTz = user.timeZone || 'UTC';
+    const userTz = user.timeZone;
 
-    let dueAtUtc: Date | null = null;
-    let allDayLocalDate: Date | null = null;
+    // 2. Process temporal logic based on task type
+    const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
+      payload.allDay,
+      payload.dueDate,
+      payload.dueTime,
+      userTz,
+    );
+    // if (payload.allDay) {
+    //   /**
+    //    * [All-day Mode]
+    //    * Save as a pure date string to be stored in the DB's Date column.
+    //    * This represents a "calendar slot" (e.g., May 20th) regardless of user location.
+    //    */
+    //   allDayLocalDate = payload.dueDate
+    //     ? new Date(`${payload.dueDate}T00:00:00.000Z`)
+    //     : null;
+    //   dueAtUtc = null;
+    // } else if (payload.dueDate) {
+    //   /**
+    //    * [Specific Time Mode]
+    //    * Convert local ISO string to an absolute UTC Date object using the user's IANA time zone.
+    //    * Ensures that time-sensitive tasks are synchronized globally.
+    //    */
+    //   const timePart = payload.dueTime || '00:00';
+    //   const localISO = `${payload.dueDate}T${timePart}:00`;
+    //   dueAtUtc = fromZonedTime(localISO, userTz);
+    //   allDayLocalDate = null;
+    // }
 
-    // --- 核心邏輯修正 ---
-    if (payload.allDay) {
-      // 全天任務：只存 LocalDate
-      allDayLocalDate = payload.dueDate
-        ? new Date(`${payload.dueDate}T00:00:00.000Z`)
-        : null;
-      dueAtUtc = null;
-    } else if (payload.dueDate) {
-      // 非全天任務：只要有日期，沒時間就預設 00:00
-      const timePart = payload.dueTime || '00:00';
-      const localISO = `${payload.dueDate}T${timePart}:00`;
-      dueAtUtc = fromZonedTime(localISO, userTz);
-      allDayLocalDate = null;
-    }
-
-    // --- 構建資料物件 ---
+    // 3. Assemble and persist the task entity
     const data: Prisma.TaskCreateInput = {
       title: payload.title,
       description: payload.description,
@@ -115,7 +172,7 @@ export class TasksService {
       allDay: !!payload.allDay,
       dueAtUtc,
       allDayLocalDate,
-      // 建立關聯
+      // Only connect to group if groupId is provided
       owner: { connect: { id: user.id } },
       ...(groupId && { group: { connect: { id: groupId } } }),
     };
@@ -206,6 +263,7 @@ export class TasksService {
   ): Promise<{
     task: TaskWithAllDetails;
     isAdminish: boolean;
+    isRealAdmin: boolean;
     canClose: boolean;
     groupMembers: GroupMemberInfo[];
   }> {
@@ -294,24 +352,28 @@ export class TasksService {
     );
     const canClose = !hasOpenSubTasks;
 
-    let isAdminish = false;
+    let isGroupAdmin = false;
+    let isTaskOwner = task.ownerId === actorId;
 
-    // Check if viewer is adminish, this will affect certain actions like task assigning
     if (!base.groupId) {
-      isAdminish = true;
+      // 個人任務：Owner 就是 Admin
+      isGroupAdmin = true;
     } else {
       const member = await this.prismaService.groupMember.findUnique({
         where: { groupId_userId: { groupId: task.groupId!, userId: actorId } },
         select: { role: true },
       });
-      // const ADMINISH = new Set<GroupRole>([GroupRole.OWNER, GroupRole.ADMIN]);
-      // isAdminish = ADMINISH.has(member!.role);
-      isAdminish = this.isAdminish(member!.role);
+
+      // 真正的群組管理員身分
+      isGroupAdmin = member ? this.isAdminish(member.role) : false;
     }
 
     return {
       task: task as TaskWithAllDetails,
-      isAdminish,
+      // 🚀 isAdminish 用來判斷「能不能 Edit/Add SubTask」(Owner 或 Admin 皆可)
+      isAdminish: isGroupAdmin || isTaskOwner,
+      // 🚀 新增 isRealAdmin 用來判斷「能不能 Force Close/Assign」(僅限 Admin)
+      isRealAdmin: isGroupAdmin,
       canClose,
       groupMembers,
     };
@@ -551,7 +613,7 @@ export class TasksService {
       // 3. Check if Assignee.status logic is correct
       // (example: DECLINED -> ACCEPTED is allowed, but CLOSED -> PENDING is not)
       const prev = currentAssignee.status;
-      const isLegal = this.checkStatusTransition(prev, next, task.status);
+      const isLegal = this.isValidAssignmentTransition(prev, next, task.status);
 
       if (!isLegal) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
@@ -587,28 +649,39 @@ export class TasksService {
     opts?: { reason?: string },
   ): Promise<Task> {
     /**
-     * Closes a task. If already closed, returns the existing record.
-     * * @param id - The Task unique ID.
-     * @param actorId - The user performing the close action.
-     * @param opts - Options like closure reason.
-     * * @returns {Promise<Task>} The updated or existing closed Task object.
-     * @throws {TasksErrors.TaskNotFoundError} If the task does not exist.
-     * @throws {TasksErrors.TaskForbiddenError} If forced close is attempted without a reason.
+     * Closes a task and manages the transition of all related entities (sub-tasks and assignees).
+     * * This method implements a "Restricted Management" policy:
+     * 1. If the task is fully completed (no open sub-tasks/assignees), the Owner or an Admin can close it.
+     * 2. If the task has incomplete items, ONLY an Admin can "Force Close" it by providing a reason.
+     * * @param id - The unique identifier of the task to close.
+     * @param actorId - The ID of the user performing the action.
+     * @param opts - Optional parameters, specifically the closure reason for force-closing.
+     * @returns {Promise<Task>} The updated task record.
+     * * @throws {TasksErrors.TaskNotFoundError} If the task does not exist or the user lacks access.
+     * @throws {TasksErrors.TaskForbiddenError}
+     * - Action: 'FORCE_CLOSE_REASON_REQUIRED' if items are open but no reason is provided.
+     * - Action: 'CLOSE_TASK' if a non-admin tries to force close or unauthorized access.
      */
 
-    // 1. Get task with all needed info
+    // 1. Fetch task and statistics regarding sub-tasks and assignments
     const task = await this.prismaService.task.findUnique({
       where: { id },
       select: {
         id: true,
         status: true,
+        ownerId: true,
+        groupId: true,
         _count: {
           select: {
             subTasks: { where: { status: { not: TaskStatus.CLOSED } } },
             assignees: {
               where: {
                 status: {
-                  in: [AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED],
+                  in: [
+                    AssignmentStatus.PENDING,
+                    AssignmentStatus.ACCEPTED,
+                    AssignmentStatus.DECLINED,
+                  ],
                 },
               },
             },
@@ -619,17 +692,33 @@ export class TasksService {
 
     if (!task) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
 
-    if (task.status === TaskStatus.CLOSED) {
-      return await this.prismaService.task.findUniqueOrThrow({ where: { id } });
-    } // If closed, just return task
+    // Return immediately if task is already closed to ensure idempotency
+    if (task.status === TaskStatus.CLOSED) return task as any;
 
-    // 2. Check if subTasks under the task are all complete
+    // 2. Identify roles and permissions
+    let isGroupAdmin = false;
+    const isTaskOwner = task.ownerId === actorId;
+
+    if (task.groupId) {
+      const member = await this.prismaService.groupMember.findUnique({
+        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
+        select: { role: true },
+      });
+
+      // Ensure user is part of the group
+      if (!member) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+      isGroupAdmin = this.isAdminish(member.role);
+    } else {
+      // Personal tasks: Only the owner can manage, acting as an implicit Admin
+      if (!isTaskOwner) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+      isGroupAdmin = true;
+    }
+
+    // 3. Implement Level 2: Restricted Management Logic
     const hasOpenItems = task._count.subTasks > 0 || task._count.assignees > 0;
 
-    // 3. If there are incompleted subTasks and no close reason, throw error
+    // A. Request a reason if items are incomplete to trigger the frontend "Force Close" modal
     if (hasOpenItems && !opts?.reason) {
-      // Return specific error for frontend to catch and pop-up
-      // a reason winddow for user to input
       throw TasksErrors.TaskForbiddenError.byActorOnTask(
         actorId,
         id,
@@ -637,7 +726,26 @@ export class TasksService {
       );
     }
 
-    // 4. Update and close a task
+    // B. Permission validation:
+    // - Force Close (items remain): Restricted to Admins.
+    // - Normal Close (all items done): Allowed for both Owner and Admin.
+    const isAttemptingForceClose = hasOpenItems && opts?.reason;
+    const canPerformAction = isGroupAdmin || (isTaskOwner && !hasOpenItems);
+
+    if (!canPerformAction) {
+      const cause = isAttemptingForceClose
+        ? 'Only administrators can force close tasks with incomplete items.'
+        : 'User do not have permission to close this task.';
+
+      throw TasksErrors.TaskForbiddenError.byActorOnTask(
+        actorId,
+        id,
+        'CLOSE_TASK',
+        { cause },
+      );
+    }
+
+    // 4. Execute Transaction to update task and related assignments/sub-tasks
     return this.prismaService.$transaction(async (tx) => {
       const updatedTask = await tx.task.update({
         where: { id },
@@ -646,13 +754,11 @@ export class TasksService {
           closedAt: new Date(),
           closedById: actorId,
           closedReason: opts?.reason ?? null,
-          //Key: Mark if this is an 'incompleted' task if there is subTask still opened
           closedWithOpenAssignees: hasOpenItems,
         },
       });
 
-      // A. Deal with user with ACCEPTED assignmentStatus.
-      // Change the status to DROPPED.
+      // Update assignment statuses for audit and clean-up
       await tx.taskAssignee.updateMany({
         where: { taskId: id, status: AssignmentStatus.ACCEPTED },
         data: { status: AssignmentStatus.DROPPED, updatedAt: new Date() },
@@ -663,7 +769,7 @@ export class TasksService {
         data: { status: AssignmentStatus.SKIPPED, updatedAt: new Date() },
       });
 
-      // B. Close all the subTasks that not done.
+      // If force-closed, terminate all remaining open sub-tasks
       if (hasOpenItems) {
         await tx.subTask.updateMany({
           where: { taskId: id, status: { not: TaskStatus.CLOSED } },
@@ -697,7 +803,7 @@ export class TasksService {
       await this.updateTaskStatus(
         id,
         {
-          target: TaskStatus.ARCHIVED,
+          newStatus: TaskStatus.ARCHIVED,
           actorId,
         },
         tx,
@@ -718,77 +824,107 @@ export class TasksService {
 
   async restoreTask(id: number, actorId: number): Promise<void> {
     /**
-     * Restores a task and its archived sub-tasks back to 'OPEN' status.
+     * Restores a task to 'OPEN' status from either 'CLOSED' or 'ARCHIVED'.
      * * @description
-     * 1. Authorization:
-     * - Personal Tasks: Only the owner can restore.
-     * - Group Tasks: Only users with OWNER or ADMIN roles can restore.
-     * 2. Audit Reset: Clears 'closedAt' and 'closedById' fields.
-     * 3. Cascade: Specifically restores sub-tasks that were previously 'ARCHIVED'.
-     * * @param id - Task ID to be restored.
-     * @param actorId - The user ID initiating the request.
-     * @throws {TasksErrors.TaskNotFoundError} If task doesn't exist or ownership is violated.
-     * @throws {GroupsErrors.NotAuthorizedToUpdateTasksStatusError} If group permissions are insufficient.
-     * @returns {Promise<void>}
+     * This is a high-level orchestration method that performs the following:
+     * 1. **State Transition & Validation**: Delegates core logic to `executeUpdateLogic`,
+     * ensuring the transition is legal (via State Machine) and the user has sufficient permissions.
+     * 2. **Audit Reset**: Automatically clears completion-related fields (e.g., `closedAt`, `closedReason`).
+     * 3. **Conditional Cascading**:
+     * - If restored from `ARCHIVED`: Reactivates all associated sub-tasks that were previously archived.
+     * - If restored from `CLOSED`: Reverts assignees marked as `SKIPPED` or `DROPPED` back to `PENDING`.
+     * * @param id - The unique identifier of the task to be restored.
+     * @param actorId - The ID of the user performing the restoration.
+     * @throws {TasksErrors.TaskNotFoundError} If the task does not exist.
+     * @throws {TasksErrors.TaskForbiddenError} If the user lacks permission or the transition is illegal.
+     * @returns {Promise<void>} Resolves when the transaction is successfully committed.
      */
 
+    // 1. Fetch the task's current status BEFORE updating
+    // We need to know where it's coming from to apply specific side effects
     const task = await this.prismaService.task.findUnique({
       where: { id },
-      select: {
-        id: true,
-        ownerId: true,
-        group: {
-          select: {
-            id: true,
-            members: {
-              where: { userId: actorId },
-              select: { role: true },
-            },
-          },
-        },
-      },
+      select: { status: true },
     });
 
     if (!task) {
       throw TasksErrors.TaskNotFoundError.byId(actorId, id);
     }
 
-    // --- Authorization Logic ---
-    if (!task.group) {
-      // Case 1: Personal Task - Only owner can restore
-      if (task.ownerId !== actorId) {
-        throw TasksErrors.TaskNotFoundError.byId(actorId, id); // Use NotFound to prevent ID leaking
-      }
-    } else {
-      // Case 2: Group Task - Check member role
-      const member = task.group.members[0]; // Since we filtered by userId, it will have 0 or 1 item
+    const originalStatus = task.status;
 
-      if (!member || !this.isAdminish(member.role)) {
-        const role = member?.role || null;
-        throw GroupsErrors.GroupActionForbiddenError.updateTaskStatus(
-          task.group.id,
-          actorId,
-          role,
-        );
-      }
-    }
-
-    // --- Execution Logic ---
+    // 2. Use a transaction to ensure atomic updates
     return this.prismaService.$transaction(async (tx) => {
-      await tx.task.update({
-        where: { id },
-        data: {
-          status: TaskStatus.OPEN,
-          closedAt: null,
-          closedById: null,
-        },
-      });
+      // 🚀 [KEY MOVE] Call the unified logic
+      // This handles: Permissions, State Machine, and Task audit field resets (closedAt, etc.)
+      await this.executeUpdateLogic(
+        id,
+        { newStatus: TaskStatus.OPEN, actorId },
+        tx,
+      );
 
-      // We only restore subtasks that were ARCHIVED (to preserve originally CLOSED ones)
-      await tx.subTask.updateMany({
-        where: { taskId: id, status: TaskStatus.ARCHIVED },
-        data: { status: TaskStatus.OPEN },
-      });
+      // 3. Apply side effects based on the original status
+      if (originalStatus === TaskStatus.ARCHIVED) {
+        await this.handleRestoreFromArchived(id, tx);
+      }
+
+      if (originalStatus === TaskStatus.CLOSED) {
+        await this.handleRestoreFromClosed(id, tx);
+      }
+    });
+  }
+
+  private async handleRestoreFromArchived(
+    taskId: number,
+    tx: Prisma.TransactionClient,
+  ) {
+    /**
+     * Handles the cascading restoration of sub-tasks when a parent task is unarchived.
+     * * @description
+     * This method ensures data consistency by automatically moving all associated sub-tasks
+     * back to 'OPEN' status, but ONLY if they were in the 'ARCHIVED' state.
+     * Sub-tasks that were manually 'CLOSED' before the parent task was archived will remain
+     * 'CLOSED' to preserve the user's original progress.
+     * * @param taskId - The unique identifier of the parent task being restored.
+     * @param tx - The active Prisma transaction client to ensure atomicity.
+     * @returns {Promise<void>}
+     * @private
+     */
+
+    // Restore subtasks that were automatically archived
+    await tx.subTask.updateMany({
+      where: { taskId, status: TaskStatus.ARCHIVED },
+      data: { status: TaskStatus.OPEN },
+    });
+  }
+
+  private async handleRestoreFromClosed(
+    taskId: number,
+    tx: Prisma.TransactionClient,
+  ) {
+    /**
+     * Manages the cascading side effects for task assignees when a task is reopened from 'CLOSED'.
+     *
+     * @description
+     * This method ensures that team collaboration can resume effectively by:
+     * 1. Identifying assignees who were sidelined during the task's closure (marked as 'SKIPPED' or 'DROPPED').
+     * 2. Reverting their status back to 'PENDING', effectively putting the task back on their to-do list.
+     * * It specifically avoids touching users who already reached 'COMPLETED' or 'DECLINED' to
+     * respect their finalized contribution or explicit refusal.
+     *
+     * @param taskId - The unique identifier of the task being reopened.
+     * @param tx - The active Prisma transaction client to ensure database atomicity.
+     * @returns {Promise<void>}
+     * @private
+     */
+
+    // Bring back assignees who were marked as SKIPPED/DROPPED due to task closure
+    await tx.taskAssignee.updateMany({
+      where: {
+        taskId,
+        status: { in: [AssignmentStatus.SKIPPED, AssignmentStatus.DROPPED] },
+      },
+      data: { status: AssignmentStatus.PENDING },
     });
   }
 
@@ -797,31 +933,49 @@ export class TasksService {
     opts: UpdateStatusOpts,
     txHost?: Prisma.TransactionClient,
   ): Promise<void> {
-    // 🚀 如果已經有外部事務 txHost，直接執行邏輯
+    /**
+     * Updates the status of a task with built-in transaction management.
+     * * @description
+     * This method serves as the public entry point for status transitions. It implements
+     * a "Transaction Propagation" pattern:
+     * 1. **Reusability**: If an existing transaction (`txHost`) is provided, it joins
+     * that transaction to ensure atomic operations across multiple service calls.
+     * 2. **Auto-encapsulation**: If no transaction is provided, it initiates a new
+     * Prisma transaction to wrap the update logic.
+     * * This ensures that if any part of the status update (including side effects like
+     * audit logging or cascading) fails, the entire operation is rolled back, preventing
+     * data inconsistency.
+     * * @param id - The unique identifier of the task.
+     * @param opts - Configuration for the update (target status, actor, reason, etc.).
+     * @param txHost - (Optional) An existing Prisma transaction client to participate in.
+     * @returns {Promise<void>}
+     */
+
+    // If txHost provided, use it directly
     if (txHost) {
       return this.executeUpdateLogic(id, opts, txHost);
     }
 
-    // 🚀 否則，開啟一個新的事務並執行邏輯
+    // If not, open a new transaction
     return this.prismaService.$transaction(async (tx) => {
       return this.executeUpdateLogic(id, opts, tx);
     });
   }
 
-  /**
-   * Core internal logic for updating task status.
-   * Designed to be executed within a Prisma Transaction.
-   * * @param id - Task ID
-   * @param opts - Update options (target status, actor, force flag, reason)
-   * @param tx - The active Prisma Transaction Client
-   */
   private async executeUpdateLogic(
     id: number,
     opts: UpdateStatusOpts,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    const { target, actorId, force, reason } = opts;
-    const isTargetClosed = target === TaskStatus.CLOSED;
+    /**
+     * Core internal logic for updating task status.
+     * Designed to be executed within a Prisma Transaction.
+     * * @param id - Task ID
+     * @param opts - Update options (target status, actor, force flag, reason)
+     * @param tx - The active Prisma Transaction Client
+     */
+    const { newStatus, actorId, force, reason } = opts;
+    const isClosingTask = newStatus === TaskStatus.CLOSED;
 
     // -----------------------------------------------------------
     // 1) Unified Data Fetching
@@ -835,9 +989,8 @@ export class TasksService {
         groupId: true,
         status: true,
         // Only fetch relations if we are attempting to CLOSE the task
-        assignees:
-          isTargetClosed && true ? { select: { status: true } } : false,
-        subTasks: isTargetClosed ? { select: { status: true } } : false,
+        assignees: isClosingTask ? { select: { status: true } } : false,
+        subTasks: isClosingTask ? { select: { status: true } } : false,
       },
     });
 
@@ -863,11 +1016,6 @@ export class TasksService {
         );
       }
 
-      // const ADMIN_ROLES = new Set<GroupRole>([
-      //   GroupRole.OWNER,
-      //   GroupRole.ADMIN,
-      // ]);
-      // allowed = ADMIN_ROLES.has(member.role);
       allowed = this.isAdminish(member.role);
     }
 
@@ -883,18 +1031,13 @@ export class TasksService {
     // 3) State Transition Rules (State Machine)
     // -----------------------------------------------------------
     const from = task.status;
-    const isLegalTransition =
-      (from === TaskStatus.OPEN &&
-        (target === TaskStatus.CLOSED || target === TaskStatus.ARCHIVED)) ||
-      (from === TaskStatus.CLOSED &&
-        (target === TaskStatus.ARCHIVED || target === TaskStatus.OPEN)) ||
-      (from === TaskStatus.ARCHIVED && target === TaskStatus.OPEN);
+    const isLegalTransition = this.taskStatusCanTransition(from, newStatus);
 
     if (!isLegalTransition) {
       throw TasksErrors.TaskForbiddenError.byActorOnTask(
         actorId,
         id,
-        `ILLEGAL_TRANSITION_${from}_TO_${target}`,
+        `ILLEGAL_TRANSITION_${from}_TO_${newStatus}`,
       );
     }
 
@@ -904,7 +1047,7 @@ export class TasksService {
     let closedWithOpenAssignees = false;
     let closedReason: string | null = null;
 
-    if (isTargetClosed) {
+    if (isClosingTask) {
       const subTasks = (task as any).subTasks ?? []; // Use type casting if necessary due to conditional select
       const hasSubTasks = subTasks.length > 0;
 
@@ -956,16 +1099,16 @@ export class TasksService {
     // -----------------------------------------------------------
     // 5) Execute Update
     // -----------------------------------------------------------
-    const updateData: Prisma.TaskUpdateInput = { status: target };
+    const updateData: Prisma.TaskUpdateInput = { status: newStatus };
 
-    if (target === TaskStatus.CLOSED) {
+    if (newStatus === TaskStatus.CLOSED) {
       Object.assign(updateData, {
         closedAt: new Date(),
         closedById: actorId,
         closedReason,
         closedWithOpenAssignees,
       });
-    } else if (target === TaskStatus.OPEN) {
+    } else if (newStatus === TaskStatus.OPEN) {
       // Restore logic: Reset audit fields when reopening
       Object.assign(updateData, {
         closedAt: null,
@@ -977,107 +1120,6 @@ export class TasksService {
 
     await tx.task.update({ where: { id }, data: updateData });
   }
-
-  // private async listTaskCore(
-  //   scope: ListTasksScope,
-  //   timeZone: string,
-  //   filters: ListTasksFilters,
-  //   orderByKey: OrderKey,
-  //   take?: number,
-  // ): Promise<ListTasksResult> {
-  //   /**
-  //    * Core logic for listing and filtering tasks.
-  //    * * This method handles complex timezone-aware boundary calculations,
-  //    * applies various due-date filters (TODAY, EXPIRED, NONE, RANGE),
-  //    * and transforms raw database entities into DTOs containing calculated
-  //    * business logic like the `canClose` flag.
-  //    *
-  //    * @param scope - Defines the visibility context: personal (owner) or group-based.
-  //    * @param timeZone - The user's IANA timezone (e.g., 'UTC', 'Asia/Taipei') used for accurate "Today" calculations.
-  //    * @param filters - Filtering criteria including status, due types, and custom date ranges.
-  //    * @param orderByKey - Sorting strategy for the result set.
-  //    * @param take - Maximum number of records to retrieve (for pagination).
-  //    * * @returns {Promise<ListTasksResult>}
-  //    */
-  //   const status = filters.status ?? ['OPEN'];
-  //   const { startUtc, endUtc, todayDateOnlyUtc } = this.getTaskBounds(timeZone);
-  //   const due = new Set(filters.due ?? []);
-  //   const OR: Prisma.TaskWhereInput[] = [];
-
-  //   // 1. No due day
-  //   if (due.has('NONE')) {
-  //     OR.push({ dueAtUtc: null });
-  //   }
-
-  //   // 2. Due today (include specified and all day tasks)
-  //   if (due.has('TODAY')) {
-  //     OR.push(
-  //       { dueAtUtc: { gte: startUtc, lte: endUtc } },
-  //       { allDayLocalDate: todayDateOnlyUtc },
-  //     );
-  //   }
-
-  //   // 3. Expired
-  //   if (due.has('EXPIRED')) {
-  //     OR.push(
-  //       { dueAtUtc: { lt: startUtc } }, // Time lesser than today means expired
-  //       { allDayLocalDate: { lt: todayDateOnlyUtc } },
-  //     );
-  //   }
-
-  //   // 4. Range
-  //   if (due.has('RANGE') && filters.range) {
-  //     OR.push({
-  //       dueAtUtc: { gte: filters.range.startUtc, lte: filters.range.endUtc },
-  //     });
-  //   }
-
-  //   const where: Prisma.TaskWhereInput = {
-  //     ...(scope.kind === 'owner'
-  //       ? { ownerId: scope.ownerId, groupId: null }
-  //       : { groupId: scope.groupId }),
-  //     status: { in: status },
-  //     ...(OR.length ? { OR } : {}),
-  //   };
-
-  //   const items = await this.prismaService.task.findMany({
-  //     where,
-  //     orderBy: this.resolveOrderBy(orderByKey),
-  //     take,
-  //     include: {
-  //       assignees: {
-  //         include: {
-  //           assignee: { select: { id: true, name: true, email: true } },
-  //         },
-  //       },
-  //       _count: {
-  //         select: {
-  //           subTasks: { where: { status: { not: 'CLOSED' } } },
-  //         },
-  //       },
-  //     },
-  //   });
-
-  //   const mapped = items.map(({ _count, assignees, ...task }) => {
-  //     const hasOpenSubTasks = (_count?.subTasks ?? 0) > 0;
-
-  //     return {
-  //       ...task,
-  //       assignees: assignees.map((a) => ({
-  //         id: a.assignee.id,
-  //         name: a.assignee.name,
-  //         email: a.assignee.email,
-  //         status: a.status,
-  //       })),
-  //       canClose: !hasOpenSubTasks,
-  //     };
-  //   });
-
-  //   return {
-  //     items: mapped,
-  //     bounds: { timeZone, startUtc, endUtc, todayDateOnlyUtc },
-  //   };
-  // }
 
   private async listTaskCore(
     scope: ListTasksScope,
@@ -1136,9 +1178,9 @@ export class TasksService {
         },
         _count: {
           select: {
-            // 🚀 統計未完成的子任務
+            // Check for blockers: Sub-tasks that are not yet finalized
             subTasks: { where: { status: { not: 'CLOSED' } } },
-            // 🚀 統計進行中或待定的指派 (用於判斷是否能絲滑關閉)
+            // Check for engagement: Active assignees who haven't finished their part
             assignees: {
               where: {
                 status: { in: ['PENDING', 'ACCEPTED'] },
@@ -1155,15 +1197,19 @@ export class TasksService {
       const incompleteAssigneesCount = _count?.assignees ?? 0;
 
       /**
-       * 🟢 isSmoothClose (方案 C 核心)
-       * 代表此任務沒有任何遺留事項，管理員可以在首頁直接點擊 Done 而不需要填寫理由。
+       * isSmoothClose:
+       * Indicates the task can be closed immediately without a confirmation modal.
+       * Condition: No unfinished sub-tasks AND all assignees have completed their work.
        */
       const isSmoothClose =
         openSubTasksCount === 0 && incompleteAssigneesCount === 0;
 
       /**
-       * 🟡 canClose
-       * 根據你的業務邏輯，如果沒有未完成子任務，通常就具備關閉資格（但可能需要理由）。
+       * canClose:
+       * Determines if the 'Close' button is enabled at all.
+       * Condition: All sub-tasks must be 'CLOSED' first.
+       * Note: If incompleteAssigneesCount > 0, the UI should prompt for a
+       * 'Force Close' reason.
        */
       const canClose = openSubTasksCount === 0;
 
@@ -1177,6 +1223,7 @@ export class TasksService {
         })),
         isSmoothClose,
         canClose,
+        // Combined count of items requiring attention before a "normal" close
         pendingCounts: openSubTasksCount + incompleteAssigneesCount,
       };
     });
@@ -1190,9 +1237,8 @@ export class TasksService {
   // ----------------- SubTask -----------------
 
   async createSubTask(payload: SubTaskAddPayload): Promise<void> {
-    // 1. 取得父任務資訊，並一併取得 Actor (操作者) 的時區
-    // 這裡我們多抓 actor 的時區，因為時間轉換應以操作者為準
-    const [parentTask, actorUser] = await Promise.all([
+    // 1. Get parent task info and acotr time zone for time transition
+    const [parentTask, actor] = await Promise.all([
       this.prismaService.task.findUnique({
         where: { id: payload.parentTaskId },
         select: {
@@ -1203,7 +1249,7 @@ export class TasksService {
       }),
       this.prismaService.user.findUnique({
         where: { id: payload.actorId },
-        select: { timeZone: true },
+        select: { id: true, timeZone: true },
       }),
     ]);
 
@@ -1214,12 +1260,16 @@ export class TasksService {
       );
     }
 
-    const actorTz = actorUser?.timeZone || 'UTC';
+    if (!actor) {
+      throw UsersErrors.UserNotFoundError.byId(payload.actorId);
+    }
 
-    // 2. 權限檢查
+    const actorTz = actor.timeZone;
+
+    // 2. Permission check
     if (!parentTask.groupId) {
-      // 個人任務：只有擁有者可以加子任務
-      if (parentTask.ownerId !== payload.actorId) {
+      // Personaly task only allowed owner add subTasks
+      if (parentTask.ownerId !== actor.id) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           payload.actorId,
           payload.parentTaskId,
@@ -1227,7 +1277,7 @@ export class TasksService {
         );
       }
     } else {
-      // 團隊任務：檢查成員資格
+      // Group task: check member role
       const member = await this.prismaService.groupMember.findUnique({
         where: {
           groupId_userId: {
@@ -1236,6 +1286,7 @@ export class TasksService {
           },
         },
       });
+
       if (!member) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           payload.actorId,
@@ -1245,21 +1296,13 @@ export class TasksService {
       }
     }
 
-    // 3. 核心日期處理邏輯 (解決沒選時間變無期限的 Bug)
-    let dueAtUtc: Date | null = null;
-    let allDayLocalDate: Date | null = null;
-
-    if (payload.allDay) {
-      // 全天任務
-      allDayLocalDate = payload.dueDate
-        ? new Date(`${payload.dueDate}T00:00:00.000Z`)
-        : null;
-    } else if (payload.dueDate) {
-      // 非全天任務：只要有日期，沒時間就預設 00:00 (或 23:59，依需求)
-      const timePart = payload.dueTime || '00:00';
-      const localISO = `${payload.dueDate}T${timePart}:00`;
-      dueAtUtc = fromZonedTime(localISO, actorTz);
-    }
+    // 3. Core daytime logic (deal with infinite)
+    const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
+      payload.allDay,
+      payload.dueDate,
+      payload.dueTime,
+      actorTz,
+    );
 
     // 4. 構建 Prisma 資料 (利用物件展開簡化 if)
     const data: Prisma.SubTaskCreateInput = {
@@ -1271,7 +1314,6 @@ export class TasksService {
       allDay: !!payload.allDay,
       dueAtUtc,
       allDayLocalDate,
-      // 關聯設定
       task: { connect: { id: parentTask.id } },
     };
 
@@ -1339,8 +1381,6 @@ export class TasksService {
         );
       }
 
-      // const ADMINISH = new Set<GroupRole>([GroupRole.OWNER, GroupRole.ADMIN]);
-      // isAdminish = ADMINISH.has(member.role);
       isAdminish = this.isAdminish(member.role);
     }
 
@@ -1447,7 +1487,7 @@ export class TasksService {
     subTaskId: number,
     opts: UpdateStatusOpts,
   ): Promise<void> {
-    const { target, actorId } = opts;
+    const { newStatus, actorId } = opts;
 
     return this.prismaService.$transaction(async (tx) => {
       // 1) 取基本資料 (只需 status 即可進行狀態轉移檢查)
@@ -1470,29 +1510,31 @@ export class TasksService {
       const from = subTask.status;
       const legal =
         (from === TaskStatus.OPEN &&
-          (target === TaskStatus.CLOSED || target === TaskStatus.ARCHIVED)) ||
+          (newStatus === TaskStatus.CLOSED ||
+            newStatus === TaskStatus.ARCHIVED)) ||
         (from === TaskStatus.CLOSED &&
-          (target === TaskStatus.ARCHIVED || target === TaskStatus.OPEN)) ||
-        (from === TaskStatus.ARCHIVED && target === TaskStatus.OPEN);
+          (newStatus === TaskStatus.ARCHIVED ||
+            newStatus === TaskStatus.OPEN)) ||
+        (from === TaskStatus.ARCHIVED && newStatus === TaskStatus.OPEN);
 
       if (!legal) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           actorId,
           subTaskId,
-          `ILLEGAL_SUBTASK_TRANSITION_${from}_TO_${target}`,
+          `ILLEGAL_SUBTASK_TRANSITION_${from}_TO_${newStatus}`,
         );
       }
 
       // 4) 審計欄位與更新資料 (保持不變)
-      const data: Prisma.SubTaskUpdateInput = { status: target };
+      const data: Prisma.SubTaskUpdateInput = { status: newStatus };
 
-      if (target === TaskStatus.CLOSED) {
+      if (newStatus === TaskStatus.CLOSED) {
         // 記錄關閉人、關閉時間和原因
         Object.assign(data, {
           closedAt: new Date(),
           closedById: actorId,
         });
-      } else if (target === TaskStatus.OPEN) {
+      } else if (newStatus === TaskStatus.OPEN) {
         // restore：清掉關閉資訊
         Object.assign(data, {
           closedAt: null,
@@ -1608,7 +1650,11 @@ export class TasksService {
       // 4. 狀態轉換合法性檢查 (State Machine)
       // -----------------------------------------------------------
       const prev = assignee.status;
-      const isLegal = this.checkStatusTransition(prev, next, subTask.status);
+      const isLegal = this.isValidAssignmentTransition(
+        prev,
+        next,
+        subTask.status,
+      );
 
       if (!isLegal) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
@@ -1991,39 +2037,29 @@ export class TasksService {
     const IS_ADMIN = new Set<GroupRole>([GroupRole.OWNER, GroupRole.ADMIN]);
     return IS_ADMIN.has(role);
   }
-
-  private checkStatusTransition(
+  // isValidAssignmentTransition
+  private isValidAssignmentTransition(
     prev: AssignmentStatus,
     next: AssignmentStatus,
     taskStatus: string,
   ): boolean {
     if (prev === next) return true;
 
-    const transitions: Record<AssignmentStatus, AssignmentStatus[]> = {
-      [AssignmentStatus.PENDING]: [
-        AssignmentStatus.ACCEPTED,
-        AssignmentStatus.DECLINED,
-        AssignmentStatus.SKIPPED,
-      ],
-      [AssignmentStatus.ACCEPTED]: [
-        AssignmentStatus.COMPLETED,
-        AssignmentStatus.DECLINED,
-        AssignmentStatus.PENDING,
-        AssignmentStatus.DROPPED,
-      ],
-      [AssignmentStatus.DECLINED]: [
-        AssignmentStatus.ACCEPTED,
-        AssignmentStatus.PENDING,
-      ],
-      [AssignmentStatus.COMPLETED]:
-        taskStatus === 'OPEN' ? [AssignmentStatus.ACCEPTED] : [],
+    // 🚀 2. 處理動態的 COMPLETED 邏輯
+    if (prev === AssignmentStatus.COMPLETED) {
+      // 只有當父任務還是 OPEN 時，才允許從 COMPLETED 回退到 ACCEPTED (例如撤銷完成)
+      return taskStatus === 'OPEN' && next === AssignmentStatus.ACCEPTED;
+    }
 
-      // 🚨 新增終端狀態：通常不允許從這些狀態再往外跳
-      [AssignmentStatus.SKIPPED]: [],
-      [AssignmentStatus.DROPPED]: [],
-    };
+    // 🚀 3. 處理其他靜態規則
+    const allowed = TasksService.ASSIGNMENT_RULES[prev];
+    return allowed?.includes(next) ?? false;
+  }
 
-    return transitions[prev]?.includes(next) ?? false;
+  private taskStatusCanTransition(from: TaskStatus, to: TaskStatus): boolean {
+    if (from === to) return true; // Staying in the same status is usually okay
+    const allowed = TasksService.TASK_STATUS_MAP[from];
+    return allowed ? allowed.includes(to) : false;
   }
 
   private mapPriorityToString(priority: number): string {
@@ -2090,5 +2126,41 @@ export class TasksService {
       default:
         return [{ createdAt: 'asc' }];
     }
+  }
+
+  /**
+   * Processes local date and time input into database-ready UTC and Local Date formats.
+   * * @param isAllDay - Whether the task is an all-day event.
+   * @param dueDate - The local date string (YYYY-MM-DD).
+   * @param dueTime - The local time string (HH:mm), optional.
+   * @param userTz - The user's IANA time zone identifier.
+   * @returns An object containing the absolute UTC point and the localized calendar date.
+   */
+  private calculateTaskDates(
+    isAllDay: boolean,
+    dueDate: string | null | undefined,
+    dueTime: string | null | undefined,
+    userTz: string = 'UTC',
+  ): { dueAtUtc: Date | null; allDayLocalDate: Date | null } {
+    // Defensive check: If no date is provided, both are null
+    if (!dueDate) {
+      return { dueAtUtc: null, allDayLocalDate: null };
+    }
+
+    if (isAllDay) {
+      return {
+        allDayLocalDate: new Date(`${dueDate}T00:00:00.000Z`),
+        dueAtUtc: null,
+      };
+    }
+
+    // Non all-day: Specific time logic
+    const timePart = dueTime || '00:00';
+    const localISO = `${dueDate}T${timePart}:00`;
+
+    return {
+      dueAtUtc: fromZonedTime(localISO, userTz),
+      allDayLocalDate: null,
+    };
   }
 }

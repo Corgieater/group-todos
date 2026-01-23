@@ -21,11 +21,24 @@ html(lang="en")
         const isGroup = typeof groupId !== 'undefined' && groupId !== null;
         const groupName = group ? group.name : null;
         
-        const canManageFlag = (typeof canManage !== 'undefined') ? !!canManage : !!isAdminish;
+        // --- 權限邏輯實作 ---
+        // 1. 誰能改標題/內容？ (Admin 或 Owner)
+        const canEditTask = !!isAdminish || (typeof ownerId !== 'undefined' && Number(ownerId) === Number(currentUserId));
+        // 2. 誰能執行「強行關閉」或「封存」？ (僅限 Admin)
+        const canFinalizeTask = !!isAdminish;
+        // 3. 誰能執行「正常關閉」？ (檢查子任務是否全清)
         const taskCanClose = typeof canClose !== 'undefined' ? !!canClose : false; 
+        
+        // 🚀 關鍵修改：決定按鈕是否顯示為灰色 (Disabled)
+        // 如果任務沒做完，且使用者不是 Admin，就禁用按鈕
+        const isBtnDisabled = !taskCanClose && !canFinalizeTask;
+        
+        // 決定是否顯示關閉按鈕：Admin 隨時可見，Owner 亦可見 (但若未完成則會變灰)
+        const canShowCloseBtn = canFinalizeTask || canEditTask;
 
         const editModalId = `editTaskModal-${id}`;
         const forceCloseModalId = `forceCloseModal-${id}`;
+        const forbiddenModalId = `forbiddenModal-${id}`;
         const declineModalId = `declineModal-${id}`;
 
       .row.align-items-center.mb-3
@@ -43,23 +56,30 @@ html(lang="en")
               span.badge.text-bg-secondary Personal
         .col-auto
           .d-flex.gap-2
-            if status === 'OPEN' && canManageFlag
-              form(action=`/api/tasks/${id}/archive`, method="POST", class="d-inline")
-                if typeof csrfToken !== 'undefined'
-                  input(type="hidden", name="_csrf", value=csrfToken)
-                button.btn.btn-outline-secondary(type="submit" title="Archive")
-                  i.bi.bi-box-arrow-down.me-1
-                  | Archive
+            if status === 'OPEN'
+              if canFinalizeTask
+                form(action=`/api/tasks/${id}/archive`, method="POST", class="d-inline")
+                  if typeof csrfToken !== 'undefined'
+                    input(type="hidden", name="_csrf", value=csrfToken)
+                  button.btn.btn-outline-secondary(type="submit" title="Archive")
+                    i.bi.bi-box-arrow-down.me-1
+                    | Archive
               
-              button.btn#btn-main-close(
-                type="button" 
-                class=taskCanClose ? "btn-success" : "btn-warning"
-                title="Close task"
-              )
-                i.bi.bi-check2-circle.me-1
-                | #{taskCanClose ? 'Close' : 'Force Close'}
+              if canShowCloseBtn
+                //- 🚀 修改點：加入 disabled 屬性與文字判斷
+                button.btn#btn-main-close(
+                  type="button" 
+                  class=taskCanClose ? "btn-success" : "btn-warning"
+                  title=isBtnDisabled ? "Only administrators can force close incomplete tasks" : "Close task"
+                  disabled=isBtnDisabled
+                )
+                  i.bi.bi-check2-circle.me-1
+                  if isBtnDisabled
+                    | Force Close (Admin Only)
+                  else
+                    | #{taskCanClose ? 'Close' : 'Force Close'}
 
-            else if status !== 'OPEN' && canManageFlag
+            else if status !== 'OPEN' && canFinalizeTask
               form(action=`/api/tasks/${id}/restore`, method="POST", class="d-inline")
                 if typeof csrfToken !== 'undefined'
                   input(type="hidden", name="_csrf", value=csrfToken)
@@ -67,7 +87,7 @@ html(lang="en")
                   i.bi.bi-arrow-counterclockwise.me-1
                   | Reopen
 
-            if canManageFlag
+            if canEditTask
               button.btn.btn-primary(type="button" data-bs-toggle="modal" data-bs-target=`#${editModalId}`)
                 i.bi.bi-pencil-square.me-1
                 | Edit
@@ -113,7 +133,7 @@ html(lang="en")
         .card-body
           .d-flex.align-items-center.justify-content-between.mb-3
             h2.h5.mb-0 Sub Tasks
-            if canManageFlag
+            if canEditTask
               a.btn.btn-sm.btn-primary(href=`/tasks/${id}/sub-tasks/create`)
                 i.bi.bi-plus-lg.me-1
                 | Add SubTask
@@ -148,11 +168,8 @@ html(lang="en")
             if (viewerIsAssignee || allowSelfAssign) && status === 'OPEN'
               -
                 const st = viewerAssigneeStatus || 'NONE';
-                // 🚀 canAccept: 從未參加、已拒絕、或已完成(且任務仍開啟)時可進入或回到 Accepted
                 const canAccept   = st === 'PENDING' || st === 'DECLINED' || st === 'NONE' || st === 'COMPLETED';
-                // 🚀 canComplete: 只有已接受狀態可完成
                 const canComplete = st === 'ACCEPTED'; 
-                // 🚀 canDecline: 等待中(Decline) 或 已接受(Withdraw) 都可以選擇不做了
                 const canDecline  = st === 'PENDING' || st === 'ACCEPTED';
 
               h3.h6.mb-2 Update my status
@@ -186,8 +203,7 @@ html(lang="en")
                     = (st === 'ACCEPTED' ? 'Withdraw' : 'Decline')
 
       // ===== MODALS =====
-      if canManageFlag
-        //- 1. Edit Task Modal (保持不變)
+      if canEditTask
         .modal.fade(id=editModalId tabindex="-1" aria-hidden="true")
           .modal-dialog.modal-lg
             .modal-content
@@ -228,7 +244,7 @@ html(lang="en")
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-primary(type="submit") Save Changes
 
-        //- 2. Force Close Modal (保持不變)
+      if canFinalizeTask
         .modal.fade(id=forceCloseModalId tabindex="-1" aria-hidden="true")
           .modal-dialog
             .modal-content
@@ -237,17 +253,31 @@ html(lang="en")
                   i.bi.bi-exclamation-triangle-fill.me-2
                   | Force Close Required
                 button.btn-close(type="button" data-bs-dismiss="modal" aria-label="Close")
-              form#forceCloseForm(action=`/api/tasks/${id}/close`, method="POST")
+              form#forceCloseForm
                 .modal-body
                   p.text-muted The task is not yet fully completed. To force closure, please enter a reason:
-                  if typeof csrfToken !== 'undefined'
-                    input(type="hidden", name="_csrf", value=csrfToken)
                   textarea.form-control(name="reason" rows="3" placeholder="For example: manual approval by the administrator..." required)
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-warning#btn-confirm-force-close(type="submit") Confirm Force Close
 
-      //- 3. Decline/Withdraw Modal
+      //- 🚀 拒絕彈窗
+      .modal.fade(id=forbiddenModalId tabindex="-1" aria-hidden="true")
+        .modal-dialog
+          .modal-content
+            .modal-header.bg-light
+              h5.modal-title 
+                i.bi.bi-shield-lock.me-2.text-danger
+                | Action Required
+              button.btn-close(type="button" data-bs-dismiss="modal")
+            .modal-body.text-center.py-4
+              i.bi.bi-exclamation-circle.text-warning(style="font-size: 3rem;")
+              h4.mt-3 Close Task Denied
+              p.text-muted You cannot close this task yet because there are incomplete sub-tasks or active assignees.
+              p.small.text-primary Only group administrators can perform a "Force Close".
+            .modal-footer
+              button.btn.btn-primary(type="button" data-bs-dismiss="modal") Understood
+
       .modal.fade(id=declineModalId tabindex="-1" aria-hidden="true")
         .modal-dialog
           .modal-content
@@ -269,7 +299,7 @@ html(lang="en")
       .mt-3
         a.link-secondary(href="/tasks/home") ← Back to home
 
-    // ===== SCRIPTS (保持不變) =====
+    // ===== SCRIPTS =====
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
     script(src="https://cdn.socket.io/4.7.2/socket.io.min.js")
     script.
@@ -278,11 +308,16 @@ html(lang="en")
         const taskId = "#{id}";
         const currentUserId = "#{currentUserId}";
         const currentUserName = "#{currentUserName || 'Someone'}"; 
-        const forceModalElement = document.getElementById("#{forceCloseModalId}");
-        const bsForceModal = forceModalElement ? new bootstrap.Modal(forceModalElement) : null;
+
+        // 權限標記供 JS 判斷
+        const canFinalize = "#{canFinalizeTask}" === "true";
+        const taskCanClose = "#{taskCanClose}" === "true";
         
-        let typingTimer;
-        let isTypingSent = false;
+        // 初始化 Modals
+        const forceCloseModalEl = document.getElementById("#{forceCloseModalId}");
+        const forceCloseModal = forceCloseModalEl ? new bootstrap.Modal(forceCloseModalEl) : null;
+        const forbiddenModal = new bootstrap.Modal(document.getElementById("#{forbiddenModalId}"));
+
         const liveToastContainer = document.getElementById('liveToastContainer');
 
         function showToast(msg, type = 'primary') {
@@ -294,54 +329,59 @@ html(lang="en")
         }
 
         socket.on('connect', () => socket.emit('joinTask', taskId));
-        socket.on('taskUpdated', async (data) => {
-          if (Number(data.actorId) === Number(currentUserId)) return;
-          if (['SUBTASK_CREATED', 'SUBTASK_CLAIMED', 'SUBTASK_UPDATED'].includes(data.type)) {
-            const container = document.getElementById('subtask-list-container');
-            if (container) {
-              const res = await fetch(`/tasks/${taskId}/sub-tasks/partial`);
-              if (res.ok) container.innerHTML = await res.text();
-            }
-          } else {
-            showToast(`${data.updatedBy} updated the task.`, 'info');
-            setTimeout(() => window.location.reload(), 1500);
-          }
-        });
-
+        
         async function attemptClose(reason = null) {
+          // JS 層級攔截：雙重保險
+          if (!taskCanClose && !canFinalize) {
+            forbiddenModal.show();
+            return;
+          }
+
           try {
             const res = await fetch(`/api/tasks/${taskId}/close`, {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
                 'x-csrf-token': '#{csrfToken}'
               },
               body: JSON.stringify({ reason })
             });
-            if (res.ok) { window.location.reload(); } else {
-              const err = await res.json();
+
+            if (res.ok) {
+              window.location.reload();
+            } else {
+              const err = await res.json(); 
+              
               if (err.action === 'FORCE_CLOSE_REASON_REQUIRED') {
-                const modalEl = document.getElementById("#{forceCloseModalId}");
-                if (modalEl) { bootstrap.Modal.getOrCreateInstance(modalEl).show(); }
-              } else { showToast(err.message || 'Error', 'danger'); }
+                if (canFinalize && forceCloseModal) {
+                  forceCloseModal.show();
+                } else {
+                  forbiddenModal.show();
+                }
+              } else {
+                showToast(err.message || 'Error', 'danger');
+              }
             }
-          } catch (e) { showToast('Network error', 'danger'); }
+          } catch (e) {
+            showToast('Network error', 'danger');
+          }
         }
 
         document.getElementById('btn-main-close')?.addEventListener('click', () => attemptClose());
+        
         document.getElementById('forceCloseForm')?.addEventListener('submit', (e) => {
           e.preventDefault();
           const reason = e.target.querySelector('textarea[name="reason"]').value;
           attemptClose(reason);
         });
+
         const setupTyping = (id) => {
           document.getElementById(id)?.addEventListener('input', () => {
-            if (!isTypingSent) {
+            if (!this.isTypingSent) {
               socket.emit('typing', { taskId, userName: currentUserName });
-              isTypingSent = true;
-              setTimeout(() => { isTypingSent = false; }, 2000);
+              this.isTypingSent = true;
+              setTimeout(() => { this.isTypingSent = false; }, 2000);
             }
           });
         };

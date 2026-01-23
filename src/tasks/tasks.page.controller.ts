@@ -92,21 +92,27 @@ export class TasksPageController {
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
   ) {
-    const { task, isAdminish, canClose, groupMembers } =
+    const { task, isAdminish, isRealAdmin, canClose, groupMembers } =
       await this.tasksService.getTaskForViewer(id, user.userId);
 
     const viewerAssignment = await this.prismaService.taskAssignee.findUnique({
       where: { taskId_assigneeId: { taskId: id, assigneeId: user.userId } },
       include: {
-        assignedBy: {
-          select: { name: true },
-        },
+        assignedBy: { select: { name: true } },
       },
     });
 
     const viewModel = buildTaskVM(task, user.timeZone, isAdminish);
+
     res.render('tasks/details', {
       ...viewModel,
+      // 🚀 關鍵 1：確保 ownerId 被傳入，Pug 才能判斷使用者是否為 Task Owner
+      ownerId: task.ownerId,
+
+      // 🚀 關鍵 2：確保 isAdminish 是 getTaskForViewer 計算出來的結果
+      // 如果 buildTaskVM 裡面也有 isAdminish 且不包含 Owner，會被覆蓋
+      isAdminish: isRealAdmin,
+
       taskId: viewModel.id,
       todayISO: new Date().toISOString().slice(0, 10),
 
@@ -114,9 +120,8 @@ export class TasksPageController {
       viewerAssigneeStatus: viewerAssignment?.status ?? null,
       viewerAssigneeId: viewerAssignment?.assigneeId ?? null,
 
-      // ★ 允許自我指派（群組任務且是群組成員）
-      allowSelfAssign: !!task.groupId, // 也可更嚴謹：!!task.groupId && isMember
-      canClose,
+      allowSelfAssign: !!task.groupId,
+      canClose, // 這裡來自 getTaskForViewer 的邏輯
       groupMembers,
       currentUserId: user.userId,
       currentUserName: user.userName,

@@ -17,6 +17,7 @@ jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
 import { TaskPriority } from './types/enum';
 import { mock } from 'node:test';
+import { HttpStatus } from '@nestjs/common';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
@@ -195,48 +196,62 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('close', () => {
-    it('should close task without reason', async () => {
-      // 準備 Body 資料
-      const body = { reason: undefined };
+    it('should redirect on successful traditional form submission', async () => {
+      const req = { headers: {} } as any; // Not an AJAX request
+      await tasksController.close(66, {}, currentUser, res, req);
 
-      // 模擬 Service 回傳結果
-      const mockResult = { id: 1, status: 'CLOSED' };
-      mockTasksService.closeTask.mockResolvedValue(mockResult);
-
-      // 執行 Controller 方法
-      await tasksController.close(1, body, currentUser, res);
-
-      // 1. 驗證 Service 呼叫參數 (現在只有 id, actorId, 和包含 reason 的物件)
-      expect(mockTasksService.closeTask).toHaveBeenCalledWith(
-        1,
-        currentUser.userId,
-        {
-          reason: undefined,
-        },
-      );
+      expect(mockTasksService.closeTask).toHaveBeenCalledWith(66, 1, {
+        reason: undefined,
+      });
+      expect(res.redirect).toHaveBeenCalledWith('/tasks/66');
     });
 
-    it('should close task with a reason', async () => {
-      // 模擬前端送入的理由
-      const body = { reason: 'Force closed reason' };
-
-      const mockResult = {
-        id: 1,
-        status: 'CLOSED',
-        closedReason: 'Force closed reason',
-      };
-      mockTasksService.closeTask.mockResolvedValue(mockResult);
-
-      await tasksController.close(1, body, currentUser, res);
-
-      // 驗證 Service 呼叫
-      expect(mockTasksService.closeTask).toHaveBeenCalledWith(
-        1,
-        currentUser.userId,
-        {
-          reason: 'Force closed reason',
-        },
+    it('should return JSON 200 on successful AJAX request', async () => {
+      const req = { headers: { accept: 'application/json' } } as any;
+      await tasksController.close(
+        66,
+        { reason: 'Done' },
+        currentUser,
+        res,
+        req,
       );
+
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.OK);
+      expect(res.json).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('should return JSON 403 with action FORCE_CLOSE_REASON_REQUIRED if service throws it', async () => {
+      const forceCloseError = {
+        action: 'FORCE_CLOSE_REASON_REQUIRED',
+        message: 'Need reason',
+      };
+      mockTasksService.closeTask.mockRejectedValueOnce(forceCloseError);
+      const req = { headers: { accept: 'application/json' } } as any;
+      await tasksController.close(66, {}, currentUser, res, req);
+
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.FORBIDDEN);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        action: 'FORCE_CLOSE_REASON_REQUIRED',
+        message: expect.any(String),
+      });
+    });
+
+    it('should return JSON 400 on standard forbidden error', async () => {
+      const forbiddenError = {
+        status: 400,
+        message: 'You do not have permission',
+      };
+      mockTasksService.closeTask.mockRejectedValueOnce(forbiddenError);
+
+      const req = { headers: { accept: 'application/json' } } as any;
+      await tasksController.close(66, {}, currentUser, res, req);
+
+      expect(res.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'You do not have permission',
+      });
     });
   });
 

@@ -108,11 +108,59 @@ export class TasksController {
     @Body() body: { reason?: string },
     @CurrentUserDecorator() user: CurrentUser,
     @Res() res: Response,
+    @Req() req: Request, // 引入 Request 以檢查 Header
   ) {
-    await this.tasksService.closeTask(id, user.userId, {
-      reason: body.reason,
-    });
-    return res.redirect(`/tasks/${id}`);
+    try {
+      await this.tasksService.closeTask(id, user.userId, {
+        reason: body.reason,
+      });
+
+      // 如果是 AJAX 請求 (Fetch)，回傳 JSON 成功訊息
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        return res.status(200).json({ success: true });
+      }
+
+      // 如果是傳統 Form 提交，則重導向
+      return res.redirect(`/tasks/${id}`);
+    } catch (error) {
+      console.log('Caught Error:', error);
+
+      // 🚀 修改判斷點：從 error.code 改為檢查 error.action
+      const isForceCloseRequired =
+        error.action === 'FORCE_CLOSE_REASON_REQUIRED' ||
+        error.message?.includes('FORCE_CLOSE_REASON_REQUIRED');
+
+      if (isForceCloseRequired) {
+        if (req.xhr || req.headers.accept?.includes('application/json')) {
+          return res.status(403).json({
+            success: false,
+            action: 'FORCE_CLOSE_REASON_REQUIRED', // 傳給前端觸發彈窗
+            message: 'Reason is required for force closure.',
+          });
+        }
+      }
+
+      // 其他錯誤處理 (例如真正的權限不足)
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        return res.status(error.status || 400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      // 其他錯誤處理 (例如權限不足)
+      if (req.xhr || req.headers.accept?.includes('application/json')) {
+        return res.status(error.status || 400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      // 如果是傳統頁面跳轉出錯，可以導回原頁面並帶上錯誤訊息（這部分視你的 flash message 實作而定）
+      return res.redirect(
+        `/tasks/${id}?error=${encodeURIComponent(error.message)}`,
+      );
+    }
   }
 
   @Post(':id/archive')

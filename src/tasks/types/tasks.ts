@@ -63,8 +63,8 @@ export type TaskWithAssignees = Prisma.TaskGetPayload<
 >;
 
 export type UpdateStatusOpts = {
-  target: TaskStatus; // 'CLOSED' | 'ARCHIVED' | 'OPEN'
-  force?: boolean; // 僅當 target=CLOSED 且群組任務時有意義
+  newStatus: TaskStatus; // 'CLOSED' | 'ARCHIVED' | 'OPEN'
+  force?: boolean; // 僅當 newStatus=CLOSED 且群組任務時有意義
   reason?: string | null; // force 時可選
   actorId: number;
 };
