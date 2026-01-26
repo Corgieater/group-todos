@@ -21,17 +21,20 @@ html(lang="en")
         const isGroup = typeof groupId !== 'undefined' && groupId !== null;
         const hasAssignees = Array.isArray(assignees) && assignees.length > 0;
         
-        // --- 權限邏輯實作 (同步 Parent Task) ---
-        // 1. 誰能改標題/內容？ (Admin 或 Task Owner)
-        const canEditSubTask = !!isAdminish || (typeof ownerId !== 'undefined' && Number(ownerId) === Number(currentUserId));
-        // 2. 誰能執行「強行/直接恢復」？ (僅限 Admin)
+        // --- 權限邏輯修正 ---
+        const isOwner = typeof ownerId !== 'undefined' && Number(ownerId) === Number(currentUserId);
+        
+        // 🚀 1. 誰能改標題/內容？ (如果是群組任務則全員皆可，個人任務限 Owner)
+        const canEditSubTask = (isGroup || isOwner) && status === 'OPEN';
+
+        // 2. 誰能執行「強行恢復/管理」？ (僅限 Admin)
         const canFinalizeSubTask = !!isAdminish;
         
-        // 子任務通常不需要檢查 sub-sub-tasks，但為了 UI 統一，我們檢查指派者是否全清
+        // 3. 檢查指派者是否全清以決定是否可直接關閉
         const allAssigneesCompleted = !assignees.some(a => ['PENDING', 'ACCEPTED'].includes(a.status));
         const subTaskCanClose = allAssigneesCompleted;
 
-        // 🚀 關鍵修改：按鈕是否禁用
+        // 🚀 決定按鈕是否禁用
         const isBtnDisabled = !subTaskCanClose && !canFinalizeSubTask;
 
         const editSubModalId = `editSubTaskModal-${id}`;
@@ -56,7 +59,6 @@ html(lang="en")
         .col-auto
           .d-flex.gap-2
             if status === 'OPEN'
-              //- 🚀 修改點：比照父任務，對非管理員且未完成的狀態進行禁用
               button.btn#btn-main-close(
                 type="button" 
                 class=subTaskCanClose ? "btn-success" : "btn-warning"
@@ -77,6 +79,7 @@ html(lang="en")
                   i.bi.bi-arrow-counterclockwise.me-1
                   | Reopen
 
+            //- 🚀 修改點：現在團隊所有人都能看到編輯按鈕
             if canEditSubTask
               button.btn.btn-primary(type="button" data-bs-toggle="modal" data-bs-target=`#${editSubModalId}`)
                 i.bi.bi-pencil-square.me-1
@@ -130,7 +133,7 @@ html(lang="en")
             else
               p.text-muted.fst-italic No one is assigned yet.
 
-            if isAdminish
+            if isAdminish && status === 'OPEN'
               .mt-3.mb-4.p-3.bg-light.rounded.border
                 h3.h6.mb-2 
                   i.bi.bi-person-plus-fill.me-1
@@ -267,7 +270,7 @@ html(lang="en")
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-danger(type="submit") Confirm
 
-      // 3. Forbidden Modal (與父任務一致)
+      // 3. Forbidden Modal
       .modal.fade(id=forbiddenModalId tabindex="-1" aria-hidden="true")
         .modal-dialog
           .modal-content
@@ -291,51 +294,43 @@ html(lang="en")
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
     script(src="https://cdn.socket.io/4.7.2/socket.io.min.js")
     
-    //- 1. 時間與 Modal 連動 (同步自 Parent Task)
     script.
       (function () {
         const allDay = document.getElementById('allDay');
         const timeRow = document.getElementById('timeRow');
-        const dateInput = document.getElementById('dueDate');
-
         function updateTimeVisibility() {
           if (!timeRow || !allDay) return;
           timeRow.style.display = allDay.checked ? 'none' : '';
         }
-
         if (allDay) allDay.addEventListener('change', updateTimeVisibility);
         updateTimeVisibility();
       })();
 
-    //- 2. WebSocket 與 關閉邏輯 (同步自 Parent Task)
     script.
       (function() {
         const socket = io();
         const taskId = "#{taskId}";
         const subTaskId = "#{id}";
         const currentUserId = "#{currentUserId}";
-
         const canFinalize = "#{canFinalizeSubTask}" === "true";
         const subTaskCanClose = "#{subTaskCanClose}" === "true";
-        const forbiddenModal = new bootstrap.Modal(document.getElementById("#{forbiddenModalId}"));
+        const forbiddenModalEl = document.getElementById("#{forbiddenModalId}");
+        const forbiddenModal = forbiddenModalEl ? new bootstrap.Modal(forbiddenModalEl) : null;
 
         socket.on('connect', () => socket.emit('joinTask', taskId));
-
         socket.on('taskUpdated', (data) => { 
           if (Number(data.actorId) !== Number(currentUserId)) {
             window.location.reload();
           }
         });
 
-        // 統一處理關閉邏輯
         const closeBtn = document.getElementById('btn-main-close');
         if (closeBtn) {
           closeBtn.addEventListener('click', async () => {
             if (!subTaskCanClose && !canFinalize) {
-              forbiddenModal.show();
+              if (forbiddenModal) forbiddenModal.show();
               return;
             }
-
             try {
               const res = await fetch(`/api/tasks/${taskId}/sub-tasks/${subTaskId}/close`, {
                 method: 'POST',
