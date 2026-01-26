@@ -12,13 +12,9 @@ import { TaskStatus } from './types/enum';
 import { TasksService } from './tasks.service';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import {
-  TasksAddPayload,
-  TaskUpdatePayload,
-  SubTaskAddPayload,
-} from './types/tasks';
+import { TasksAddPayload, TaskUpdatePayload } from './types/tasks';
 import { TaskPriority } from './types/enum';
-import { GroupsErrors, TasksErrors, UsersErrors } from 'src/errors';
+import { TasksErrors, UsersErrors } from 'src/errors';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { createMockTask } from 'src/test/factories/mock-task.factory';
 import { MailService } from 'src/mail/mail.service';
@@ -1407,84 +1403,123 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   // updateSubTask
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('updateSubTask', () => {
-    const actorId = 1;
-    const subTaskId = 5;
-    const mockUser = { id: actorId, timeZone: 'Asia/Taipei' };
-    const updatePayload = {
-      title: 'Updated Subtask Title',
-      description: 'Updated content',
-      priority: 2,
+    const mockActorId = 1;
+    const mockSubTaskId = 101;
+    const mockActorTz = 'Asia/Taipei';
+    const mockPayload: TaskUpdatePayload = {
+      title: 'Updated SubTask Title',
+      priority: 1,
     };
 
-    it('should successfully update a subtask with localized time data', async () => {
-      // 1. Mock 使用者服務
-      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(mockUser);
+    it('should throw TaskNotFoundError if subTask does not exist', async () => {
+      mockPrismaService.subTask.findUnique.mockResolvedValue(null);
 
-      // 2. Mock Prisma 更新回傳值
-      const mockUpdatedSubTask = { id: subTaskId, ...updatePayload };
-      mockPrismaService.subTask.update.mockResolvedValueOnce(
-        mockUpdatedSubTask,
+      await expect(
+        tasksService.updateSubTask(
+          mockSubTaskId,
+          mockActorId,
+          mockActorTz,
+          mockPayload,
+        ),
+      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
+    });
+
+    it('should throw TaskNotFoundError if personal parent task is not owned by actor', async () => {
+      // 模擬 subTask 屬於個人任務（groupId 為 null），但 ownerId 與 actorId 不同
+      mockPrismaService.subTask.findUnique.mockResolvedValue({
+        id: mockSubTaskId,
+        task: {
+          id: 50,
+          ownerId: 999, // 不同人
+          groupId: null,
+        },
+      });
+
+      await expect(
+        tasksService.updateSubTask(
+          mockSubTaskId,
+          mockActorId,
+          mockActorTz,
+          mockPayload,
+        ),
+      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
+    });
+
+    it('should throw TaskNotFoundError if group task and actor is not a member', async () => {
+      // 模擬 subTask 屬於群組任務，但 group.members 為空（代表 actor 不是成員）
+      mockPrismaService.subTask.findUnique.mockResolvedValue({
+        id: mockSubTaskId,
+        task: {
+          id: 50,
+          ownerId: 1,
+          groupId: 200,
+          group: { members: [] }, // 不是成員
+        },
+      });
+
+      await expect(
+        tasksService.updateSubTask(
+          mockSubTaskId,
+          mockActorId,
+          mockActorTz,
+          mockPayload,
+        ),
+      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
+    });
+
+    it('should successfully update and notify when all checks pass (Group Task)', async () => {
+      // 1. 模擬權限校驗通過
+      mockPrismaService.subTask.findUnique.mockResolvedValue({
+        id: mockSubTaskId,
+        taskId: 50,
+        task: {
+          id: 50,
+          ownerId: 99,
+          groupId: 200,
+          group: { members: [{ role: 'MEMBER' }] },
+        },
+      });
+
+      // 2. 模擬 update 成功
+      mockPrismaService.subTask.update.mockResolvedValue({
+        id: mockSubTaskId,
+        taskId: 50,
+      });
+
+      // 執行
+      await tasksService.updateSubTask(
+        mockSubTaskId,
+        mockActorId,
+        mockActorTz,
+        mockPayload,
       );
 
-      // 3. 執行測試
-      const result = await tasksService.updateSubTask(
-        subTaskId,
-        actorId,
-        updatePayload,
-      );
-
-      // 4. 斷言檢查：確認是否有根據使用者時區處理資料 (getCommonUpdateData 的邏輯)
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(actorId);
-
-      // 5. 斷言檢查：Prisma update 的參數
+      // 3. 驗證資料處理 (getCommonUpdateData 的產出應該被帶入 update)
       expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
+        where: { id: mockSubTaskId },
         data: expect.objectContaining({
-          title: updatePayload.title,
-          description: updatePayload.description,
+          title: mockPayload.title,
+          priority: Number(mockPayload.priority),
         }),
       });
 
-      expect(result).toEqual(mockUpdatedSubTask);
-    });
-
-    it('should throw TaskNotFoundError when Prisma returns P202 (Record not found)', async () => {
-      // 註：Prisma 找不到紀錄的代碼通常是 P2025，你程式碼中寫 P2002 (唯一約束)
-      // 建議檢查一下邏輯，這裡我先依照你 Catch 塊中的邏輯來寫測試
-
-      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(mockUser);
-
-      const prismaError = new Prisma.PrismaClientKnownRequestError(
-        'Not Found',
-        {
-          code: 'P2002', // 依照你提供的程式碼邏輯
-          clientVersion: '5.x',
-        },
+      // 4. 驗證 Socket 通知是否正確發出
+      expect(mockTasksGateWay.broadcastTaskUpdate).toHaveBeenCalledWith(
+        50, // parentTaskId
+        expect.objectContaining({
+          type: 'SUBTASK_UPDATED',
+          actorId: mockActorId,
+        }),
       );
-
-      mockPrismaService.subTask.update.mockRejectedValueOnce(prismaError);
-
-      // 執行並斷言會拋出 TaskNotFoundError
-      await expect(
-        tasksService.updateSubTask(subTaskId, actorId, updatePayload),
-      ).rejects.toThrow();
-    });
-
-    it('should rethrow unknown errors', async () => {
-      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(mockUser);
-      const unexpectedError = new Error('Database connection failed');
-      mockPrismaService.subTask.update.mockRejectedValueOnce(unexpectedError);
-
-      await expect(
-        tasksService.updateSubTask(subTaskId, actorId, updatePayload),
-      ).rejects.toThrow('Database connection failed');
     });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
   // closeSubTask
   // ───────────────────────────────────────────────────────────────────────────────
+
   describe('closeSubTask', () => {
     const actorId = 1;
     const subTaskId = 10;
@@ -1540,6 +1575,7 @@ describe('TasksService', () => {
       expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();
     });
   });
+
   // ───────────────────────────────────────────────────────────────────────────────
   // updateSubTaskStatus
   // ───────────────────────────────────────────────────────────────────────────────

@@ -80,10 +80,7 @@ export class TasksController {
     return res.redirect(`/tasks/${task.id}`);
   }
 
-  // NOTE:
-  // Maybe there will be more status in the future
-  // I think this api should deal with update assignessTask status
-  // self-assign, claim, 指派任務
+  // self-assign, claim, assigned task status report
   @Post(':id/update/assignee-status')
   async updateAssigneeStatus(
     @Req() req: Request,
@@ -248,9 +245,9 @@ export class TasksController {
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    const subTask = await this.tasksService.updateSubTask(id, user.userId, dto);
+    await this.tasksService.updateSubTask(id, user.userId, user.timeZone, dto);
     setSession(req, 'success', 'Sub-task has been updated');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${subTask.id}`);
+    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
   }
 
   @Post(':taskId/sub-tasks/:id/restore')
@@ -266,7 +263,7 @@ export class TasksController {
     return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
   }
 
-  // claim
+  // claim, assignee task status report
   @Post(':taskId/sub-tasks/:id/update/assignee-status')
   async updateSubTaskAssigneeStatus(
     @Req() req: Request,
@@ -308,7 +305,7 @@ export class TasksController {
     return res.redirect(`/tasks/${id}`);
   }
 
-  @Post(':taskId/sub-task/:id/assign-sub-task')
+  @Post(':taskId/sub-tasks/:id/assign-sub-task')
   async assignSubTask(
     @Req() req: Request,
     @Param('taskId', ParseIntPipe) taskId: number,

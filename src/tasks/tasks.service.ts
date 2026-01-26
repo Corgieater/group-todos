@@ -140,27 +140,6 @@ export class TasksService {
       payload.dueTime,
       userTz,
     );
-    // if (payload.allDay) {
-    //   /**
-    //    * [All-day Mode]
-    //    * Save as a pure date string to be stored in the DB's Date column.
-    //    * This represents a "calendar slot" (e.g., May 20th) regardless of user location.
-    //    */
-    //   allDayLocalDate = payload.dueDate
-    //     ? new Date(`${payload.dueDate}T00:00:00.000Z`)
-    //     : null;
-    //   dueAtUtc = null;
-    // } else if (payload.dueDate) {
-    //   /**
-    //    * [Specific Time Mode]
-    //    * Convert local ISO string to an absolute UTC Date object using the user's IANA time zone.
-    //    * Ensures that time-sensitive tasks are synchronized globally.
-    //    */
-    //   const timePart = payload.dueTime || '00:00';
-    //   const localISO = `${payload.dueDate}T${timePart}:00`;
-    //   dueAtUtc = fromZonedTime(localISO, userTz);
-    //   allDayLocalDate = null;
-    // }
 
     // 3. Assemble and persist the task entity
     const data: Prisma.TaskCreateInput = {
@@ -1237,6 +1216,25 @@ export class TasksService {
   // ----------------- SubTask -----------------
 
   async createSubTask(payload: SubTaskAddPayload): Promise<void> {
+    /**
+     * Creates a new sub-task under a specified parent task.
+     * * @description
+     * This method performs the following workflow:
+     * 1. **Data Retrieval**: Fetches parent task metadata and the actor's time zone settings in parallel.
+     * 2. **Authorization**:
+     * - For personal tasks: Ensures only the task owner can add sub-tasks.
+     * - For group tasks: Validates that the actor is a registered member of the group.
+     * 3. **Temporal Processing**: Delegates local-to-UTC time conversion and all-day date handling
+     * to the specialized `calculateTaskDates` helper.
+     * 4. **Persistence**: Creates the sub-task record in the database using Prisma.
+     * 5. **Event Emission**: Triggers a real-time notification to inform relevant parties of the new sub-task.
+     * * @param payload - The data transfer object (DTO) containing sub-task details and actor information.
+     * @throws {TasksErrors.TaskNotFoundError} If the parent task does not exist.
+     * @throws {UsersErrors.UserNotFoundError} If the actor (user) cannot be found.
+     * @throws {TasksErrors.TaskForbiddenError} If the user lacks the necessary permissions.
+     * @returns {Promise<void>} Resolves when the sub-task is successfully created and notified.
+     */
+
     // 1. Get parent task info and acotr time zone for time transition
     const [parentTask, actor] = await Promise.all([
       this.prismaService.task.findUnique({
@@ -1304,7 +1302,7 @@ export class TasksService {
       actorTz,
     );
 
-    // 4. 構建 Prisma 資料 (利用物件展開簡化 if)
+    // 4. Build prisma obj
     const data: Prisma.SubTaskCreateInput = {
       title: payload.title,
       description: payload.description,
@@ -1317,10 +1315,10 @@ export class TasksService {
       task: { connect: { id: parentTask.id } },
     };
 
-    // 建立子任務
+    // Create subTask
     await this.prismaService.subTask.create({ data });
 
-    // 5. 發送通知
+    // 5. Send notification
     this.notifyTaskChange(
       parentTask.id,
       payload.actorId,
@@ -1338,7 +1336,32 @@ export class TasksService {
     isAdminish: boolean;
     groupMembers: GroupMemberInfo[];
   }> {
-    // 1. 獲取父任務的基礎資訊
+    /**
+     * Retrieves comprehensive sub-task details tailored for the current viewer.
+     * * @description
+     * This method acts as the data provider for the sub-task detail page, performing:
+     * 1. **Authorization**: Validates if the `actorId` has permission to view the parent task.
+     * - For Personal Tasks: Access is restricted to the owner.
+     * - For Group Tasks: Access is restricted to group members.
+     * 2. **Role Determination**: Calculates `isAdminish` status to control administrative UI
+     * elements (e.g., editing, force-closing).
+     * 3. **Data Fetching**: Retrieves the sub-task with its assignees, audit info (who closed it),
+     * and parent task context.
+     * 4. **Contextual Enrichment**: For group tasks, it aggregates a list of potential assignees
+     * (group members) for the "Assign Member" dropdown.
+     * * @param parentId - The ID of the parent task.
+     * @param id - The ID of the sub-task to be retrieved.
+     * @param actorId - The ID of the user requesting the data.
+     * * @throws {TasksErrors.TaskNotFoundError} If the parent task or sub-task does not exist.
+     * @throws {TasksErrors.TaskForbiddenError} If the user is not authorized to view the task.
+     * * @returns {Promise<{
+     * subTask: SubTaskWithAssignees;
+     * isAdminish: boolean;
+     * groupMembers: GroupMemberInfo[];
+     * }>} A structured object containing task data and UI control flags.
+     */
+
+    // 1. Get parent task info
     const parentTask = await this.prismaService.task.findUnique({
       where: { id: parentId },
       select: { id: true, ownerId: true, groupId: true },
@@ -1348,11 +1371,11 @@ export class TasksService {
       throw TasksErrors.TaskNotFoundError.byId(actorId, parentId);
     }
 
-    // 2. 權限檢查與 Adminish 判定
+    // 2. Permission check and determine if Adminish
     let isAdminish = false;
 
     if (!parentTask.groupId) {
-      // 個人任務：只有 Owner 可以查看，且 Owner 即是 Adminish
+      // Personal task: only reveal info to owner, owner is adminish
       if (parentTask.ownerId !== actorId) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           actorId,
@@ -1362,7 +1385,7 @@ export class TasksService {
       }
       isAdminish = true;
     } else {
-      // 群組任務：檢查成員資格與角色
+      // Group task: check if a member and role
       const member = await this.prismaService.groupMember.findUnique({
         where: {
           groupId_userId: {
@@ -1384,7 +1407,7 @@ export class TasksService {
       isAdminish = this.isAdminish(member.role);
     }
 
-    // 3. 核心查詢：獲取子任務細節
+    // 3. Core search：get subTask details
     const subTask = await this.prismaService.subTask.findUnique({
       where: { id },
       include: {
@@ -1408,7 +1431,7 @@ export class TasksService {
       throw TasksErrors.TaskNotFoundError.byId(actorId, id);
     }
 
-    // 4. 獲取群組成員清單 (用於指派下拉選單)
+    // 4. Get member list for drop list
     let groupMembers: GroupMemberInfo[] = [];
     if (parentTask.groupId) {
       const members = await this.prismaService.groupMember.findMany({
@@ -1434,37 +1457,93 @@ export class TasksService {
   async updateSubTask(
     id: number,
     actorId: number,
+    actorTz: string,
     payload: TaskUpdatePayload,
-  ): Promise<SubTask> {
-    const user = await this.usersService.findByIdOrThrow(actorId);
+  ): Promise<void> {
+    /**
+     * Updates a sub-task's details with integrated permission and temporal logic.
+     *
+     * @description
+     * This method implements a secure update workflow:
+     * 1. **Data Consolidation**: Uses a single nested query to retrieve the sub-task, its parent task,
+     * and the actor's group membership status to minimize database round-trips.
+     * 2. **Authorization**:
+     * - Personal Tasks: Strict ownership check (Actor must be the parent task owner).
+     * - Group Tasks: Membership check (Any group member can update sub-tasks to foster collaboration).
+     * 3. **Temporal Normalization**: Leverages `getCommonUpdateData` to handle time zone-to-UTC
+     * conversions for due dates.
+     * 4. **Event Propagation**: Dispatches a WebSocket notification via `notifyTaskChange` to
+     * synchronize UI states for all users in the same task room.
+     *
+     * @param id - The unique identifier of the sub-task.
+     * @param actorId - The user performing the update.
+     * @param actorTz - The IANA time zone string of the actor.
+     * @param payload - The update DTO containing partial fields (title, priority, etc.).
+     *
+     * @throws {TasksErrors.TaskNotFoundError} If the sub-task doesn't exist or permissions are denied.
+     * @returns {Promise<void>} Resolves when the update and notification are complete.
+     */
 
-    const commonData = this.getCommonUpdateData<Prisma.SubTaskUpdateInput>(
-      payload,
-      user.timeZone,
-    );
-    const data: Prisma.SubTaskUpdateInput = commonData;
+    // 1. Get subTask, parent task and role of the actor
+    const subTask = await this.prismaService.subTask.findUnique({
+      where: { id },
+      include: {
+        task: {
+          select: {
+            id: true,
+            ownerId: true,
+            groupId: true,
+            group: {
+              select: {
+                members: {
+                  where: { userId: actorId },
+                  select: { role: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
 
-    try {
-      // 這裡需要確保 actorId 有權限更新 SubTask (通常是 Parent Task 的 Owner 或 SubTask 的 Assignee)
-      // 由於您沒有在 where 條件中包含權限檢查，如果這是個人任務，可能需要額外的檢查。
-      // 暫時保持 where: { id } 不變
-
-      const subTask = await this.prismaService.subTask.update({
-        where: { id }, // 🚨 注意：這裡需要 Task ID 和 Owner ID 的組合來做權限檢查
-        data,
-      });
-      return subTask;
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002'
-      ) {
-        // SubTask Not Found 錯誤
-        throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-      }
-
-      throw e;
+    // 2. Basic checking
+    if (!subTask) {
+      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
     }
+
+    const parentTask = subTask.task;
+    const groupMember = parentTask.group?.members[0];
+
+    // 3. Permission checking
+    // Personal task: must be owner
+    if (!parentTask.groupId && parentTask.ownerId !== actorId) {
+      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+    }
+
+    // Group task: must be member
+    if (parentTask.groupId && !groupMember) {
+      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+    }
+
+    // 4. Build data and time
+    const data = this.getCommonUpdateData<Prisma.SubTaskUpdateInput>(
+      payload,
+      actorTz,
+    );
+
+    // 5. Update
+    await this.prismaService.subTask.update({
+      where: { id },
+      data,
+    });
+
+    // 6. Notification
+    this.notifyTaskChange(
+      subTask.taskId,
+      actorId,
+      'Someone',
+      'SUBTASK_UPDATED',
+    );
   }
 
   async closeSubTask(id: number, actorId: number) {
@@ -1963,7 +2042,7 @@ export class TasksService {
 
   //  ----------------- Common helper -----------------
 
-  getCommonUpdateData<T extends TaskModelFields | SubTaskModelFields>(
+  private getCommonUpdateData<T extends TaskModelFields | SubTaskModelFields>(
     payload: TaskUpdatePayload,
     timeZone: string,
   ): T {
@@ -1983,24 +2062,18 @@ export class TasksService {
     }
 
     // 處理時間邏輯
-    if (payload.allDay) {
-      data['allDay'] = true;
-      data['allDayLocalDate'] = payload.dueDate
-        ? new Date(`${payload.dueDate}T00:00:00.000Z`)
-        : null;
-      data['dueAtUtc'] = null;
-    } else if (payload.allDay === undefined || payload.allDay === false) {
-      // 確保只在 explicit false 時執行
-      if (payload.dueDate && payload.dueTime) {
-        data['allDay'] = false;
-        const localISO = `${payload.dueDate}T${payload.dueTime}:00`;
-        // 假設 fromZonedTime 存在並能正確轉換
-        data['dueAtUtc'] = fromZonedTime(localISO, timeZone);
-        data['allDayLocalDate'] = null;
-      }
-    }
+    const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
+      !!payload.allDay,
+      payload.dueDate,
+      payload.dueTime,
+      timeZone,
+    );
 
-    // 可以在這裡處理 sourceTimeZone，但如果 payload 沒傳，則保持不變
+    if (payload.dueDate !== undefined) {
+      data.allDay = !!payload.allDay;
+      data.dueAtUtc = dueAtUtc;
+      data.allDayLocalDate = allDayLocalDate;
+    }
 
     return data as T;
   }
