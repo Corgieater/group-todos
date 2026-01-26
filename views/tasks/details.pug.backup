@@ -21,24 +21,19 @@ html(lang="en")
         const isGroup = typeof groupId !== 'undefined' && groupId !== null;
         const groupName = group ? group.name : null;
         
-        // --- 權限與邏輯判定 ---
-        const isOwner = typeof ownerId !== 'undefined' && Number(ownerId) === Number(currentUserId);
-        
+        // --- 權限邏輯實作 ---
         // 1. 誰能改標題/內容？ (Admin 或 Owner)
-        const canEditTask = !!isAdminish || isOwner;
-
-        // 2. 誰能增加子任務？ (群組成員皆可，個人任務限 Owner)
-        // 🚀 這是你要求修改的核心邏輯
-        const canAddSubTask = isGroup || isOwner;
-
-        // 3. 誰能執行「強行關閉」或「封存」？ (僅限 Admin)
+        const canEditTask = !!isAdminish || (typeof ownerId !== 'undefined' && Number(ownerId) === Number(currentUserId));
+        // 2. 誰能執行「強行關閉」或「封存」？ (僅限 Admin)
         const canFinalizeTask = !!isAdminish;
-
-        // 4. 誰能執行「正常關閉」？ (檢查子任務是否全清)
+        // 3. 誰能執行「正常關閉」？ (檢查子任務是否全清)
         const taskCanClose = typeof canClose !== 'undefined' ? !!canClose : false; 
         
-        // 決定關閉按鈕的 UI 狀態
+        // 🚀 關鍵修改：決定按鈕是否顯示為灰色 (Disabled)
+        // 如果任務沒做完，且使用者不是 Admin，就禁用按鈕
         const isBtnDisabled = !taskCanClose && !canFinalizeTask;
+        
+        // 決定是否顯示關閉按鈕：Admin 隨時可見，Owner 亦可見 (但若未完成則會變灰)
         const canShowCloseBtn = canFinalizeTask || canEditTask;
 
         const editModalId = `editTaskModal-${id}`;
@@ -71,6 +66,7 @@ html(lang="en")
                     | Archive
               
               if canShowCloseBtn
+                //- 🚀 修改點：加入 disabled 屬性與文字判斷
                 button.btn#btn-main-close(
                   type="button" 
                   class=taskCanClose ? "btn-success" : "btn-warning"
@@ -91,7 +87,7 @@ html(lang="en")
                   i.bi.bi-arrow-counterclockwise.me-1
                   | Reopen
 
-            if canEditTask && status === 'OPEN'
+            if canEditTask
               button.btn.btn-primary(type="button" data-bs-toggle="modal" data-bs-target=`#${editModalId}`)
                 i.bi.bi-pencil-square.me-1
                 | Edit
@@ -137,8 +133,7 @@ html(lang="en")
         .card-body
           .d-flex.align-items-center.justify-content-between.mb-3
             h2.h5.mb-0 Sub Tasks
-            //- 🚀 修改點：只要任務開啟且有權限 (成員或 Owner)，都能看到新增按鈕
-            if status === 'OPEN' && canAddSubTask
+            if canEditTask
               a.btn.btn-sm.btn-primary(href=`/tasks/${id}/sub-tasks/create`)
                 i.bi.bi-plus-lg.me-1
                 | Add SubTask
@@ -161,7 +156,7 @@ html(lang="en")
                         td #{a.assignee ? a.assignee.name : 'Unknown'}
                         td: span.badge(class=`text-bg-${stBadge}`)= a.status
             
-            if isAdminish && status === 'OPEN'
+            if isAdminish
               .mt-3.mb-4.p-3.bg-light.rounded.border
                 h3.h6.mb-2 
                   i.bi.bi-person-plus-fill.me-1
@@ -266,6 +261,7 @@ html(lang="en")
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-warning#btn-confirm-force-close(type="submit") Confirm Force Close
 
+      //- 🚀 拒絕彈窗
       .modal.fade(id=forbiddenModalId tabindex="-1" aria-hidden="true")
         .modal-dialog
           .modal-content
@@ -306,17 +302,6 @@ html(lang="en")
     // ===== SCRIPTS =====
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
     script(src="https://cdn.socket.io/4.7.2/socket.io.min.js")
-    script(src="/js/task-socket.js")
-    script.
-      document.addEventListener('DOMContentLoaded', () => {
-        // 透過 Pug 將伺服器變數注入初始化函數
-        initTaskSocket({
-          taskId: "#{id}",
-          currentUserId: "#{currentUserId}",
-          currentUserName: "#{currentUserName || 'Someone'}",
-          csrfToken: "#{csrfToken}"
-        });
-      });
     script.
       (function () {
         const socket = io();
@@ -324,9 +309,11 @@ html(lang="en")
         const currentUserId = "#{currentUserId}";
         const currentUserName = "#{currentUserName || 'Someone'}"; 
 
+        // 權限標記供 JS 判斷
         const canFinalize = "#{canFinalizeTask}" === "true";
         const taskCanClose = "#{taskCanClose}" === "true";
         
+        // 初始化 Modals
         const forceCloseModalEl = document.getElementById("#{forceCloseModalId}");
         const forceCloseModal = forceCloseModalEl ? new bootstrap.Modal(forceCloseModalEl) : null;
         const forbiddenModal = new bootstrap.Modal(document.getElementById("#{forbiddenModalId}"));
@@ -340,8 +327,11 @@ html(lang="en")
           liveToastContainer.insertAdjacentHTML('beforeend', html);
           new bootstrap.Toast(document.getElementById(id), { autohide: true, delay: 5000 }).show();
         }
+
+        socket.on('connect', () => socket.emit('joinTask', taskId));
         
         async function attemptClose(reason = null) {
+          // JS 層級攔截：雙重保險
           if (!taskCanClose && !canFinalize) {
             forbiddenModal.show();
             return;
@@ -362,6 +352,7 @@ html(lang="en")
               window.location.reload();
             } else {
               const err = await res.json(); 
+              
               if (err.action === 'FORCE_CLOSE_REASON_REQUIRED') {
                 if (canFinalize && forceCloseModal) {
                   forceCloseModal.show();
@@ -384,5 +375,15 @@ html(lang="en")
           const reason = e.target.querySelector('textarea[name="reason"]').value;
           attemptClose(reason);
         });
-        
+
+        const setupTyping = (id) => {
+          document.getElementById(id)?.addEventListener('input', () => {
+            if (!this.isTypingSent) {
+              socket.emit('typing', { taskId, userName: currentUserName });
+              this.isTypingSent = true;
+              setTimeout(() => { this.isTypingSent = false; }, 2000);
+            }
+          });
+        };
+        setupTyping('title'); setupTyping('description');
       })();
