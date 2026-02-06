@@ -265,7 +265,6 @@ html(lang="en")
                     input(type="hidden", name="_csrf", value=csrfToken)
                   input(type="hidden", name="status", value="DECLINED")
                   p Are you sure you want to #{viewerAssigneeStatus === 'ACCEPTED' ? 'withdraw from' : 'decline'} this sub-task? 
-                  p.small.text-muted This action will notify the task owner.
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-danger(type="submit") Confirm
