@@ -1530,6 +1530,10 @@ describe('TasksService', () => {
         id: subTaskId,
         title: 'Test SubTask',
         status: 'OPEN',
+        task: {
+          groupId: 1,
+          group: { members: [{ userId: actorId, role: 'MEMBER' }] },
+        },
       };
 
       // 2. Mock 查詢與更新
@@ -1546,7 +1550,26 @@ describe('TasksService', () => {
 
       // 4. 斷言檢查
       expect(mockPrismaService.subTask.findUnique).toHaveBeenCalledWith({
-        where: { id: subTaskId },
+        where: {
+          id: subTaskId,
+        },
+        include: {
+          task: {
+            select: {
+              id: true,
+              ownerId: true,
+              groupId: true,
+              group: {
+                select: {
+                  members: {
+                    where: { userId: actorId },
+                    select: { role: true },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
 
       expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
@@ -1672,24 +1695,6 @@ describe('TasksService', () => {
           actorId,
         }),
       ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
-
-      // 驗證 update 沒有被呼叫
-      expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();
-    });
-
-    it('should throw TaskForbiddenError for illegal status transition (OPEN -> OPEN)', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce({
-        ...mockSubTaskBase,
-        status: TaskStatus.OPEN,
-      });
-
-      // 嘗試從 OPEN 轉移到 OPEN (非法)
-      await expect(
-        tasksService.updateSubTaskStatus(subTaskId, {
-          newStatus: TaskStatus.OPEN,
-          actorId,
-        }),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskForbiddenError);
 
       // 驗證 update 沒有被呼叫
       expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();

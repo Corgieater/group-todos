@@ -19,7 +19,7 @@ import {
   Prisma,
   Task as TaskModel,
 } from 'src/generated/prisma/client';
-import type { SubTask, Task } from 'src/generated/prisma/client';
+import type { Task } from 'src/generated/prisma/client';
 import { TaskStatus } from './types/enum';
 import { TasksErrors, UsersErrors } from 'src/errors';
 import { dayBoundsUtc } from 'src/common/helpers/util';
@@ -31,8 +31,12 @@ import { TasksGateWay } from './tasks.gateway';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 import { CurrentUser } from 'src/common/types/current-user';
-import { isA } from 'jest-mock-extended';
-import { group } from 'console';
+
+/**
+ * TODO:
+ * 1. This service file is too big, we should separate Task and Subtask to another service.
+ * 2. Pay attention on repeatedly logics when refactor
+ */
 
 type DueFilter = 'TODAY' | 'NONE' | 'EXPIRED' | 'RANGE';
 
@@ -490,7 +494,7 @@ export class TasksService {
     }
   }
 
-  // assign task, slef-assign, claim
+  // task指派狀態更新, slef-assign, claim
   async updateAssigneeStatus(
     id: number,
     actorId: number,
@@ -519,6 +523,9 @@ export class TasksService {
      * - If the status transition is illegal (e.g., moving from 'CLOSED' back to 'PENDING').
      * - If attempting to update a non-existent assignment with a status other than 'ACCEPTED'.
      * * @returns A promise that resolves to { ok: true } upon successful update.
+     *
+     * *@todo
+     * I should separate slef-claim and task status report to 2 methods
      */
 
     const { status: next, reason } = dto;
@@ -603,7 +610,7 @@ export class TasksService {
       }
 
       // 4. update
-      const updateData = this.getAssigneeUpdateData(next, actorId, reason);
+      const updateData = this.getAssigneeUpdateData(next, reason);
 
       await tx.taskAssignee.update({
         where: { taskId_assigneeId: { taskId: task.id, assigneeId: actorId } },
@@ -912,6 +919,8 @@ export class TasksService {
     opts: UpdateStatusOpts,
     txHost?: Prisma.TransactionClient,
   ): Promise<void> {
+    // TODO:
+    // Logic about close task should be removed since we have closeTask
     /**
      * Updates the status of a task with built-in transaction management.
      * * @description
@@ -1507,9 +1516,7 @@ export class TasksService {
     });
 
     // 2. Basic checking
-    if (!subTask) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
+    if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
 
     const parentTask = subTask.task;
     const groupMember = parentTask.group?.members[0];
@@ -1547,10 +1554,42 @@ export class TasksService {
   }
 
   async closeSubTask(id: number, actorId: number) {
+    // TODO:
+    // 1. Consider if it's a must to split the checking subTask logic
+    // since it's pretty much the same like updateSubTask
+    // 2. Here is no 'force close' like close the parent Task in the frontend and here
     const subTask = await this.prismaService.subTask.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            ownerId: true,
+            groupId: true,
+            group: {
+              select: {
+                members: { where: { userId: actorId }, select: { role: true } },
+              },
+            },
+          },
+        },
+      },
     });
+
     if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+
+    const parentTask = subTask.task;
+    const groupMember = parentTask.group?.members[0];
+
+    if (!parentTask.groupId && parentTask.ownerId !== actorId) {
+      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+    }
+
+    if (parentTask.groupId && !groupMember) {
+      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+    }
 
     return this.prismaService.subTask.update({
       where: { id },
@@ -1566,13 +1605,33 @@ export class TasksService {
     subTaskId: number,
     opts: UpdateStatusOpts,
   ): Promise<void> {
+    // TODO:
+    // 1. Should check authentication, there is another reason to pull out
+    // the checking authentication as decorater and separate the service.
+    // 2.Logic about close task should be removed since we have closeSubTask
+    /**
+     * Updates the status of a sub-task with state transition validation.
+     * * @param subTaskId - The unique identifier of the sub-task.
+     * @param opts - Configuration object containing the new status and actor's ID.
+     * * @description
+     * This method manages simple state transitions for sub-tasks. It ensures that
+     * the requested status change adheres to the defined Task State Machine rules.
+     * * @throws {TasksErrors.TaskNotFoundError}
+     * Thrown if the sub-task does not exist or the actor is unauthorized.
+     * * @throws {TasksErrors.TaskForbiddenError}
+     * Thrown if the status transition is logically invalid (e.g., CLOSED to IN_PROGRESS).
+     * * @todo
+     * 1. Extract Authorization: Pull out the authentication logic into a dedicated
+     * Access Control Service or Decorator to align with the Single Responsibility Principle (SRP).
+     * 2. Logic Consolidation: Delegate terminal state logic (CLOSED) to `closeSubTask`
+     * to avoid logic duplication and ensure consistent side-effect management.
+     */
     const { newStatus, actorId } = opts;
 
     return this.prismaService.$transaction(async (tx) => {
-      // 1) 取基本資料 (只需 status 即可進行狀態轉移檢查)
+      // 1. Get subTask
       const subTask = await tx.subTask.findUnique({
         where: { id: subTaskId },
-        // 現在我們只需要 SubTask 自身的 ID 和 Status
         select: {
           id: true,
           status: true,
@@ -1582,19 +1641,9 @@ export class TasksService {
       if (!subTask)
         throw TasksErrors.TaskNotFoundError.byId(actorId, subTaskId);
 
-      // 2) 權限檢查：(移除複雜邏輯，任何人都可以操作)
-      // 由於我們假設 actorId 是經過驗證的，所以無需額外的權限檢查。
-
-      // 3) 狀態轉移規則 (與 Task 相同，保持不變)
+      // 2. Check if it is a legal status transition
       const from = subTask.status;
-      const legal =
-        (from === TaskStatus.OPEN &&
-          (newStatus === TaskStatus.CLOSED ||
-            newStatus === TaskStatus.ARCHIVED)) ||
-        (from === TaskStatus.CLOSED &&
-          (newStatus === TaskStatus.ARCHIVED ||
-            newStatus === TaskStatus.OPEN)) ||
-        (from === TaskStatus.ARCHIVED && newStatus === TaskStatus.OPEN);
+      const legal = this.taskStatusCanTransition(from, newStatus);
 
       if (!legal) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
@@ -1604,29 +1653,33 @@ export class TasksService {
         );
       }
 
-      // 4) 審計欄位與更新資料 (保持不變)
+      // 4) Build update data
       const data: Prisma.SubTaskUpdateInput = { status: newStatus };
 
       if (newStatus === TaskStatus.CLOSED) {
-        // 記錄關閉人、關閉時間和原因
         Object.assign(data, {
           closedAt: new Date(),
           closedById: actorId,
         });
       } else if (newStatus === TaskStatus.OPEN) {
-        // restore：清掉關閉資訊
         Object.assign(data, {
           closedAt: null,
           closedById: null,
         });
       }
 
-      // 5) 執行更新
+      // 5) update
       await tx.subTask.update({ where: { id: subTaskId }, data });
     });
   }
 
   async restoreSubTask(id: number) {
+    /**
+     * A method for restore closed or archived task
+     *
+     * *@todo
+     * Should check authentication
+     */
     return this.prismaService.subTask.update({
       where: { id },
       data: {
@@ -1637,17 +1690,41 @@ export class TasksService {
     });
   }
 
-  // 指派subTask, self-assign, claim相關
+  // subtask指派狀態更新, self-assign, claim相關
   async updateSubTaskAssigneeStatus(
     subTaskId: number,
     actorId: number,
     dto: { status: AssignmentStatus; reason?: string },
     updatedBy: string | null = null,
   ) {
+    /**
+     * Manages sub-task assignment lifecycle, supporting both "Auto-Claiming" and status reporting.
+     * * @param subTaskId - The unique identifier of the sub-task.
+     * @param actorId - The ID of the user performing the status update.
+     * @param dto - Data containing the target AssignmentStatus and an optional reason.
+     * @param updatedBy - (Optional) The name of the actor for notification purposes.
+     * * @description
+     * This method acts as the primary interface for users to interact with sub-task assignments:
+     * 1. **Auto-Claiming**: If no assignment record exists and the status is set to 'ACCEPTED',
+     * the system automatically creates a new assignment for the actor.
+     * 2. **State Management**: If a record exists, it validates the transition against the
+     * Assignment State Machine before updating.
+     * * @constraints
+     * - Restricted to **Group Tasks** only; personal sub-tasks do not support assignment tracking.
+     * - Only valid **Group Members** can claim or update assignment statuses.
+     * * @returns {Promise<{ ok: boolean }>} A confirmation object upon successful transaction.
+     * * @throws {TasksErrors.TaskNotFoundError} If the sub-task does not exist.
+     * @throws {TasksErrors.TaskForbiddenError}
+     * - 'ASSIGNEE_STATUS_FOR_PERSONAL_SUBTASK': Attempting to assign on a personal task.
+     * - 'ASSIGNEE_STATUS_FOR_NON_MEMBER': Actor is not a member of the task's group.
+     * - 'ASSIGNEE_STATUS_ILLEGAL_TRANSITION': The state transition violates business rules.
+     * @todo
+     * I think I should separate self-claim and assigned subTask status report to 2 methods
+     */
     const { status: next, reason } = dto;
 
     return this.prismaService.$transaction(async (tx) => {
-      // 1. 獲取子任務與父任務關聯資訊
+      // 1. Get subTasks and parent task info
       const subTask = await tx.subTask.findUnique({
         where: { id: subTaskId },
         include: {
@@ -1658,7 +1735,7 @@ export class TasksService {
       if (!subTask)
         throw TasksErrors.TaskNotFoundError.byId(actorId, subTaskId);
 
-      // 安全檢查：只有群組任務才支援指派狀態更新
+      // Safety check: only group task supports assigned-subtask status updating
       if (!subTask.task.groupId) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           actorId,
@@ -1667,7 +1744,7 @@ export class TasksService {
         );
       }
 
-      // 檢查操作者是否為該群組成員
+      // Check if actor is really a group member
       const member = await tx.groupMember.findUnique({
         where: {
           groupId_userId: {
@@ -1686,14 +1763,15 @@ export class TasksService {
         );
       }
 
-      // 2. 檢查現有的指派紀錄
+      // 2. Check if there is a subTask assigning record
       const assignee = await tx.subTaskAssignee.findUnique({
         where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
         select: { status: true },
       });
 
       // -----------------------------------------------------------
-      // 3. 自動領取 (Claim) 邏輯：紀錄不存在且欲變更為 ACCEPTED
+      // 3. Self-claim logic: no subTask assigning record
+      // and want to turn the status to ACCEPTED
       // -----------------------------------------------------------
       if (!assignee) {
         if (next !== AssignmentStatus.ACCEPTED) {
@@ -1726,7 +1804,7 @@ export class TasksService {
       }
 
       // -----------------------------------------------------------
-      // 4. 狀態轉換合法性檢查 (State Machine)
+      // 4. Check if status is legal to change
       // -----------------------------------------------------------
       const prev = assignee.status;
       const isLegal = this.isValidAssignmentTransition(
@@ -1744,9 +1822,9 @@ export class TasksService {
       }
 
       // -----------------------------------------------------------
-      // 5. 執行更新
+      // 5. Update
       // -----------------------------------------------------------
-      const updateData = this.getAssigneeUpdateData(next, actorId, reason);
+      const updateData = this.getAssigneeUpdateData(next, reason);
 
       await tx.subTaskAssignee.update({
         where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
@@ -1789,9 +1867,36 @@ export class TasksService {
   }
 
   private async handleAssignment(options: InternalAssignOptions) {
+    /**
+     * Internal orchestrator for handling task and sub-task assignments.
+     * * @param options - Configuration for the assignment process, including target type and notification flags.
+     * * @description
+     * This private method centralizes the assignment logic for both high-level Tasks and Sub-tasks:
+     * 1. **Resource Discovery**: Resolves group context and metadata based on the target type.
+     * 2. **Dual-Factor Authentication**:
+     * - Validates that the Assigner has administrative privileges (Admin/Owner).
+     * - Ensures the Assignee is a valid member of the associated group.
+     * 3. **Smart Persistence**: Performs an `upsert` operation. If the actor assigns a task to
+     * themselves, the status is automatically set to 'ACCEPTED'; otherwise, it remains 'PENDING'.
+     * 4. **Urgent Notification**: Optionally triggers an email dispatch with deep-linking to the specific task.
+     * * @throws {TasksErrors.TaskNotFoundError} If the target resource or group context is missing.
+     * @throws {TasksErrors.TaskForbiddenError} If a non-administrative member attempts to assign tasks.
+     * * @returns {Promise<TaskAssignee | SubTaskAssignee>} The resulting assignment record.
+     * * @todo
+     * 1. Currently this method can assign self, this is duplicated with self-claim.
+     * But to fix this problem, we need to change a lot of things
+     * (frontend and get member list api).
+     * I think using create is more logical than upsert. The reason why I use upsert
+     * is that once an assigner saw an assignee set task to 'completed',
+     * but actually not reaching the criteria. Assigner can use this method to
+     * 'send back' the task and makes the assignee to re-do it. But this is actually
+     * a bad idea since the assigning history will be washed away.
+     * To change this behavior needs to develop other api and more frontned chanings.
+     */
+
     const { type, targetId, assigneeId, assignerId, sendUrgentEmail } = options;
 
-    // 1. 統一獲取基礎資訊與校驗群組
+    // 1. Get basic infomation from type(Task or subTask)
     let groupId: number;
     let title: string;
     let priority: number;
@@ -1810,6 +1915,7 @@ export class TasksService {
           dueAtUtc: true,
         },
       });
+
       if (!task || !task.groupId)
         throw TasksErrors.TaskNotFoundError.byId(assignerId, targetId);
 
@@ -1824,6 +1930,7 @@ export class TasksService {
         where: { id: targetId, status: TaskStatus.OPEN },
         include: { task: { select: { id: true, groupId: true } } },
       });
+
       if (!sub || !sub.task.groupId)
         throw TasksErrors.TaskNotFoundError.byId(assignerId, targetId);
 
@@ -1835,7 +1942,7 @@ export class TasksService {
       redirectTaskId = sub.task.id;
     }
 
-    // 2. 權限檢查 (指派者)
+    // 2. Assigner authentication check
     const assigner = await this.prismaService.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: assignerId } },
       include: {
@@ -1852,14 +1959,15 @@ export class TasksService {
       );
     }
 
-    // 3. 檢查被指派者
+    // 3. Assignee authentication check
     const isAssigneeMember = await this.prismaService.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId: assigneeId } },
     });
+
     if (!isAssigneeMember)
       throw TasksErrors.TaskNotFoundError.byId(assignerId, targetId);
 
-    // 4. 執行 Upsert
+    // 4. Do upsert
     const targetStatus =
       assigneeId === assignerId
         ? AssignmentStatus.ACCEPTED
@@ -1898,7 +2006,7 @@ export class TasksService {
       });
     }
 
-    // 5. 郵件通知
+    // 5. Email notifaication
     if (sendUrgentEmail) {
       const assigneeUser = await this.prismaService.user.findUnique({
         where: { id: assigneeId },
@@ -1934,6 +2042,22 @@ export class TasksService {
   // ------------- Notifications --------------------
 
   async getPendingNotifications(userId: number) {
+    /**
+     * Aggregates and prioritizes pending assignments for a specific user.
+     * * @param userId - The ID of the user whose notifications are being retrieved.
+     * @returns {Promise<Array>} A sorted array of the top 20 most urgent tasks and sub-tasks.
+     * * @description
+     * This method performs a unified retrieval of pending work items:
+     * 1. **Parallel Fetching**: Uses `Promise.all` to concurrently fetch pending 'Task' and 'SubTask'
+     * assignments to minimize latency.
+     * 2. **Data Normalization**: Transforms distinct database models into a consistent
+     * Notification UI format, ensuring uniform property names for sorting and rendering.
+     * 3. **Dual-Tier Sorting**:
+     * - **Primary**: Sorted by `priority` (ascending, where 1 is highest).
+     * - **Secondary**: Sorted by `dueAt` date. Tasks without a deadline are treated as
+     * `Infinity` to ensure they appear after time-sensitive items.
+     * 4. **Display Limit**: Returns only the top 20 items to prevent information overload (Cognitive Ease).
+     */
     const [tasks, subTasks] = await Promise.all([
       this.prismaService.taskAssignee.findMany({
         where: { assigneeId: userId, status: AssignmentStatus.PENDING },
@@ -1964,7 +2088,7 @@ export class TasksService {
               dueAtUtc: true,
               task: {
                 select: {
-                  id: true, // 子任務需要連回父任務的 ID 才能產生正確連結
+                  id: true, // for url link
                   group: { select: { name: true } },
                 },
               },
@@ -1974,53 +2098,43 @@ export class TasksService {
       }),
     ]);
 
-    // 扁平化處理
-    const formattedTasks = tasks.map((t) => ({
-      id: t.task.id,
+    const rawTasks = tasks.map((t) => ({
+      ...t.task,
       type: 'TASK',
-      title: t.task.title,
-      priority: t.task.priority,
-      dueAt: t.task.dueAtUtc,
-      groupName: t.task.group?.name || 'Personal',
       url: `/tasks/${t.task.id}`,
     }));
 
-    const formattedSubTasks = subTasks.map((st) => ({
-      id: st.subtask.id,
+    const rawSubTasks = subTasks.map((st) => ({
+      ...st.subtask,
       type: 'SUBTASK',
-      title: `[Sub] ${st.subtask.title}`,
-      priority: st.subtask.priority,
-      dueAt: st.subtask.dueAtUtc,
-      groupName: st.subtask.task.group?.name || 'Personal',
-      url: `/tasks/${st.subtask.task.id}`, // 通常連結到父任務詳情頁
+      url: `/tasks/${st.subtask.task.id}`,
     }));
 
-    // 合併並根據優先級排序 (1 最高)
-    return [...formattedTasks, ...formattedSubTasks]
+    return [...rawTasks, ...rawSubTasks]
       .sort((a, b) => {
-        // 1. 先比較優先級 (Priority)
+        // 1. Compare priority
         if (a.priority !== b.priority) {
           return a.priority - b.priority;
         }
 
-        // 2. 如果優先級相同，比較截止日期 (dueAt)
-        // 處理 null 的情況：將沒有時間的任務設為極大值（排到最後）
-        const timeA = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
-        const timeB = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+        // 2. If priorities are the same, compare dueAt
+        // Handle null dueAt by treating them as Infinity (to be sorted last)
+        const timeA = a.dueAtUtc ? new Date(a.dueAtUtc).getTime() : Infinity;
+        const timeB = b.dueAtUtc ? new Date(b.dueAtUtc).getTime() : Infinity;
 
         return timeA - timeB;
       })
       .slice(0, 20);
   }
 
-  async processEmailResponse(
+  async executeAssignmentDecision(
     token: string,
     status: AssignmentStatus,
   ): Promise<{ taskId: number; subTaskId?: number }> {
-    // 1. 驗證並解密 Token
-    // 這裡建議在 AuthService 寫一個專門驗證 TaskToken 的方法
+    // Verify token
     const payload = await this.securityService.verifyTaskActionToken(token);
 
+    // If it's a subTask assignment
     if (payload.subTaskId) {
       await this.updateSubTaskAssigneeStatus(
         payload.subTaskId,
@@ -2032,7 +2146,7 @@ export class TasksService {
       return { taskId: payload.taskId, subTaskId: payload.subTaskId };
     }
 
-    // 2. 執行原本的更新邏輯
+    // If it's a task assignment
     await this.updateAssigneeStatus(payload.taskId, payload.userId, {
       status,
     });
@@ -2061,7 +2175,7 @@ export class TasksService {
       data['priority'] = payload.priority;
     }
 
-    // 處理時間邏輯
+    // Deal with date and time
     const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
       !!payload.allDay,
       payload.dueDate,
@@ -2078,39 +2192,60 @@ export class TasksService {
     return data as T;
   }
 
-  private getAssigneeUpdateData(
-    next: AssignmentStatus,
-    actorId: number,
-    reason?: string,
-  ) {
-    const data: any = { status: next };
+  private getAssigneeUpdateData(next: AssignmentStatus, reason?: string) {
+    /**
+     * Generates the structured data object for updating TaskAssignee records.
+     * * @param next - The target AssignmentStatus to transition to.
+     * @param reason - An optional reason, typically required when the status is 'DECLINED'.
+     * * @description
+     * This helper method encapsulates the side effects of status transitions:
+     * 1. **State-Driven Mapping**: Uses a lookup table to define which timestamps (acceptedAt,
+     * completedAt, etc.) should be set or reset based on the new status.
+     * 2. **Audit Integrity**: Ensures that the `updatedAt` field is consistently refreshed and
+     * irrelevant timestamps are cleared when a task is reset to 'PENDING'.
+     * 3. **Data Normalization**: Returns a partial update object compatible with Prisma's update operations.
+     * * @returns {Record<string, any>} A data object containing the status and its associated field updates.
+     */
     const now = new Date();
 
-    if (next === AssignmentStatus.ACCEPTED) {
-      data.acceptedAt = now;
-      data.declinedAt = null;
-      data.completedAt = null;
-      data.assignedById = actorId; // 更新指派人為領取者
-    } else if (next === AssignmentStatus.DECLINED) {
-      data.declinedAt = now;
-      data.completedAt = null;
-      data.reason = reason ?? null;
-    } else if (next === AssignmentStatus.COMPLETED) {
-      data.completedAt = now;
-    } else if (next === AssignmentStatus.PENDING) {
-      data.acceptedAt = null;
-      data.declinedAt = null;
-      data.completedAt = null;
-      data.reason = null;
-    }
-    return data;
+    // 1. Define field operations associated with each status
+    const statusEffects = {
+      [AssignmentStatus.ACCEPTED]: {
+        acceptedAt: now,
+        declinedAt: null,
+        completedAt: null,
+      },
+      [AssignmentStatus.DECLINED]: {
+        declinedAt: now,
+        completedAt: null,
+        reason: reason ?? null,
+      },
+      [AssignmentStatus.COMPLETED]: {
+        completedAt: now,
+      },
+      [AssignmentStatus.PENDING]: {
+        acceptedAt: null,
+        declinedAt: null,
+        completedAt: null,
+        reason: null,
+      },
+    };
+
+    // 2. Retrieve state-specific data or fallback to an empty object
+    const effect = statusEffects[next] || {};
+
+    return {
+      status: next,
+      ...effect,
+      updatedAt: now, // Ensure the global update timestamp is always refreshed
+    };
   }
 
   private isAdminish(role: GroupRole) {
     const IS_ADMIN = new Set<GroupRole>([GroupRole.OWNER, GroupRole.ADMIN]);
     return IS_ADMIN.has(role);
   }
-  // isValidAssignmentTransition
+
   private isValidAssignmentTransition(
     prev: AssignmentStatus,
     next: AssignmentStatus,
@@ -2118,13 +2253,13 @@ export class TasksService {
   ): boolean {
     if (prev === next) return true;
 
-    // 🚀 2. 處理動態的 COMPLETED 邏輯
+    // Deal with dynamic COMPLETED logic
     if (prev === AssignmentStatus.COMPLETED) {
-      // 只有當父任務還是 OPEN 時，才允許從 COMPLETED 回退到 ACCEPTED (例如撤銷完成)
+      // Only when the parent task is still OPEN, allow transition from COMPLETED back to ACCEPTED
       return taskStatus === 'OPEN' && next === AssignmentStatus.ACCEPTED;
     }
 
-    // 🚀 3. 處理其他靜態規則
+    // Deal with other status rules
     const allowed = TasksService.ASSIGNMENT_RULES[prev];
     return allowed?.includes(next) ?? false;
   }
@@ -2162,18 +2297,18 @@ export class TasksService {
   private getTaskBounds = (timeZone: string) => {
     const now = new Date();
 
-    // 取得該時區當天的 00:00:00 到 23:59:59 的 UTC 時間
+    // Get the start and end UTC time of today in the specified time zone
     const { startUtc, endUtc } = dayBoundsUtc(timeZone);
 
-    // 取得該時區當天的 Date-only 物件 (例如 2024-05-20T00:00:00.000Z)
-    // 用於 match Prisma 中的 allDayLocalDate 欄位
+    // Get the date-only object for today in that time zone
+    // (e.g. 2024-05-20T00:00:00.000Z) for matching the allDayLocalDate field in Prisma
     const todayStr = formatInTimeZone(now, timeZone, 'yyyy-MM-dd');
     const todayDateOnlyUtc = new Date(`${todayStr}T00:00:00.000Z`);
 
     return {
-      startUtc, // 今日開始 (UTC)
-      endUtc, // 今日結束 (UTC)
-      todayDateOnlyUtc, // 今日日期 (Date-only)
+      startUtc, // start of today time (UTC)
+      endUtc, // end of today time (UTC)
+      todayDateOnlyUtc, // date today (Date-only)
       timeZone,
     };
   };
@@ -2190,12 +2325,12 @@ export class TasksService {
 
       case 'expiredPriority':
         return [
-          { allDay: 'desc' }, // 全天任務優先
-          { allDayLocalDate: 'asc' }, // 日期越早（越過期）越前面
-          { dueAtUtc: 'asc' }, // 有時間點的任務按時間排列
+          { allDay: 'asc' }, // Non-all-day tasks go first
+          { allDayLocalDate: 'asc' }, // The earlier the date, the higher the priority
+          { dueAtUtc: 'asc' }, // Arrange by due date for tasks with the same allDay and allDayLocalDate
         ];
 
-      case 'createdAsc': // 假設這是你的預設或其他選項
+      case 'createdAsc': // default
       default:
         return [{ createdAt: 'asc' }];
     }

@@ -47,10 +47,14 @@ export class TasksPageController {
   }
 
   @Get('create')
-  async create(@Res() res: Response) {
+  create(@Res() res: Response) {
     res.render('tasks/create-task');
   }
 
+  /**
+   * @todo
+   * Add PENDING in TaskQueryDto for filtering pending tasks
+   */
   @Get('list')
   async list(
     @Query() query: TaskQueryDto,
