@@ -10,6 +10,7 @@ import {
   UseFilters,
   Get,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
@@ -17,6 +18,7 @@ import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
   AssignTaskDto,
+  NotificationDto,
   SubTasksAddDto,
   TasksAddDto,
   UpdateAssigneeStatusDto,
@@ -32,6 +34,7 @@ import { setSession } from 'src/common/helpers/flash-helper';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
 import { Public } from 'src/common/decorators/public.decorator';
 import { AssignmentStatus } from 'src/generated/prisma/enums';
+import { SerializationInterceptor } from 'src/common/interceptors/serialization/serialization.interceptor';
 
 @Controller('api/tasks')
 @UseGuards(AccessTokenGuard)
@@ -187,6 +190,7 @@ export class TasksController {
   // ---------------- notification ----------------
 
   @Get('notifications')
+  @UseInterceptors(new SerializationInterceptor(NotificationDto))
   async getNotifications(
     @Req() req,
     @CurrentUserDecorator() user: CurrentUser,
@@ -328,8 +332,8 @@ export class TasksController {
   }
 
   @Public()
-  @Get('respond-from-email')
-  async respondFromEmail(
+  @Get('assignments/decide')
+  async handleAssignmentDecision(
     @Query('token') token: string,
     @Query('status') status: AssignmentStatus,
     @Res() res: Response,
@@ -337,7 +341,7 @@ export class TasksController {
     try {
       // 1. 驗證 Token 並更新狀態 (邏輯封裝在 Service)
       const { taskId, subTaskId } =
-        await this.tasksService.processEmailResponse(token, status);
+        await this.tasksService.executeAssignmentDecision(token, status);
 
       // 2. 渲染成功頁面，提示使用者已處理完成
       return res.render('tasks/email-response-success', {

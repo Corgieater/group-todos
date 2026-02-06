@@ -15,7 +15,7 @@ import {
 } from 'class-validator';
 import { TaskStatus, TaskStatusValues } from '../types/enum';
 import { TaskPriority } from '../types/enum';
-import { Transform, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import { AssignmentStatus } from 'src/generated/prisma/client';
 
 function toBool(val: any): boolean {
@@ -184,4 +184,36 @@ export class AssignTaskDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true) // 處理 Form 送來的字串
   sendUrgentEmail?: boolean;
+}
+
+export class NotificationDto {
+  @Expose()
+  id: number;
+
+  @Expose()
+  type: 'TASK' | 'SUBTASK';
+
+  @Expose()
+  @Transform(({ obj }) => {
+    // 這裡是處理 [Sub] 前綴邏輯的地方
+    return obj.type === 'SUBTASK' ? `[Sub] ${obj.title}` : obj.title;
+  })
+  title: string;
+
+  @Expose()
+  priority: number;
+
+  @Expose()
+  @Transform(({ obj }) => obj.dueAtUtc) // 對齊欄位名稱
+  dueAt: Date;
+
+  @Expose()
+  @Transform(({ obj }) => {
+    const name = obj.group?.name || obj.task?.group?.name;
+    return name || 'Personal';
+  })
+  groupName: string;
+
+  @Expose()
+  url: string;
 }
