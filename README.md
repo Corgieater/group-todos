@@ -1,5 +1,7 @@
 # Group todo 作品介紹
 
+![todo-home](https://github.com/user-attachments/assets/8d3fed42-0f69-4384-bfdb-81fb9a708f2e)
+
 
 ## 前言
 為了學習NestJS框架產生的作品，除了學習外、出發點是為了讓多人可以一起有一個共同的todo list而做的，因為我覺得如果家庭(或一起準備某件事的人們)有一個共同的待辦事項會滿方便的。
@@ -8,8 +10,10 @@
 - 申請帳號、登入、登出、改密碼（含忘記密碼）
 - 個人、團體待辦清單的新增、刪除、更新
 - 主待辦下可新增次要待辦
+![task-sub-task](https://github.com/user-attachments/assets/bb650fd4-e768-4c48-ac16-4c89e4684c16)
 - 創造、新增、更新團體
 - 團體權限管理
+![group-details](https://github.com/user-attachments/assets/f720e9d9-6e1f-44bc-8543-8fffe6ae5d5f)
 - 團體任務指派（可選式Email通知）
 - 團體任務real live-editing多人共編
 - 任務歷史儀表板 
@@ -44,3 +48,8 @@
 - 測試: Jest — 撰寫單元測試。
 
 - 規範: Husky, Commitlint — 強制 Git 提交訊息規範與自動化 Pre-commit 檢查。
+
+## 資料庫結構
+![db-layout](https://github.com/user-attachments/assets/dad2cacb-61dd-4464-a691-183f1ab85233)
+
+
