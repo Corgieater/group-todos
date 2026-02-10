@@ -36,7 +36,7 @@ model Task {
 
   // 時間欄位（關鍵）
   // 1) 一般事件/截止時間 -> 存 UTC
-  dueAtUtc        DateTime? // 以 UTC 儲存的絕對時間點（nullable）
+  dueAtUtc        DateTime?  @db.Timestamptz(6)// 以 UTC 儲存的絕對時間點（nullable）
   // 2) All-day 事件 -> 用當地的「日期」表示
   allDay          Boolean   @default(true)
   allDayLocalDate DateTime? @db.Date // 僅日期；若 allDay=true，則這欄必有值
@@ -99,7 +99,7 @@ model SubTask {
 
   // 時間欄位（關鍵）
   // 1) 一般事件/截止時間 -> 存 UTC
-  dueAtUtc        DateTime? // 以 UTC 儲存的絕對時間點（nullable）
+  dueAtUtc        DateTime? @db.Timestamptz(6)// 以 UTC 儲存的絕對時間點（nullable）
   // 2) All-day 事件 -> 用當地的「日期」表示
   allDay          Boolean   @default(true)
   allDayLocalDate DateTime? @db.Date // 僅日期；若 allDay=true，則這欄必有值
