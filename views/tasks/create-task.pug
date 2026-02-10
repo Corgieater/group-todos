@@ -92,7 +92,7 @@ html(lang="en")
                   option(value="3" selected=(!__createForm.priority || String(__createForm.priority)==='3')) Medium
                   option(value="4" selected=(String(__createForm.priority)==='4')) Low
               .d-flex.flex-column.flex-md-row.justify-content-end.gap-2.mt-3
-                a.btn.btn-outline-secondary.px-4(href="/tasks/list?status=UNFINISHED") Cancel
+                a.btn.btn-outline-secondary.px-4(href="/tasks/home") Cancel
                 button#submitBtn.btn.btn-primary.px-4(type="submit")
                   span#submitSpinner.spinner-border.spinner-border-sm.me-2.d-none(role="status" aria-hidden="true")
                   i.bi.bi-check2-circle.me-1

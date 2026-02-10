@@ -3,82 +3,117 @@ html(lang="en")
   head
     meta(charset="UTF-8")
     meta(name="viewport", content="width=device-width, initial-scale=1")
-    title My Groups
+    title My Groups - Group Todos
     include ../partials/bootstrap
-    // 引入 Bootstrap Icons (如果尚未在 bootstrap partial 中包含)
     link(rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css") 
+    style.
+      .table-hover tbody tr:hover { background-color: rgba(0,0,0,.02); }
+      .pagination .page-link { color: #0d6efd; }
+      .pagination .page-item.active .page-link { background-color: #0d6efd; border-color: #0d6efd; color: white; }
 
   body
-    // 區塊 1: 導航列 (Navbar)
     include ../partials/header
-
-    // 區塊 2: 訊息及標頭 (Header)
-    .container
+    .container.mt-3
       include ../partials/message
 
-    // 區塊 3: 主要內容
     .container.py-4
-      
-      // --- My Groups 區塊 ---
-      hr.my-4
-      
-      // 標題及新增按鈕
-      .hstack.gap-3.justify-content-between.mb-2
-        .d-flex.align-items-center.gap-2
-          h2.h5.mb-0 👥 My Groups
-          
-          // 群組計數
-          - const groupRows = (groups || []).map(it => it?.group ? it.group : it)
-          if (groupRows.length)
-            span.badge.text-bg-secondary.rounded-pill #{groupRows.length}
+      .d-flex.justify-content-between.align-items-center.mb-4
+        .d-flex.align-items-center.gap-3
+          h2.h4.mb-0 👥 My Groups
+          if pageDto && pageDto.totalItems > 0
+            span.badge.rounded-pill.bg-secondary #{pageDto.totalItems} Total
         
-        // 新增群組按鈕
-        a.btn.btn-sm.btn-primary(href="/groups/new")
+        a.btn.btn-primary(href="/groups/new")
           i.bi.bi-plus-lg.me-1
           | New Group
 
-      // --- 群組清單渲染邏輯 (原 _list.pug 內容) ---
-      if !groupRows.length
-        // 空狀態提示
-        .border.border-2.border-dashed.rounded-3.p-5.text-center.text-muted
-          i.bi.bi-people.fs-1.d-block.mb-2
-          div.mb-2 No groups yet. Create one to get started!
+      if !groups || groups.length === 0
+        .card.shadow-sm.border-0.bg-light
+          .card-body.text-center.py-5
+            i.bi.bi-people.display-1.text-muted.mb-3
+            h3.h5 No groups yet.
+            a.btn.btn-outline-primary.mt-2(href="/groups/new") Create Your First Group
       else
-        // 群組表格
-        .table-responsive
-          table.table.table-hover.align-middle
-            caption.visually-hidden List of my groups
-            thead
-              tr
-                th.w-75 Name
-                th.text-end Actions
-            tbody
-              each g, idx in groupRows
+        .card.shadow-sm.border-0
+          .table-responsive
+            table.table.table-hover.align-middle.mb-0
+              thead.table-light
                 tr
-                  // 群組名稱 (可點擊進入詳情)
-                  td
-                    a.text-decoration-none(href=`/groups/${g.id}`)
-                      i.bi.bi-folder2.me-2
-                      | #{g.name}
-                  
-                  // 操作按鈕
-                  td.text-end
-                    a.btn.btn-sm.btn-outline-secondary.me-2(href=`/groups/${g.id}`) 
-                      i.bi.bi-eye
-                      | View
+                  th.ps-4(style="width: 50%") Group Name
+                  th Created At
+                  th.text-end.pe-4 Actions
+              tbody
+                each g in groups
+                  tr
+                    td.ps-4
+                      a.fw-bold.text-decoration-none(href=`/groups/${g.id}`)
+                        i.bi.bi-folder2-open.text-warning.me-2
+                        | #{g.name}
+                      //- 改用 == 避免型別錯誤，並確認 currentUser.userId 存在
+                      if currentUser && g.ownerId == (currentUser.userId || currentUser)
+                        span.badge.bg-light.text-dark.border.ms-1.small.fw-normal(style="font-size: 0.7rem;") Owner
                     
-                    a.btn.btn-sm.btn-outline-success.me-2(href=`/groups/${g.id}/tasks`) 
-                      i.bi.bi-list-task
-                      | Tasks
+                    td.text-muted.small
+                      | #{new Date(g.createdAt).toLocaleDateString()}
                     
-                    a.btn.btn-sm.btn-outline-primary(href=`/groups/${g.id}/edit`) 
-                      i.bi.bi-pencil
-                      | Edit
-      
-      // --- Task List 區塊 (如果需要，可以在此添加) ---
-      // hr.my-4
-      // h2.h5.mb-3 My Tasks
-      // // 任務列表內容...
+                    td.text-end.pe-4
+                      .btn-group.btn-group-sm
+                        a.btn.btn-outline-secondary(href=`/groups/${g.id}`, title="View") 
+                          i.bi.bi-eye
+                        a.btn.btn-outline-success(href=`/groups/${g.id}/tasks`, title="Tasks") 
+                          i.bi.bi-list-check
+                        
+                        //- 關鍵修正：判斷 Owner 權限顯示鉛筆
+                        if currentUser && g.ownerId == (currentUser.userId || currentUser)
+                          button.btn.btn-outline-primary.btn-edit-group(
+                            type="button"
+                            data-bs-toggle="modal"
+                            data-bs-target="#editGroupModal"
+                            data-id=g.id
+                            data-name=g.name
+                          )
+                            i.bi.bi-pencil
 
-    // 引入 Bootstrap JS
-    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js")
+          if pageDto && pageDto.totalPages > 1
+            .card-footer.bg-white.py-3
+              nav
+                ul.pagination.justify-content-center.mb-0
+                  li.page-item(class=!pageDto.hasPreviousPage ? 'disabled' : '')
+                    a.page-link(href=`?page=${pageDto.currentPage - 1}&limit=${pageDto.itemsPerPage}`) 
+                      i.bi.bi-chevron-left
+                  - for (let i = 1; i <= pageDto.totalPages; i++)
+                    li.page-item(class=pageDto.currentPage === i ? 'active' : '')
+                      a.page-link(href=`?page=${i}&limit=${pageDto.itemsPerPage}`) #{i}
+                  li.page-item(class=!pageDto.hasNextPage ? 'disabled' : '')
+                    a.page-link(href=`?page=${pageDto.currentPage + 1}&limit=${pageDto.itemsPerPage}`) 
+                      i.bi.bi-chevron-right
+
+    // Edit Modal
+    #editGroupModal.modal.fade(tabindex="-1" aria-hidden="true")
+      .modal-dialog.modal-dialog-centered
+        .modal-content
+          form#editGroupForm(method="POST")
+            .modal-header
+              h5.modal-title Edit Group Name
+              button.btn-close(type="button" data-bs-dismiss="modal")
+            .modal-body
+              .mb-3
+                label.form-label New Name
+                input#modalGroupName.form-control(type="text" name="name" required)
+              input(type="hidden" name="_csrf" value=csrfToken)
+            .modal-footer
+              button.btn.btn-link.text-decoration-none(type="button" data-bs-dismiss="modal") Cancel
+              button.btn.btn-primary(type="submit") Update
+
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
+    script.
+      document.addEventListener('DOMContentLoaded', function() {
+        const editGroupModal = document.getElementById('editGroupModal');
+        if (editGroupModal) {
+          editGroupModal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            document.getElementById('modalGroupName').value = button.getAttribute('data-name');
+            document.getElementById('editGroupForm').action = `/api/groups/${button.getAttribute('data-id')}/update`;
+          });
+        }
+      });

@@ -36,10 +36,6 @@ html(lang="en")
         h1.h4.mb-0
           i.bi.bi-people-fill.me-2
           = group && group.name ? group.name : 'Details'
-        if isOwner
-          a.btn.btn-outline-primary.btn-sm(href=`/groups/${group.id}/edit`)
-            i.bi.bi-pencil-square.me-1
-            | Edit
 
       // Info + Actions
       .row.g-3.mb-4
