@@ -76,7 +76,7 @@ export class TaskQueryDto {
 
   @IsOptional()
   @IsString()
-  scope?: string;
+  scope?: string; //FUTURE or ALL
 
   @IsOptional()
   @Type(() => Number)

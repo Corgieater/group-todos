@@ -31,6 +31,7 @@ import { TasksGateWay } from './tasks.gateway';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 import { CurrentUser } from 'src/common/types/current-user';
+import { notNull } from 'jest-mock-extended';
 
 /**
  * TODO:
@@ -234,7 +235,7 @@ export class TasksService {
 
     // 4. Build pagination Meta
     const itemCount = Number(totalResult[0]?.count ?? 0);
-    const pageOptionsDto = { page, limit, skip }; // 模擬 PageOptionsDto 結構
+    const pageOptionsDto = { page, limit, skip }; // Mimic PageOptionsDto structure
     const meta = new PageMetaDto(pageOptionsDto as any, itemCount);
 
     return new PageDto(tasks, meta);
@@ -2356,10 +2357,12 @@ export class TasksService {
     }
 
     if (isAllDay) {
-      return {
-        allDayLocalDate: new Date(`${dueDate}T00:00:00.000Z`),
-        dueAtUtc: null,
-      };
+      const allDayLocalDate = new Date(`${dueDate}T00:00:00.000Z`);
+      const localEndOfDay = `${dueDate}T23:59:59.999`;
+
+      const dueAtUtc = fromZonedTime(localEndOfDay, userTz);
+
+      return { allDayLocalDate, dueAtUtc };
     }
 
     // Non all-day: Specific time logic

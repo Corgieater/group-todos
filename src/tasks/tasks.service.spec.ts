@@ -182,7 +182,7 @@ describe('TasksService', () => {
       expect(data).toMatchObject({
         title: 'task1',
         description: null,
-        dueAtUtc: null,
+        dueAtUtc: new Date('2025-09-09T15:59:59.999Z'),
         allDayLocalDate: new Date('2025-09-09T00:00:00.000Z'),
         allDay: true,
         location: null,
@@ -234,7 +234,7 @@ describe('TasksService', () => {
       expect(data).toMatchObject({
         title: 'task1',
         description: null,
-        dueAtUtc: null,
+        dueAtUtc: new Date('2025-09-09T15:59:59.999Z'),
         allDayLocalDate: new Date('2025-09-09T00:00:00.000Z'),
         allDay: true,
         location: null,
