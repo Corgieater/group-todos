@@ -12,12 +12,22 @@ import { TasksModule } from './tasks/tasks.module';
 import { PagesModule } from './pages/pages.module';
 import { GroupsModule } from './groups/groups.module';
 import { SecurityModule } from './security/security.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: process.env.NODE_ENV === 'prod' ? '.env.prod' : '.env',
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+      serveStaticOptions: {
+        maxAge: 3600000, // 1h
+        etag: true,
+        lastModified: true,
+      },
     }),
     UsersModule,
     PrismaModule,
