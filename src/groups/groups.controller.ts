@@ -5,6 +5,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Req,
   Res,
   UseFilters,
@@ -19,6 +20,7 @@ import {
   CreateGroupDto,
   InviteGroupMemberDto,
   KickOutMemberFromGroupDto,
+  UpdateGroupDto,
   UpdateMemberRoleDto,
 } from './dto/groups.dto';
 import { setSession } from 'src/common/helpers/flash-helper';
@@ -46,6 +48,25 @@ export class GroupsController {
     await this.groupsService.createGroup(user.userId, dto.name);
     setSession(req, 'success', 'Group created');
     res.redirect('/users-home');
+  }
+
+  @Post(':id/update')
+  async update(
+    @Req() req: Request,
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateGroupDto,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.groupsService.updateGroup(user.userId, id, dto.name);
+      setSession(req, 'success', 'Group info updated');
+    } catch (e) {
+      setSession(req, 'error', e.message);
+    }
+
+    const backUrl = req.header('Referer') || '/groups/list';
+    res.redirect(backUrl);
   }
 
   // TODO: use @Public decorater, issue JWT

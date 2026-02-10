@@ -38,6 +38,7 @@ function createMockPrisma() {
       upsert: jest.fn(),
       update: jest.fn(),
       deleteMany: jest.fn(),
+      count: jest.fn(),
     },
     actionToken: {
       create: jest.fn(),
@@ -168,54 +169,92 @@ describe('GroupService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('getGroupListByUserId', () => {
-    it('should return a list of groups', async () => {
-      const groups = [
-        {
-          groupId: 1,
-          userId: 1,
-          role: 'MEMBER',
-          joinedAt: new Date('2025-09-28T07:35:51.289Z'),
-          group: { id: 1, name: 'group1' },
-        },
-        {
-          groupId: 2,
-          userId: 1,
-          role: 'MEMBER',
-          joinedAt: new Date('2025-09-28T07:35:51.289Z'),
-          group: { id: 2, name: 'group2' },
-        },
-      ];
-      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(user);
-      mockPrismaService.groupMember.findMany.mockResolvedValueOnce(groups);
-      const groupList = await groupsService.getGroupListByUserId(user.id);
+    const userId = 1;
+    const mockGroupMembers = [
+      {
+        userId: 1,
+        groupId: 1,
+        group: { id: 1, name: 'Group 1', ownerId: 1, createdAt: new Date() },
+      },
+      {
+        userId: 1,
+        groupId: 2,
+        group: { id: 2, name: 'Group 2', ownerId: 1, createdAt: new Date() },
+      },
+    ];
 
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(1);
+    it('should return group list with pagination', async () => {
+      // Arrange
+      const options = { page: 1, limit: 10, order: 'ASC' as const };
+      mockUsersService.findByIdOrThrow.mockResolvedValue(user);
+      mockPrismaService.groupMember.findMany.mockResolvedValue(
+        mockGroupMembers,
+      );
+      mockPrismaService.groupMember.count.mockResolvedValue(2);
+
+      // Act
+      const result = await groupsService.getGroupListByUserId(userId, options);
+
+      // Assert
+      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(userId);
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledWith({
+        where: { userId },
+        include: expect.any(Object),
+        skip: 0,
+        take: 10,
+        orderBy: { group: { createdAt: 'asc' } },
+      });
+
+      expect(result.data).toEqual(mockGroupMembers);
+      expect(result.meta.itemCount).toBe(2);
+      expect(result.meta.pageCount).toBe(1);
+    });
+
+    it('should correctly count the skip number when page is 2', async () => {
+      // Arrange
+      const options = { page: 2, limit: 5 };
+      mockPrismaService.groupMember.findMany.mockResolvedValue([]);
+      mockPrismaService.groupMember.count.mockResolvedValue(0);
+
+      // Act
+      await groupsService.getGroupListByUserId(userId, options);
+
+      // Assert
       expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId: 1 },
-          include: { group: { select: { id: true, name: true } } },
+          skip: 5, // (2 - 1) * 5
+          take: 5,
         }),
       );
-      expect(groupList).toEqual(groups);
     });
 
-    it('should return empty array', async () => {
-      mockPrismaService.groupMember.findMany.mockResolvedValueOnce([]);
-      const groupList = await groupsService.getGroupListByUserId(user.id);
+    it('should order by DESC', async () => {
+      // Arrange
+      const options = { order: 'DESC' as const };
+      mockPrismaService.groupMember.findMany.mockResolvedValue([]);
+      mockPrismaService.groupMember.count.mockResolvedValue(0);
 
-      expect(groupList).toEqual([]);
-    });
+      // Act
+      await groupsService.getGroupListByUserId(userId, options);
 
-    it('should not hit database when user not found', async () => {
-      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(999),
+      // Assert
+      expect(mockPrismaService.groupMember.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { group: { createdAt: 'desc' } },
+        }),
       );
-      await expect(
-        groupsService.getGroupListByUserId(999),
-      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+    });
 
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.groupMember.findMany).not.toHaveBeenCalled();
+    it('should throw user not found', async () => {
+      // Arrange
+      mockUsersService.findByIdOrThrow.mockRejectedValue(
+        new Error('User not found'),
+      );
+
+      // Act & Assert
+      await expect(
+        groupsService.getGroupListByUserId(userId, {}),
+      ).rejects.toThrow('User not found');
     });
   });
 
@@ -270,6 +309,7 @@ describe('GroupService', () => {
     });
 
     it('should return GroupNotFoundError', async () => {
+      mockUsersService.findByIdOrThrow.mockResolvedValueOnce(user);
       mockPrismaService.group.findFirst.mockResolvedValueOnce(null);
       await expect(
         groupsService.getGroupDetailsByMemberId(99, user.id),

@@ -38,6 +38,15 @@ export class GroupActionForbiddenError extends DomainError {
     });
   }
 
+  static updateGroup(groupId: number, actorId: number) {
+    return new GroupActionForbiddenError({
+      groupId,
+      actorId,
+      action: 'update_group',
+      allowedRoles: ['OWNER'],
+    });
+  }
+
   // 靜態工廠方法：移除成員
   static removeMember(
     groupId: number,

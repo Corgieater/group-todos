@@ -17,6 +17,10 @@ import { ConfigService } from '@nestjs/config';
 import { addTime } from 'src/common/helpers/util';
 import { assertInviteRow } from './type/invite';
 import { SecurityService } from 'src/security/security.service';
+import { PageDto } from 'src/common/dto/page.dto';
+import { PageMetaDto } from 'src/common/dto/page-meta.dto';
+import { group } from 'console';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
 type GroupListItem = Prisma.GroupMemberGetPayload<{
   include: { group: { select: { id: true; name: true } } };
@@ -62,15 +66,51 @@ export class GroupsService {
     });
   }
 
-  // TODO: NOTE:
-  // Is it possible i need a pagination here?
-  async getGroupListByUserId(userId: number): Promise<GroupListItem[]> {
+  async updateGroup(actorId: number, id: number, name: string): Promise<void> {
+    const result = await this.prismaService.group.updateMany({
+      where: {
+        id: id,
+        ownerId: actorId,
+      },
+      data: { name },
+    });
+
+    if (result.count === 0) {
+      throw GroupsErrors.GroupActionForbiddenError.updateGroup(id, actorId);
+    }
+  }
+
+  async getGroupListByUserId(
+    userId: number,
+    options: { page?: number; limit?: number; order?: 'ASC' | 'DESC' },
+  ): Promise<PageDto<any>> {
     await this.usersService.findByIdOrThrow(userId);
 
-    return await this.prismaService.groupMember.findMany({
-      where: { userId },
-      include: { group: { select: { id: true, name: true } } },
-    });
+    const { page = 1, limit = 10, order = 'ASC' } = options;
+    const skip = (page - 1) * limit;
+
+    const [groups, totalResult] = await Promise.all([
+      this.prismaService.groupMember.findMany({
+        where: { userId },
+        include: {
+          group: {
+            select: { id: true, name: true, ownerId: true, createdAt: true },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: {
+          group: {
+            createdAt: order.toLowerCase() as any, // 根據建立時間排序
+          },
+        },
+      }),
+      this.prismaService.groupMember.count({ where: { userId } }),
+    ]);
+    const itemCount = Number(totalResult ?? 0);
+    const pageOptionsDto = { page, limit, skip };
+    const meta = new PageMetaDto(pageOptionsDto as any, itemCount);
+    return new PageDto(groups, meta);
   }
 
   async getGroupDetailsByMemberId(

@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Query,
   Req,
   Res,
   UseFilters,
@@ -17,6 +18,7 @@ import { buildGroupVM } from 'src/common/helpers/util';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 import { TasksService } from 'src/tasks/tasks.service';
 import { GroupsErrors } from 'src/errors';
+import { GroupPageDto } from './dto/groups.dto';
 
 @Controller('groups')
 @UseGuards(AccessTokenGuard)
@@ -34,16 +36,23 @@ export class GroupsPageController {
 
   @Get('list')
   async list(
+    @Query() query: GroupPageDto,
     @Res() res: Response,
     @CurrentUserDecorator() user: CurrentUser,
     @Req() req: Request,
   ) {
-    const membership = await this.groupsService.getGroupListByUserId(
-      user.userId,
-    );
+    const page = query.page ? query.page : 1;
+    const limit = query.limit ? query.limit : 10;
+    const pageDto = await this.groupsService.getGroupListByUserId(user.userId, {
+      ...query,
+      page,
+      limit,
+    });
 
     return res.render('groups/list', {
-      groups: membership.map((m) => m.group),
+      currentUser: user.userId,
+      groups: pageDto.data.map((m) => m.group),
+      pageDto: pageDto.meta,
     });
   }
 
