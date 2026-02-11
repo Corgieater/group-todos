@@ -7,7 +7,7 @@
 為了學習NestJS框架產生的作品，除了學習外、出發點是為了讓多人可以一起有一個共同的todo list而做的，因為我覺得如果家庭(或一起準備某件事的人們)有一個共同的待辦事項會滿方便的。
 
 ## 系統架構
-![layout-counselor2](https://github.com/user-attachments/assets/8d1aa680-ade8-4271-9b9e-f30cbd138498)
+![layout-counselor2](https://github.com/user-attachments/assets/e10ec137-4dd6-4b9c-bc9a-47a6f7518952)
 - 功能模組
   - Tasks Module：負責任務的生命週期管理，包含主任務與副任務的關聯處理
   - Groups Module：負責社交與組織功能，如團體的建立、成員邀請與權限管理
