@@ -6,6 +6,18 @@
 ## 前言
 為了學習NestJS框架產生的作品，除了學習外、出發點是為了讓多人可以一起有一個共同的todo list而做的，因為我覺得如果家庭(或一起準備某件事的人們)有一個共同的待辦事項會滿方便的。
 
+## 系統架構
+![layout-counselor2](https://github.com/user-attachments/assets/8d1aa680-ade8-4271-9b9e-f30cbd138498)
+- 功能模組
+  - Tasks Module：負責任務的生命週期管理，包含主任務與副任務的關聯處理
+  - Groups Module：負責社交與組織功能，如團體的建立、成員邀請與權限管理
+  - Auth Module：負責門禁系統，包含註冊、登入、登出及密碼變更等身份驗證與授權邏輯
+- 核心服務層
+  - Users Service：作為使用者資料的統一入口，負責對 User Table 執行 CRUD（增刪查改），並確保資料一致性
+  - Mail Service：封裝郵件傳送邏輯，提供給其他模組（如 Auth 模組的驗證信）調用
+  - Security Service：封裝加解密與雜湊（Hashing）邏輯，保護敏感資訊（如密碼）的安全
+  - Prisma Service：全域單一實例，負責管理 Prisma ORM 與 PostgreSQL 資料庫的連線與查詢操作
+
 ## 功能
 - 申請帳號、登入、登出、改密碼（含忘記密碼）
 - 個人、團體待辦清單的新增、刪除、更新
