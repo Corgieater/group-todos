@@ -14,6 +14,8 @@ import { GroupsModule } from './groups/groups.module';
 import { SecurityModule } from './security/security.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { APP_GUARD } from '@nestjs/core';
+import { AccessTokenGuard } from './auth/guards/access-token.guard';
 
 @Module({
   imports: [
@@ -39,6 +41,6 @@ import { join } from 'path';
     SecurityModule,
   ],
   controllers: [AppController],
-  providers: [AppService, PrismaService, MailService],
+  providers: [AppService, { provide: APP_GUARD, useClass: AccessTokenGuard }],
 })
 export class AppModule {}
