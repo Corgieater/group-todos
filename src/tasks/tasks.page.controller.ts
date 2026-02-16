@@ -21,7 +21,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { TaskQueryDto } from './dto/tasks.dto';
 
 @Controller('tasks')
-@UseGuards(AccessTokenGuard)
 @UseFilters(TasksPageFilter)
 export class TasksPageController {
   constructor(
@@ -152,6 +151,7 @@ export class TasksPageController {
   }
 
   // ------------------------- Sub-Tasks -----------------------
+
   @Get(':taskId/sub-tasks/partial')
   @Render('partials/_subtask-list') // 💡 指定只渲染這個片段
   async getSubTasksPartial(

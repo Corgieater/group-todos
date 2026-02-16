@@ -7,10 +7,8 @@ import {
   Req,
   Res,
   UseFilters,
-  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { GroupsService } from './groups.service';
@@ -21,7 +19,6 @@ import { GroupsErrors } from 'src/errors';
 import { GroupPageDto } from './dto/groups.dto';
 
 @Controller('groups')
-@UseGuards(AccessTokenGuard)
 @UseFilters(GroupsPageFilter)
 export class GroupsPageController {
   constructor(
@@ -129,8 +126,6 @@ export class GroupsPageController {
       viewerId: user.userId,
       viewerRole,
       isAdminish,
-      csrfToken: (req as any).csrfToken ? (req as any).csrfToken() : '',
-
       // 分區資料
       expired: dashboardData.expired,
       today: dashboardData.today,

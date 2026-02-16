@@ -5,14 +5,11 @@ import {
   Param,
   ParseIntPipe,
   Post,
-  Query,
   Req,
   Res,
   UseFilters,
-  UseGuards,
 } from '@nestjs/common';
 import { GroupsService } from './groups.service';
-import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { Request, Response } from 'express';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
@@ -28,14 +25,16 @@ import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 import { TasksService } from 'src/tasks/tasks.service';
 import { TasksAddDto } from 'src/tasks/dto/tasks.dto';
 import { TasksAddPayload } from 'src/tasks/types/tasks';
+import { Public } from 'src/common/decorators/public.decorator';
+import { SecurityService } from 'src/security/security.service';
 
 @Controller('/api/groups')
-@UseGuards(AccessTokenGuard)
 @UseFilters(GroupsPageFilter)
 export class GroupsController {
   constructor(
     private groupsService: GroupsService,
     private tasksService: TasksService,
+    private securityService: SecurityService,
   ) {}
 
   @Post('new')
@@ -69,7 +68,6 @@ export class GroupsController {
     res.redirect(backUrl);
   }
 
-  // TODO: use @Public decorater, issue JWT
   @Post(':id/invitations')
   async invite(
     @Req() req: Request,
@@ -84,7 +82,7 @@ export class GroupsController {
     res.redirect(`/groups/${id}`);
   }
 
-  // TODO: use @Public decorater, issue JWTtoken
+  @Public()
   @Get('invitation/:id/:token')
   async verifyInvitation(
     @Req() req: Request,
@@ -92,9 +90,16 @@ export class GroupsController {
     @Param('token') token: string,
     @Res() res: Response,
   ) {
-    await this.groupsService.verifyInvitation(id, token);
+    const payload = await this.groupsService.verifyInvitation(id, token);
+    const accessToken = await this.securityService.signAccessToken(payload);
+
+    res.cookie(
+      'grouptodo_login',
+      accessToken,
+      this.securityService.getCookieOptions(),
+    );
     setSession(req, 'success', 'You have been invited to a group!');
-    res.redirect('/users-home');
+    res.redirect(`/groups/${id}`);
   }
 
   @Post(':id/update/role')

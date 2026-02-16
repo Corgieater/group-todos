@@ -20,8 +20,8 @@ import {
   createMockRes,
 } from 'src/test/factories/mock-http.factory';
 import { CurrentUser } from 'src/common/types/current-user';
-import { ConfigService } from '@nestjs/config';
-import { createMockConfig } from 'src/test/factories/mock-config.factory';
+import { SecurityService } from 'src/security/security.service';
+import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
 describe('AuthController', () => {
   let authController: AuthController;
@@ -30,6 +30,11 @@ describe('AuthController', () => {
   let res: Response;
   let currentUser: CurrentUser;
   const ACCESS_TOKEN = { accessToken: 'jwtToken' };
+  const dummyCookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 123456,
+  };
 
   const mockAuthService = {
     signup: jest.fn(),
@@ -40,14 +45,14 @@ describe('AuthController', () => {
     confirmResetPassword: jest.fn(),
   };
 
-  const mockConfigService = createMockConfig();
+  const mockSecurityService = createMockSecurityService();
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
-        { provide: ConfigService, useValue: mockConfigService.mock },
+        { provide: SecurityService, useValue: mockSecurityService },
       ],
     }).compile();
 
@@ -91,13 +96,12 @@ describe('AuthController', () => {
 
     it('should sign in user and redirect with token', async () => {
       mockAuthService.signin.mockResolvedValueOnce(ACCESS_TOKEN);
+      mockSecurityService.getCookieOptions.mockReturnValue(dummyCookieOptions);
       await authController.signin(req, dto, res);
       expect(res.cookie).toHaveBeenCalledWith('grouptodo_login', 'jwtToken', {
         httpOnly: true,
         sameSite: 'lax',
-        maxAge: mockConfigService.mock.getOrThrow<number>(
-          'LOGIN_COOKIE_MAX_AGE',
-        ),
+        maxAge: 123456,
       });
       expect(res.redirect).toHaveBeenCalledWith('/tasks/home');
     });
@@ -173,6 +177,8 @@ describe('AuthController', () => {
 
     it('should return reset password form page after token verified', async () => {
       mockAuthService.verifyResetToken.mockResolvedValueOnce(ACCESS_TOKEN);
+      mockSecurityService.getCookieOptions.mockReturnValue(dummyCookieOptions);
+
       await authController.verifyResetToken(
         req,
         tokenId,
@@ -191,9 +197,7 @@ describe('AuthController', () => {
         expect.objectContaining({
           httpOnly: true,
           sameSite: 'lax',
-          maxAge: mockConfigService.mock.getOrThrow<number>(
-            'RESET_PASSWORD_COOKIE_MAX_AGE',
-          ),
+          maxAge: 123456,
         }),
       );
       expect(res.redirect).toHaveBeenCalledWith('/auth/reset-password');

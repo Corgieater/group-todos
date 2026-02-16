@@ -31,7 +31,7 @@ import { TasksGateWay } from './tasks.gateway';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 import { CurrentUser } from 'src/common/types/current-user';
-import { notNull } from 'jest-mock-extended';
+import { UserAccessInfo } from 'src/auth/types/auth';
 
 /**
  * TODO:
@@ -2131,9 +2131,25 @@ export class TasksService {
   async executeAssignmentDecision(
     token: string,
     status: AssignmentStatus,
-  ): Promise<{ taskId: number; subTaskId?: number }> {
+  ): Promise<{
+    taskId: number;
+    subTaskId?: number;
+    accessPayload: UserAccessInfo;
+  }> {
     // Verify token
-    const payload = await this.securityService.verifyTaskActionToken(token);
+    const payload = await this.securityService.verifyTaskDecisionToken(token);
+    const user = await this.usersService.findById(payload.userId);
+
+    if (!user) {
+      throw UsersErrors.UserNotFoundError.byId(payload.userId);
+    }
+
+    const accessPayload: UserAccessInfo = {
+      sub: user.id,
+      userName: user.name,
+      email: user.email,
+      timeZone: user.timeZone,
+    };
 
     // If it's a subTask assignment
     if (payload.subTaskId) {
@@ -2144,7 +2160,11 @@ export class TasksService {
           status,
         },
       );
-      return { taskId: payload.taskId, subTaskId: payload.subTaskId };
+      return {
+        taskId: payload.taskId,
+        subTaskId: payload.subTaskId,
+        accessPayload,
+      };
     }
 
     // If it's a task assignment
@@ -2152,7 +2172,7 @@ export class TasksService {
       status,
     });
 
-    return { taskId: payload.taskId };
+    return { taskId: payload.taskId, accessPayload };
   }
 
   //  ----------------- Common helper -----------------

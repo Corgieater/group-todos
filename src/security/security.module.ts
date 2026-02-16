@@ -8,11 +8,7 @@ import { SecurityService } from './security.service';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        // this default is for signin token
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: config.getOrThrow<number>('TOKEN_EXPIRE_TIME'),
-        },
       }),
     }),
   ],

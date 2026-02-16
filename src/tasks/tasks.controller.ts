@@ -6,14 +6,12 @@ import {
   Post,
   Req,
   Res,
-  UseGuards,
   UseFilters,
   Get,
   Query,
   UseInterceptors,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
@@ -35,12 +33,15 @@ import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
 import { Public } from 'src/common/decorators/public.decorator';
 import { AssignmentStatus } from 'src/generated/prisma/enums';
 import { SerializationInterceptor } from 'src/common/interceptors/serialization/serialization.interceptor';
+import { SecurityService } from 'src/security/security.service';
 
 @Controller('api/tasks')
-@UseGuards(AccessTokenGuard)
 @UseFilters(TasksPageFilter)
 export class TasksController {
-  constructor(private tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly securityService: SecurityService,
+  ) {}
 
   @Post()
   async create(
@@ -332,7 +333,7 @@ export class TasksController {
   }
 
   @Public()
-  @Get('assignments/decide')
+  @Get('assignments/decision')
   async handleAssignmentDecision(
     @Query('token') token: string,
     @Query('status') status: AssignmentStatus,
@@ -340,8 +341,16 @@ export class TasksController {
   ) {
     try {
       // 1. 驗證 Token 並更新狀態 (邏輯封裝在 Service)
-      const { taskId, subTaskId } =
+      const { taskId, subTaskId, accessPayload } =
         await this.tasksService.executeAssignmentDecision(token, status);
+      const accessToken =
+        await this.securityService.signAccessToken(accessPayload);
+
+      res.cookie(
+        'grouptodo_login',
+        accessToken,
+        this.securityService.getCookieOptions(),
+      );
 
       // 2. 渲染成功頁面，提示使用者已處理完成
       return res.render('tasks/email-response-success', {

@@ -6,11 +6,11 @@ import { Injectable } from '@nestjs/common';
 import { AuthSignupDto } from './dto/auth.dto';
 import { UsersService } from 'src/users/users.service';
 import { MailService } from 'src/mail/mail.service';
-import {
-  NormalAccessTokenPayload,
-  ResetAccessTokenPayload,
-  AuthUpdatePasswordPayload,
-} from './types/auth';
+// import {
+//   NormalAccessTokenPayload,
+//   ResetPasswordTokenPayload,
+//   AuthUpdatePasswordPayload,
+// } from './types/auth';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -18,14 +18,13 @@ import { AuthErrors } from 'src/errors';
 import { UsersErrors } from 'src/errors';
 import { addTime } from 'src/common/helpers/util';
 import { SecurityService } from 'src/security/security.service';
-import { JwtService } from '@nestjs/jwt';
+import { AuthUpdatePasswordPayload, UserResetPasswordInfo } from './types/auth';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly config: ConfigService,
     private readonly securityService: SecurityService,
-    private readonly jwtService: JwtService,
     private readonly usersService: UsersService,
     private readonly prismaService: PrismaService,
     private readonly mailService: MailService,
@@ -52,7 +51,6 @@ export class AuthService {
     email: string,
     password: string,
   ): Promise<{ accessToken: string }> {
-    let payload: NormalAccessTokenPayload;
     const user: UserModel | null = await this.usersService.findByEmail(email);
     if (!user) {
       throw UsersErrors.UserNotFoundError.byEmail(email);
@@ -61,18 +59,18 @@ export class AuthService {
     if (!(await this.securityService.verify(user.hash, password))) {
       throw AuthErrors.InvalidCredentialError.password();
     }
-    payload = {
-      tokenUse: 'access',
+
+    const payload = {
       sub: user.id,
       userName: user.name,
       email: user.email,
       timeZone: user.timeZone,
     };
+
     return {
-      accessToken: await this.jwtService.signAsync(payload),
+      accessToken: await this.securityService.signAccessToken(payload),
     };
   }
-
   async changePassword(payload: AuthUpdatePasswordPayload): Promise<void> {
     const user = await this.usersService.findById(payload.userId);
 
@@ -211,8 +209,7 @@ export class AuthService {
       throw AuthErrors.InvalidTokenError.verify();
     }
 
-    const accessTokenPayload: ResetAccessTokenPayload = {
-      tokenUse: 'resetPassword',
+    const accessTokenPayload: UserResetPasswordInfo = {
       sub: result.user.id,
       userName: result.user.name,
       email: result.user.email,
@@ -220,9 +217,8 @@ export class AuthService {
     };
 
     return {
-      accessToken: await this.jwtService.signAsync(accessTokenPayload, {
-        expiresIn: '10m',
-      }),
+      accessToken:
+        await this.securityService.signResetPasswordToken(accessTokenPayload),
     };
   }
 

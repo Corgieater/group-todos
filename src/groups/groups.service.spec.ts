@@ -15,10 +15,9 @@ import {
   UsersErrors,
 } from 'src/errors';
 import { MailService } from 'src/mail/mail.service';
-import { AuthService } from 'src/auth/auth.service';
-import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { SecurityService } from 'src/security/security.service';
+import { ConfigService } from '@nestjs/config';
 
 function createMockPrisma() {
   const prisma: any = {
@@ -74,6 +73,8 @@ describe('GroupService', () => {
       .mockReturnValue('rawUrlFriendlySecret'),
     hmacToken: jest.fn().mockReturnValue('base64urlHash'),
     safeEqualB64url: jest.fn(),
+    signResetPasswordToken: jest.fn(),
+    signAccessToken: jest.fn(),
   };
 
   const mockMailService = {
@@ -104,7 +105,7 @@ describe('GroupService', () => {
         { provide: UsersService, useValue: mockUsersService },
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: MailService, useValue: mockMailService },
-        { provide: AuthService, useValue: mockAuthService },
+        { provide: SecurityService, useValue: mockSecurityService },
         { provide: ConfigService, useValue: mockConfigService.mock },
         {
           provide: SecurityService,
@@ -634,6 +635,12 @@ describe('GroupService', () => {
       expiresAt: new Date('2099-01-01T00:00:00Z'),
       consumedAt: null,
       revokedAt: null,
+      user: {
+        id: 1,
+        name: 'test',
+        email: 'test@test.com',
+        timeZone: 'Taipei/Taiwan',
+      },
     };
 
     beforeEach(() => {
@@ -664,12 +671,10 @@ describe('GroupService', () => {
           groupId: { not: null },
           userId: { not: null },
         },
-        select: {
-          id: true,
-          type: true,
-          tokenHash: true,
-          userId: true,
-          groupId: true,
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, timeZone: true },
+          },
         },
       });
       expect(mockSecurityService.hmacToken).toHaveBeenCalledWith(

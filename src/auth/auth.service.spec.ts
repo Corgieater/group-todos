@@ -9,17 +9,14 @@ import {
   createMockSigninDto,
   createMockUser,
 } from 'src/test/factories/mock-user.factory';
-import {
-  NormalAccessTokenPayload,
-  AuthUpdatePasswordPayload,
-} from './types/auth';
 import { MailService } from 'src/mail/mail.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { AuthErrors, UsersErrors } from 'src/errors';
 import { SecurityService } from 'src/security/security.service';
-import { JwtService } from '@nestjs/jwt';
+import { AuthUpdatePasswordPayload, UserAccessInfo } from './types/auth';
+import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
 describe('AuthService', () => {
   let authService: AuthService;
@@ -27,7 +24,7 @@ describe('AuthService', () => {
   let signupDto: AuthSignupDto;
   let signinDto: AuthSigninDto;
   let user: UserModel;
-  let accessPayload: NormalAccessTokenPayload;
+  let accessPayload: UserAccessInfo;
 
   const mockUsersService = {
     findByEmail: jest.fn(),
@@ -39,20 +36,7 @@ describe('AuthService', () => {
     updatePasswordHash: jest.fn(),
   };
 
-  const mockSecurityService = {
-    hash: jest.fn().mockReturnValue('argonHashed'),
-    verify: jest.fn(),
-    generateUrlFriendlySecret: jest
-      .fn()
-      .mockReturnValue('rawUrlFriendlySecret'),
-    hmacToken: jest.fn().mockReturnValue('base64urlHash'),
-    safeEqualB64url: jest.fn(),
-  };
-
-  const mockJwtService = {
-    signAsync: jest.fn().mockResolvedValue('jwtToken'),
-    verifyAsync: jest.fn(),
-  };
+  const mockSecurityService = createMockSecurityService();
 
   const mockPrismaService = {
     actionToken: {
@@ -77,7 +61,6 @@ describe('AuthService', () => {
   };
 
   const mockConfigService = createMockConfig();
-  const JWT_TOKEN = 'jwtToken';
   const HMAC_HASHED = 'base64urlHash';
 
   beforeAll(async () => {
@@ -85,7 +68,6 @@ describe('AuthService', () => {
     signinDto = createMockSigninDto();
     user = createMockUser();
     accessPayload = {
-      tokenUse: 'access',
       sub: user.id,
       email: user.email,
       userName: user.name,
@@ -99,7 +81,6 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: MailService, useValue: mockMailService },
         { provide: ConfigService, useValue: mockConfigService.mock },
-        { provide: JwtService, useValue: mockJwtService },
         {
           provide: SecurityService,
           useValue: mockSecurityService,
@@ -166,8 +147,10 @@ describe('AuthService', () => {
         'test@test.com',
       );
       expect(mockSecurityService.verify).toHaveBeenCalledWith('hashed', 'test');
-      expect(mockJwtService.signAsync).toHaveBeenCalledWith(accessPayload);
-      expect(result).toEqual({ accessToken: JWT_TOKEN });
+      expect(mockSecurityService.signAccessToken).toHaveBeenCalledWith(
+        accessPayload,
+      );
+      expect(result).toEqual({ accessToken: 'mock-access-token' });
     });
 
     it('should throw InvalidCredentialError when password does not match', async () => {
@@ -178,7 +161,7 @@ describe('AuthService', () => {
         authService.signin(signinDto.email, signinDto.password),
       ).rejects.toBeInstanceOf(AuthErrors.InvalidCredentialError);
 
-      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
+      expect(mockSecurityService.signAccessToken).not.toHaveBeenCalled();
     });
 
     it('should throw UsersNotFoundError', async () => {
@@ -352,7 +335,6 @@ describe('AuthService', () => {
       rawToken = 'resetPasswordToken';
     });
 
-    // read the following test
     it('should return jwt if id and token matched', async () => {
       const STORED_HASH = 'base64urlHash';
       mockPrismaService.actionToken.findFirst.mockResolvedValueOnce({
@@ -391,17 +373,13 @@ describe('AuthService', () => {
         STORED_HASH,
       );
 
-      expect(mockJwtService.signAsync).toHaveBeenCalledWith(
-        {
-          tokenUse: 'resetPassword',
-          sub: user.id,
-          userName: user.name,
-          email: user.email,
-          tokenId,
-        },
-        { expiresIn: '10m' },
-      );
-      expect(result).toEqual({ accessToken: JWT_TOKEN });
+      expect(mockSecurityService.signResetPasswordToken).toHaveBeenCalledWith({
+        sub: user.id,
+        userName: user.name,
+        email: user.email,
+        tokenId,
+      });
+      expect(result).toEqual({ accessToken: 'mock-reset-token' });
     });
 
     it('should throw InvalidTokenError if token row not found', async () => {
@@ -413,7 +391,7 @@ describe('AuthService', () => {
 
       expect(mockSecurityService.hmacToken).not.toHaveBeenCalled();
       expect(mockSecurityService.safeEqualB64url).not.toHaveBeenCalled();
-      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
+      expect(mockSecurityService.signAccessToken).not.toHaveBeenCalled();
     });
 
     it('should throw InvalidTokenError if hash not matched', async () => {
@@ -427,7 +405,7 @@ describe('AuthService', () => {
         authService.verifyResetToken(tokenId, rawToken),
       ).rejects.toBeInstanceOf(AuthErrors.InvalidTokenError);
 
-      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
+      expect(mockSecurityService.signAccessToken).not.toHaveBeenCalled();
     });
   });
 

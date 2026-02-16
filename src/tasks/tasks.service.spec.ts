@@ -23,6 +23,7 @@ import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { ConfigService } from '@nestjs/config';
 import { TasksGateWay } from './tasks.gateway';
 import { TaskForbiddenError } from 'src/errors/tasks';
+import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
@@ -81,15 +82,7 @@ describe('TasksService', () => {
 
   const mockConfigService = createMockConfig();
 
-  const mockSecurityService = {
-    hash: jest.fn().mockReturnValue('argonHashed'),
-    verify: jest.fn(),
-    generateUrlFriendlySecret: jest
-      .fn()
-      .mockReturnValue('rawUrlFriendlySecret'),
-    hmacToken: jest.fn().mockReturnValue('base64urlHash'),
-    safeEqualB64url: jest.fn(),
-  };
+  const mockSecurityService = createMockSecurityService();
 
   const mockTasksGateWay = {
     // 模擬 @WebSocketServer() server
@@ -106,11 +99,6 @@ describe('TasksService', () => {
 
   const user: Usermodel = createMockUser();
   const lowTask: TaskModel = createMockTask();
-  const mediumTask: TaskModel = createMockTask({
-    id: 2,
-    title: 'medium test',
-    priority: TaskPriority.MEDIUM,
-  });
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({

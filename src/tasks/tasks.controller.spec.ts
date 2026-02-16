@@ -16,8 +16,11 @@ import { createMockUser } from 'src/test/factories/mock-user.factory';
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
 import { TaskPriority } from './types/enum';
-import { mock } from 'node:test';
 import { HttpStatus } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { SecurityService } from 'src/security/security.service';
+import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
@@ -35,6 +38,12 @@ describe('TasksController', () => {
     archiveTask: jest.fn(),
     deleteTask: jest.fn(),
   };
+
+  const config = {
+    getOrThrow: jest.fn(),
+  };
+
+  const mockSecurityService = createMockSecurityService();
 
   beforeAll(async () => {
     user = createMockUser();
@@ -72,7 +81,14 @@ describe('TasksController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TasksController],
-      providers: [{ provide: TasksService, useValue: mockTasksService }],
+      providers: [
+        { provide: TasksService, useValue: mockTasksService },
+        { provide: ConfigService, useValue: config },
+        {
+          provide: SecurityService,
+          useValue: mockSecurityService,
+        },
+      ],
     }).compile();
 
     tasksController = module.get<TasksController>(TasksController);

@@ -4,13 +4,17 @@ export interface BaseAccessTokenPayload {
   email: string;
 }
 
-export interface NormalAccessTokenPayload extends BaseAccessTokenPayload {
-  tokenUse: 'access';
+export interface BaseAccessTokenPayload {
+  sub: number;
+  userName: string | null;
+  email: string;
+}
+
+export interface UserAccessInfo extends BaseAccessTokenPayload {
   timeZone: string;
 }
 
-export interface ResetAccessTokenPayload extends BaseAccessTokenPayload {
-  tokenUse: 'resetPassword';
+export interface UserResetPasswordInfo extends BaseAccessTokenPayload {
   tokenId: number;
 }
 

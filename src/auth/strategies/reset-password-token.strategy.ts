@@ -3,13 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { BaseAccessTokenPayload } from '../types/auth';
-import { AuthErrors } from 'src/errors';
-
-interface ResetPasswordAccessTokenPayload extends BaseAccessTokenPayload {
-  tokenUse: 'resetPassword';
-  tokenId: number;
-}
+import { ResetPasswordTokenPayload } from 'src/security/type/accessToken.interface';
 
 function cookieExtractor(req: Request): string | null {
   return req?.cookies?.grouptodo_reset_password ?? null;
@@ -28,8 +22,7 @@ export class ResetPasswordTokenStrategy extends PassportStrategy(
       ignoreExpiration: false,
     });
   }
-
-  async validate(payload: ResetPasswordAccessTokenPayload) {
+  async validate(payload: ResetPasswordTokenPayload) {
     if (payload.tokenUse !== 'resetPassword') {
       throw new UnauthorizedException('Wrong token use');
     }

@@ -20,6 +20,10 @@ import {
 import { TasksService } from 'src/tasks/tasks.service';
 import { TasksAddPayload } from 'src/tasks/types/tasks';
 import { GroupsErrors } from 'src/errors';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { SecurityService } from 'src/security/security.service';
+import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
 describe('GroupsController', () => {
   let groupsController: GroupsController;
@@ -43,6 +47,8 @@ describe('GroupsController', () => {
     createTask: jest.fn(),
   };
 
+  const mockSecurityService = createMockSecurityService();
+
   beforeAll(async () => {
     user = createMockUser();
     req = createMockReq();
@@ -59,6 +65,7 @@ describe('GroupsController', () => {
       providers: [
         { provide: GroupsService, useValue: mockGroupsService },
         { provide: TasksService, useValue: mockTasksService },
+        { provide: SecurityService, useValue: mockSecurityService },
       ],
     }).compile();
 
@@ -123,12 +130,13 @@ describe('GroupsController', () => {
         1,
         'rawToken',
       );
+      expect(mockSecurityService.signAccessToken).toHaveBeenCalled();
       expect(setSession).toHaveBeenCalledWith(
         req,
         'success',
         'You have been invited to a group!',
       );
-      expect(res.redirect).toHaveBeenCalledWith('/users-home');
+      expect(res.redirect).toHaveBeenCalledWith('/groups/1');
     });
   });
 

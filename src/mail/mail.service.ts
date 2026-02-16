@@ -54,12 +54,12 @@ export class MailService {
   async sendTaskAssignNotification(data: TaskAssignmentEmailData) {
     let token: string;
     if (!data.subTaskId) {
-      token = await this.securityService.signTaskActionToken(
+      token = await this.securityService.signTaskDecisionToken(
         data.taskId,
         data.assigneeId,
       );
     } else {
-      token = await this.securityService.signTaskActionToken(
+      token = await this.securityService.signTaskDecisionToken(
         data.taskId,
         data.assigneeId,
         data.subTaskId,

@@ -1,16 +1,31 @@
 import { Injectable } from '@nestjs/common';
 import * as argon from 'argon2';
 import crypto, { createHmac, timingSafeEqual } from 'crypto';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { AuthErrors } from 'src/errors';
+import {
+  NormalAccessTokenPayload,
+  ResetPasswordTokenPayload,
+} from './type/accessToken.interface';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class SecurityService {
+  private readonly defaultCookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+  };
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {}
+
+  getCookieOptions(maxAgeKey: string = 'LOGIN_COOKIE_MAX_AGE') {
+    return {
+      ...this.defaultCookieOptions,
+      maxAge: this.config.getOrThrow<number>(maxAgeKey),
+    };
+  }
 
   //   Argon2 hasing methods
   async hash(
@@ -39,8 +54,37 @@ export class SecurityService {
     return a.length === b.length && timingSafeEqual(a, b);
   }
 
-  // Task action token (for email reply)
-  async signTaskActionToken(
+  // JWT TOKEN
+  private async baseSign(
+    payload: NormalAccessTokenPayload | ResetPasswordTokenPayload,
+    options?: JwtSignOptions,
+  ): Promise<string> {
+    return await this.jwtService.signAsync(payload, options);
+  }
+
+  async signAccessToken(
+    payload: Omit<NormalAccessTokenPayload, 'tokenUse'>,
+  ): Promise<string> {
+    return this.baseSign(
+      { ...payload, tokenUse: 'access' },
+      { expiresIn: this.config.getOrThrow('JWT_ACCESS_TOKEN_EXPIRES_IN') },
+    );
+  }
+
+  async signResetPasswordToken(
+    payload: Omit<ResetPasswordTokenPayload, 'tokenUse'>,
+  ): Promise<string> {
+    return this.baseSign(
+      { ...payload, tokenUse: 'resetPassword' },
+      {
+        expiresIn: this.config.getOrThrow(
+          'JWT_RESET_PASSWORD_TOKEN_EXPIRES_IN',
+        ),
+      },
+    );
+  }
+
+  async signTaskDecisionToken(
     taskId: number,
     userId: number,
     subTaskId: number | null = null,
@@ -52,12 +96,11 @@ export class SecurityService {
       data = { taskId, userId };
     }
     return this.jwtService.signAsync(data, {
-      expiresIn: '24h',
-      secret: this.config.get('JWT_SECRET'),
+      expiresIn: this.config.getOrThrow('JWT_ACCESS_TOKEN_EXPIRES_IN'),
     });
   }
 
-  async verifyTaskActionToken(
+  async verifyTaskDecisionToken(
     token: string,
   ): Promise<{ taskId: number; userId: number; subTaskId?: number }> {
     try {
@@ -65,9 +108,7 @@ export class SecurityService {
         taskId: number;
         userId: number;
         subTaskId?: number;
-      }>(token, {
-        secret: this.config.get('JWT_SECRET'),
-      });
+      }>(token);
       return {
         taskId: payload.taskId,
         userId: payload.userId,

@@ -3,11 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
-import { BaseAccessTokenPayload } from '../types/auth';
-
-interface NormalAccessTokenPayload extends BaseAccessTokenPayload {
-  tokenUse: 'access';
-}
+import { NormalAccessTokenPayload } from 'src/security/type/accessToken.interface';
 
 // this part tell what to extractor from cookie
 function cookieExtractor(req: Request): string | null {

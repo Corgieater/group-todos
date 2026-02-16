@@ -10,7 +10,6 @@ import {
   ParseIntPipe,
   UseFilters,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import {
   AuthSigninDto,
@@ -28,16 +27,19 @@ import {
 } from './types/auth';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { ResetPasswordTokenGuard } from './guards/reset-password-token.guard';
-import { AccessTokenGuard } from './guards/access-token.guard';
 import { AuthPageFilter } from 'src/common/filters/auth-page.filter';
+import { Public } from 'src/common/decorators/public.decorator';
+import { SecurityService } from 'src/security/security.service';
 
 @Controller('api/auth')
 @UseFilters(AuthPageFilter)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private config: ConfigService,
+    private readonly securityService: SecurityService,
   ) {}
+
+  @Public()
   @Post('signup')
   async signup(
     @Req() req: Request,
@@ -52,6 +54,7 @@ export class AuthController {
     return res.redirect('/');
   }
 
+  @Public()
   @Post('signin')
   @UseFilters(AuthPageFilter)
   async signin(
@@ -63,14 +66,15 @@ export class AuthController {
       dto.email,
       dto.password,
     );
-    res.cookie('grouptodo_login', accessToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: this.config.getOrThrow<number>('LOGIN_COOKIE_MAX_AGE'),
-    });
+    res.cookie(
+      'grouptodo_login',
+      accessToken,
+      this.securityService.getCookieOptions(),
+    );
     return res.redirect('/tasks/home');
   }
 
+  @Public()
   @Post('signout')
   signout(@Req() req: Request, @Res() res: Response) {
     res.clearCookie('grouptodo_login');
@@ -81,7 +85,6 @@ export class AuthController {
     return res.redirect('/');
   }
 
-  @UseGuards(AccessTokenGuard)
   @UseFilters(AuthPageFilter)
   @Post('change-password')
   async changePassword(
@@ -117,6 +120,7 @@ export class AuthController {
     return res.redirect('/');
   }
 
+  @Public()
   @Get('verify-reset-token/:id/:token')
   async verifyResetToken(
     @Req() req: Request,
@@ -125,11 +129,12 @@ export class AuthController {
     @Res() res: Response,
   ) {
     const result = await this.authService.verifyResetToken(id, token);
-    res.cookie('grouptodo_reset_password', result?.accessToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: this.config.getOrThrow<number>('RESET_PASSWORD_COOKIE_MAX_AGE'),
-    });
+    res.cookie(
+      'grouptodo_reset_password',
+      result?.accessToken,
+      this.securityService.getCookieOptions('RESET_PASSWORD_COOKIE_MAX_AGE'),
+    );
+
     setSession(req, 'success', 'Token valid, please reset your password!');
     return res.redirect('/auth/reset-password');
   }

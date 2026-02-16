@@ -15,16 +15,10 @@ import {
 import { MailService } from 'src/mail/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { addTime } from 'src/common/helpers/util';
-import { assertInviteRow } from './type/invite';
 import { SecurityService } from 'src/security/security.service';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
-import { group } from 'console';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
-
-type GroupListItem = Prisma.GroupMemberGetPayload<{
-  include: { group: { select: { id: true; name: true } } };
-}>;
+import { UserAccessInfo } from 'src/auth/types/auth';
 
 type GroupDetailsItem = Prisma.GroupGetPayload<{
   include: {
@@ -51,11 +45,11 @@ export class GroupsService {
     private readonly mailService: MailService,
   ) {}
 
-  // TODO:
-  // 1. create group easily
-  // 2. develop invite code
-  // 3. create group with member inviting
   async createGroup(ownerId: number, name: string): Promise<void> {
+    /**
+     * @todo
+     * Consider to develop invite code token
+     */
     await this.usersService.findByIdOrThrow(ownerId);
 
     return this.prismaService.$transaction(async (tx) => {
@@ -67,6 +61,9 @@ export class GroupsService {
   }
 
   async updateGroup(actorId: number, id: number, name: string): Promise<void> {
+    /**
+     * Currentyl update name only
+     */
     const result = await this.prismaService.group.updateMany({
       where: {
         id: id,
@@ -84,6 +81,10 @@ export class GroupsService {
     userId: number,
     options: { page?: number; limit?: number; order?: 'ASC' | 'DESC' },
   ): Promise<PageDto<any>> {
+    /**
+     * @todo
+     * Maybe we can let user choose to order by group created time or name in order
+     */
     await this.usersService.findByIdOrThrow(userId);
 
     const { page = 1, limit = 10, order = 'ASC' } = options;
@@ -101,7 +102,7 @@ export class GroupsService {
         take: limit,
         orderBy: {
           group: {
-            createdAt: order.toLowerCase() as any, // 根據建立時間排序
+            createdAt: order.toLowerCase() as any,
           },
         },
       }),
@@ -156,7 +157,13 @@ export class GroupsService {
       groupName: member.group.name,
     };
   }
+
   isAdminish(role: GroupRole | null | undefined): boolean {
+    /**
+     * @todo
+     * This method is duplicated with tasks.isAdminish,
+     * we should consider to build another module for permission checks
+     */
     return role === 'OWNER' || role === 'ADMIN';
   }
 
@@ -229,7 +236,10 @@ export class GroupsService {
      * @throws MembershipErrors.AlreadyMemberError       If the invitee is already a member.
      * @throws Prisma.PrismaClientKnownRequestError      If the upsert fails.
      * @throws Error                                     If required config (e.g., TOKEN_HMAC_SECRET or BASE_URL) is missing.
-     * @throws Mailer errors If sending the email fails. */
+     * @throws Mailer errors If sending the email fails.
+     *
+     * @todo Consider develop inviting users with no account (apply account + join group)
+     * */
 
     const actor = await this.prismaService.groupMember.findUnique({
       where: { groupId_userId: { groupId: id, userId: actorId } },
@@ -244,20 +254,14 @@ export class GroupsService {
       throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
     }
 
-    // task有個小工具 應該要把它放util拿來這用?
-    const CAN_INVITE = new Set<GroupRole>([
-      GroupRole.ADMIN,
-      GroupRole.OWNER,
-    ] as const);
+    const CAN_INVITE = this.isAdminish(actor.role);
 
-    if (!CAN_INVITE.has(actor.role)) {
+    if (!CAN_INVITE) {
       throw GroupsErrors.GroupActionForbiddenError.inviteMember(id, actorId);
     }
 
     const invitee = await this.usersService.findByEmail(email);
     if (!invitee) {
-      // TODO: NOTE:
-      // if email not in our db, call another service to deal with
       throw UsersErrors.UserNotFoundError.byEmail(email);
     }
 
@@ -308,7 +312,7 @@ export class GroupsService {
       baseUrl,
     ).toString();
 
-    await this.mailService.sendGroupInvite(
+    this.mailService.sendGroupInvite(
       invitee.email,
       invitee.name,
       link,
@@ -317,7 +321,7 @@ export class GroupsService {
     );
   }
 
-  async verifyInvitation(id: number, token: string) {
+  async verifyInvitation(id: number, token: string): Promise<UserAccessInfo> {
     const now = new Date();
     const row = await this.prismaService.actionToken.findFirst({
       where: {
@@ -329,19 +333,14 @@ export class GroupsService {
         groupId: { not: null },
         userId: { not: null },
       },
-      select: {
-        id: true,
-        type: true,
-        tokenHash: true,
-        userId: true,
-        groupId: true,
+      include: {
+        user: { select: { id: true, name: true, email: true, timeZone: true } },
       },
     });
 
-    if (!row) {
+    if (!row || !row.user || !row.userId || !row.groupId) {
       throw AuthErrors.InvalidTokenError.invite();
     }
-    assertInviteRow(row);
 
     const serverSecret = this.config.getOrThrow<string>('TOKEN_HMAC_SECRET');
     const candidate = this.securityService.hmacToken(token, serverSecret);
@@ -365,15 +364,24 @@ export class GroupsService {
       }
 
       await tx.groupMember.upsert({
-        where: { groupId_userId: { groupId: row.groupId, userId: row.userId } },
+        where: {
+          groupId_userId: { groupId: row.groupId!, userId: row.userId! },
+        },
         create: {
-          groupId: row.groupId,
-          userId: row.userId,
+          groupId: row.groupId!,
+          userId: row.userId!,
           role: GroupRole.MEMBER,
         },
         update: {},
       });
     });
+
+    return {
+      sub: row.userId,
+      userName: row.user.name,
+      email: row.user.email,
+      timeZone: row.user.timeZone,
+    };
   }
 
   canRemove(actor: GroupRole, target: GroupRole): boolean {
