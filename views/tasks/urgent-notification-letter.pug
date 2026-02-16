@@ -45,12 +45,12 @@ html
                   tr
                     td(align="center" style="padding: 10px 0;")
                       //- Accept 按鈕
-                      a(href=`${baseUrl}api/tasks/assignments/decide?token=${token}&status=ACCEPTED`
+                      a(href=`${baseUrl}api/tasks/assignments/decision?token=${token}&status=ACCEPTED`
                         style="background-color: #28a745; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; margin-right: 10px;") 
                         | ✅ Accept
                       
                       //- Decline 按鈕
-                      a(href=`${baseUrl}api/tasks/assignments/decide?token=${token}&status=DECLINED`
+                      a(href=`${baseUrl}api/tasks/assignments/decision?token=${token}&status=DECLINED`
                         style="background-color: #dc3545; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;") 
                         | ❌ Decline
 
