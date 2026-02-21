@@ -6,6 +6,13 @@
 ## 前言
 為了學習NestJS框架產生的作品，除了學習外、出發點是為了讓多人可以一起有一個共同的todo list而做的，因為我覺得如果家庭(或一起準備某件事的人們)有一個共同的待辦事項會滿方便的。
 
+## 🚀 快速開始
+
+本專案已完全容器化，您可以透過以下步驟快速啟動開發環境：
+1. .env.example 涵蓋了多數環境變數範例，可以根據需求調整。
+2. 本系統含郵件發送的功能，建議於[Mailtrap](https://mailtrap.io/)申請帳號，並將SMTP認證資訊填入.env
+3. docker compose up --build
+
 ## 系統架構
 ![layout-counselor2](https://github.com/user-attachments/assets/c689f357-9716-45c6-8d16-99e567ee62a6)
 
