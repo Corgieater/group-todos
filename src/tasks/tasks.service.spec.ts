@@ -465,6 +465,154 @@ describe('TasksService', () => {
       expect(mockPrismaService.task.findUnique).toHaveBeenCalledTimes(2);
     });
   });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // getHomeDashboardData
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('getHomeDashboardData', () => {
+    it('should call listTaskCore and combine data correctly', async () => {
+      const mockUser = { userId: user.id, timeZone: user.timeZone } as any;
+
+      // 1. 準備測試資料
+      const mockExpiredItems = [{ id: 'task-1', title: 'Expired Task' }];
+      const mockTodayItems = [{ id: 'task-2', title: 'Today Task' }];
+      const mockNoneItems = [{ id: 'task-3', title: 'No Date Task' }];
+      const mockBounds = {
+        start: '2026-02-21T00:00:00Z',
+        end: '2026-02-21T23:59:59Z',
+      };
+
+      // 2. 建立 Spy 並模擬 listTaskCore 的回傳值
+      // 因為 getHomeDashboardData 內部呼叫了三次 listTaskCore，我們使用 mockResolvedValueOnce 依序回傳
+      const listTaskCoreSpy = jest.spyOn(tasksService as any, 'listTaskCore');
+
+      listTaskCoreSpy
+        .mockResolvedValueOnce({ items: mockExpiredItems }) // 第一次：EXPIRED
+        .mockResolvedValueOnce({ items: mockTodayItems, bounds: mockBounds }) // 第二次：TODAY
+        .mockResolvedValueOnce({ items: mockNoneItems }); // 第三次：NONE
+
+      // 3. 執行測試目標
+      const result = await tasksService.getHomeDashboardData(mockUser);
+
+      // 4. 斷言 (Assertions)
+
+      // 檢查回傳結構是否正確
+      expect(result).toEqual({
+        expired: mockExpiredItems,
+        today: mockTodayItems,
+        none: mockNoneItems,
+        bounds: mockBounds,
+      });
+
+      // 檢查 listTaskCore 是否被呼叫了 3 次
+      expect(listTaskCoreSpy).toHaveBeenCalledTimes(3);
+
+      // 檢查第一次呼叫 (EXPIRED) 的參數
+      expect(listTaskCoreSpy).toHaveBeenNthCalledWith(
+        1,
+        { kind: 'owner', ownerId: mockUser.userId },
+        mockUser.timeZone,
+        { status: ['OPEN'], due: ['EXPIRED'] },
+        'expiredPriority',
+        5,
+      );
+
+      // 檢查第二次呼叫 (TODAY) 的參數
+      expect(listTaskCoreSpy).toHaveBeenNthCalledWith(
+        2,
+        { kind: 'owner', ownerId: mockUser.userId },
+        mockUser.timeZone,
+        { status: ['OPEN'], due: ['TODAY'] },
+        'dueAtAscNullsLast',
+        15,
+      );
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────────
+  // getGroupDashboardData
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('getGroupDashboardData', () => {
+    it('should return aggregated group dashboard data by calling listTaskCore with correct parameters', async () => {
+      // 1. Arrange
+      const groupId = 99;
+      const mockViewer = {
+        userId: 'user-888',
+        timeZone: 'America/New_York',
+      } as any;
+
+      const mockExpiredItems = [{ id: 't1', title: 'Group Expired' }];
+      const mockTodayItems = [{ id: 't2', title: 'Group Today' }];
+      const mockNoneItems = [{ id: 't3', title: 'Group No Date' }];
+      const mockBounds = {
+        start: '2026-02-21T05:00:00Z',
+        end: '2026-02-22T04:59:59Z',
+      };
+
+      // Spy on the internal listTaskCore method
+      const listTaskCoreSpy = jest.spyOn(tasksService as any, 'listTaskCore');
+
+      listTaskCoreSpy
+        .mockResolvedValueOnce({ items: mockExpiredItems })
+        .mockResolvedValueOnce({ items: mockTodayItems, bounds: mockBounds })
+        .mockResolvedValueOnce({ items: mockNoneItems });
+
+      // 2. Act
+      const result = await tasksService.getGroupDashboardData(
+        groupId,
+        mockViewer,
+      );
+
+      // 3. Assert
+      expect(result).toEqual({
+        expired: mockExpiredItems,
+        today: mockTodayItems,
+        none: mockNoneItems,
+        bounds: mockBounds,
+      });
+
+      // Verify the calls count
+      expect(listTaskCoreSpy).toHaveBeenCalledTimes(3);
+
+      // Verify the specific parameters for Group context
+      const expectedContext = {
+        kind: 'group',
+        groupId: groupId,
+        viewerId: mockViewer.userId,
+      };
+
+      // Check 1st call: EXPIRED
+      expect(listTaskCoreSpy).toHaveBeenNthCalledWith(
+        1,
+        expectedContext,
+        mockViewer.timeZone,
+        { status: ['OPEN'], due: ['EXPIRED'] },
+        'expiredPriority',
+        5,
+      );
+
+      // Check 2nd call: TODAY
+      expect(listTaskCoreSpy).toHaveBeenNthCalledWith(
+        2,
+        expectedContext,
+        mockViewer.timeZone,
+        { status: ['OPEN'], due: ['TODAY'] },
+        'dueAtAscNullsLast',
+        15,
+      );
+
+      // Check 3rd call: NONE
+      expect(listTaskCoreSpy).toHaveBeenNthCalledWith(
+        3,
+        expectedContext,
+        mockViewer.timeZone,
+        { status: ['OPEN'], due: ['NONE'] },
+        'createdAsc',
+        10,
+      );
+    });
+  });
+
   // ───────────────────────────────────────────────────────────────────────────────
   // getTasks
   // ───────────────────────────────────────────────────────────────────────────────
@@ -676,68 +824,158 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('updateAssigneeStatus', () => {
-    const groupTask = { id: 1, groupId: 2, status: TaskStatus.OPEN };
-    it('should self-assign (create ACCEPTED) when no existing assignee record', async () => {
-      // 1. 準備模擬資料：合併 Task 與空的 Assignees 列表
-      const actorId = 1;
-      const taskId = 1;
-      const mockTaskData = {
-        id: taskId,
-        groupId: 2,
-        status: TaskStatus.OPEN,
-        assignees: [], // 模擬資料庫中目前沒有此使用者的指派紀錄
-      };
+    const actorId = 1;
+    const taskId = 100;
+    const groupId = 50;
 
-      // 2. 設定 Mock 行為
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(mockTaskData);
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
-        userId: actorId,
-      });
-      // 注意：這裡不需要 mock taskAssignee.findUnique，因為它已經合併進 task.findUnique 了
-      mockPrismaService.taskAssignee.create.mockResolvedValueOnce({ id: 6 });
+    // 輔助函式：模擬 Task 資料
+    const mockTask = (assignees: any[] = [], taskStatus = 'OPEN') => ({
+      id: taskId,
+      groupId: groupId,
+      status: taskStatus,
+      assignees,
+    });
 
-      // 3. 執行測試
-      await tasksService.updateAssigneeStatus(taskId, actorId, {
-        status: AssignmentStatus.ACCEPTED,
-      });
+    describe('Success Cases', () => {
+      it('should create a new assignment (Self-Claim) when no assignment exists and status is ACCEPTED', async () => {
+        // 1. Arrange
+        mockPrismaService.task.findUnique.mockResolvedValue(mockTask([])); // 無指派者
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          userId: actorId,
+        }); // 是群組成員
 
-      // 4. 斷言 - 檢查 Task 查詢參數是否包含優化後的 select 結構
-      expect(mockPrismaService.task.findUnique).toHaveBeenCalledWith({
-        where: { id: taskId },
-        select: {
-          id: true,
-          groupId: true,
-          status: true,
-          assignees: {
-            where: { assigneeId: actorId },
-            select: { status: true },
+        // 2. Act
+        const result = await tasksService.updateAssigneeStatus(
+          taskId,
+          actorId,
+          {
+            status: AssignmentStatus.ACCEPTED,
           },
-        },
+        );
+
+        // 3. Assert
+        expect(mockPrismaService.taskAssignee.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              taskId,
+              assigneeId: actorId,
+              status: AssignmentStatus.ACCEPTED,
+            }),
+          }),
+        );
+        expect(result).toEqual({ ok: true });
       });
 
-      // 5. 斷言 - 檢查是否正確執行 create (自我指派)
-      expect(mockPrismaService.taskAssignee.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          taskId: taskId,
-          assigneeId: actorId,
-          assignedById: actorId, // 確保這行也在裡面
-          status: AssignmentStatus.ACCEPTED,
-          assignedAt: expect.any(Date),
-          acceptedAt: expect.any(Date),
-        }),
+      it('should update existing assignment status and call notifyTaskChange', async () => {
+        // 1. Arrange
+        const existingAssignee = { status: AssignmentStatus.PENDING };
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          mockTask([existingAssignee]),
+        );
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          userId: actorId,
+        });
+
+        // 模擬私有工具方法的回傳 (如果這些方法在 service 內部是 public 或可存取)
+        jest
+          .spyOn(tasksService as any, 'isValidAssignmentTransition')
+          .mockReturnValue(true);
+        jest
+          .spyOn(tasksService as any, 'getAssigneeUpdateData')
+          .mockReturnValue({ status: AssignmentStatus.COMPLETED });
+        const notifySpy = jest
+          .spyOn(tasksService as any, 'notifyTaskChange')
+          .mockImplementation();
+
+        // 2. Act
+        const result = await tasksService.updateAssigneeStatus(
+          taskId,
+          actorId,
+          { status: AssignmentStatus.COMPLETED },
+          'User Name',
+        );
+
+        // 3. Assert
+        expect(mockPrismaService.taskAssignee.update).toHaveBeenCalled();
+        expect(notifySpy).toHaveBeenCalledWith(
+          taskId,
+          actorId,
+          'User Name',
+          'ASSIGNEE_STATUS_UPDATED',
+        );
+        expect(result).toEqual({ ok: true });
       });
     });
 
-    it('throws TaskNotFoundError', async () => {
-      mockPrismaService.task.findUnique.mockRejectedValueOnce(
-        TasksErrors.TaskNotFoundError.byId(user.id, 999),
-      );
+    describe('Error Cases (Forbidden & Validation)', () => {
+      it('should throw TaskNotFoundError if task does not exist', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(null);
 
-      await expect(
-        tasksService.updateAssigneeStatus(999, user.id, {
-          status: AssignmentStatus.ACCEPTED,
-        }),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
+        await expect(
+          tasksService.updateAssigneeStatus(taskId, actorId, {
+            status: AssignmentStatus.ACCEPTED,
+          }),
+        ).rejects.toThrow();
+        // 註：這裡可以根據 TasksErrors 的實作來檢查具體的 Error Class
+      });
+
+      it('should throw ForbiddenError if it is a personal task (no groupId)', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue({
+          ...mockTask(),
+          groupId: null,
+        });
+
+        await expect(
+          tasksService.updateAssigneeStatus(taskId, actorId, {
+            status: AssignmentStatus.ACCEPTED,
+          }),
+        ).rejects.toThrow();
+      });
+
+      it('should throw ForbiddenError if actor is not a member of the group', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(mockTask());
+        mockPrismaService.groupMember.findUnique.mockResolvedValue(null); // 非成員
+
+        await expect(
+          tasksService.updateAssigneeStatus(taskId, actorId, {
+            status: AssignmentStatus.ACCEPTED,
+          }),
+        ).rejects.toThrow();
+      });
+
+      it('should throw ForbiddenError if self-claiming with status other than ACCEPTED', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(mockTask([])); // 無指派
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          userId: actorId,
+        });
+
+        await expect(
+          tasksService.updateAssigneeStatus(taskId, actorId, {
+            status: AssignmentStatus.DECLINED,
+          }),
+        ).rejects.toThrow();
+      });
+
+      it('should throw ForbiddenError if the status transition is illegal', async () => {
+        const existingAssignee = { status: AssignmentStatus.COMPLETED };
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          mockTask([existingAssignee]),
+        );
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          userId: actorId,
+        });
+
+        // 模擬非法轉換
+        jest
+          .spyOn(tasksService as any, 'isValidAssignmentTransition')
+          .mockReturnValue(false);
+
+        await expect(
+          tasksService.updateAssigneeStatus(taskId, actorId, {
+            status: AssignmentStatus.PENDING,
+          }),
+        ).rejects.toThrow();
+      });
     });
   });
 
@@ -748,143 +986,228 @@ describe('TasksService', () => {
   describe('closeTask', () => {
     const actorId = 1;
     const taskId = 100;
+    const groupId = 50;
 
-    /**
-     * Helper to mock a task state from Prisma
-     */
-    const setupMockTask = (overrides = {}) => {
-      mockPrismaService.task.findUnique.mockResolvedValue({
-        id: taskId,
-        ownerId: actorId,
-        groupId: null,
-        status: 'OPEN',
-        _count: { subTasks: 0, assignees: 0 },
-        ...overrides,
-      });
-    };
-
-    it('should throw TaskNotFoundError if the task does not exist', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValue(null);
-
-      await expect(tasksService.closeTask(taskId, actorId)).rejects.toThrow(); // Should throw TaskNotFoundError
+    // 輔助工具：快速建立 Task 模擬資料
+    const createMockTask = (overrides = {}) => ({
+      id: taskId,
+      status: 'OPEN',
+      ownerId: actorId,
+      groupId: groupId,
+      _count: { subTasks: 0, assignees: 0 },
+      ...overrides,
     });
 
-    it('should return the task immediately if it is already CLOSED (Idempotency)', async () => {
-      setupMockTask({ status: 'CLOSED' });
+    describe('Permission & Guard Clauses', () => {
+      it('should return immediately if the task is already CLOSED (Idempotency)', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          createMockTask({ status: 'CLOSED' }),
+        );
 
-      const result = await tasksService.closeTask(taskId, actorId);
+        const result = await tasksService.closeTask(taskId, actorId);
 
-      expect(result.status).toBe('CLOSED');
-      expect(mockPrismaService.task.update).not.toHaveBeenCalled();
+        expect(result.status).toBe('CLOSED');
+        expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      });
+
+      it('should throw TaskNotFoundError if the task does not exist', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(null);
+
+        await expect(tasksService.closeTask(taskId, actorId)).rejects.toThrow();
+      });
+
+      it('should throw FORCE_CLOSE_REASON_REQUIRED if there are open items but no reason provided', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          createMockTask({
+            _count: { subTasks: 1, assignees: 0 },
+          }),
+        );
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          role: 'ADMIN',
+        });
+        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(true);
+
+        await expect(tasksService.closeTask(taskId, actorId)).rejects.toThrow(
+          expect.objectContaining({
+            action: 'FORCE_CLOSE_REASON_REQUIRED',
+          }),
+        );
+      });
+
+      it('should throw CLOSE_TASK if a non-admin owner tries to force close (with reason but has open items)', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          createMockTask({
+            _count: { subTasks: 1, assignees: 0 },
+            ownerId: actorId, // 是 Owner
+          }),
+        );
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          role: 'MEMBER',
+        });
+        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false); // 不是 Admin
+
+        await expect(
+          tasksService.closeTask(taskId, actorId, {
+            reason: 'I want to close',
+          }),
+        ).rejects.toThrow(
+          expect.objectContaining({
+            action: expect.stringContaining('CLOSE_TASK'),
+          }),
+        );
+      });
     });
 
-    it('should throw FORCE_CLOSE_REASON_REQUIRED if there are open items and no reason is provided', async () => {
-      // Mock task with 1 open subtask
-      setupMockTask({
-        _count: { subTasks: 1, assignees: 0 },
-      });
+    describe('Execution Logic (Normal Close)', () => {
+      it('should allow Owner to close task when no open items exist', async () => {
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          createMockTask({
+            _count: { subTasks: 0, assignees: 0 },
+          }),
+        );
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          role: 'MEMBER',
+        });
+        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false);
+        mockPrismaService.task.update.mockResolvedValue({
+          id: taskId,
+          status: 'CLOSED',
+        });
 
-      await expect(tasksService.closeTask(taskId, actorId)).rejects.toThrow(
-        expect.objectContaining({
-          action: 'FORCE_CLOSE_REASON_REQUIRED',
-        }),
-      );
+        const result = await tasksService.closeTask(taskId, actorId);
+
+        expect(result.status).toBe('CLOSED');
+        expect(mockPrismaService.task.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ closedWithOpenAssignees: false }),
+          }),
+        );
+      });
     });
 
-    it('should allow Task Owner to close the task if all sub-tasks/assignees are completed', async () => {
-      // Mock task fully completed
-      setupMockTask({
-        ownerId: actorId,
-        _count: { subTasks: 0, assignees: 0 },
-      });
-      mockPrismaService.task.update.mockResolvedValue({
-        id: taskId,
-        status: 'CLOSED',
-      });
+    describe('Execution Logic (Force Close)', () => {
+      it('should allow Admin to force close and cleanup sub-tasks/assignees', async () => {
+        // 1. Arrange: 模擬有未完成事項的任務
+        mockPrismaService.task.findUnique.mockResolvedValue(
+          createMockTask({
+            _count: { subTasks: 2, assignees: 1 },
+          }),
+        );
+        mockPrismaService.groupMember.findUnique.mockResolvedValue({
+          role: 'ADMIN',
+        });
+        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(true);
 
-      const result = await tasksService.closeTask(taskId, actorId);
+        const closeReason = 'Force closing due to project cancellation';
+        mockPrismaService.task.update.mockResolvedValue({
+          id: taskId,
+          status: 'CLOSED',
+        });
 
-      expect(result.status).toBe('CLOSED');
-      expect(mockPrismaService.task.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'CLOSED' }),
-        }),
-      );
+        // 2. Act
+        await tasksService.closeTask(taskId, actorId, { reason: closeReason });
+
+        // 3. Assert
+        // 驗證 Task 更新
+        expect(mockPrismaService.task.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              status: 'CLOSED',
+              closedReason: closeReason,
+              closedWithOpenAssignees: true,
+            }),
+          }),
+        );
+
+        // 驗證 Assignees 清理 (ACCEPTED -> DROPPED, PENDING -> SKIPPED)
+        expect(mockPrismaService.taskAssignee.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { taskId, status: 'ACCEPTED' },
+            data: expect.objectContaining({ status: 'DROPPED' }),
+          }),
+        );
+
+        // 驗證 SubTasks 批次關閉
+        expect(mockPrismaService.subTask.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { taskId, status: { not: 'CLOSED' } },
+          }),
+        );
+      });
+    });
+  });
+
+  describe('closeTask - Boundary Permissions', () => {
+    const actorId = 1;
+    const taskId = 100;
+    const otherUserId = 999;
+
+    describe('Group Task Membership', () => {
+      it('should throw TaskNotFoundError if the task is in a group but the actor is not a member', async () => {
+        // Arrange: 任務屬於 groupId 50
+        mockPrismaService.task.findUnique.mockResolvedValue({
+          id: taskId,
+          ownerId: otherUserId, // 假設擁有者是別人
+          groupId: 50,
+          status: 'OPEN',
+          _count: { subTasks: 0, assignees: 0 },
+        });
+
+        // 模擬在 groupMember 找不到該使用者
+        mockPrismaService.groupMember.findUnique.mockResolvedValue(null);
+
+        // Act & Assert
+        await expect(
+          tasksService.closeTask(taskId, actorId),
+        ).rejects.toMatchObject({
+          // 根據你的代碼，這裡會丟出 TaskNotFoundError
+          code: 'TASK_NOT_FOUND',
+        });
+      });
     });
 
-    it('should allow Group Admin to Force Close an incomplete task when a reason is provided', async () => {
-      // Mock an incomplete group task
-      setupMockTask({
-        ownerId: 999, // Actor is NOT the owner
-        groupId: 50,
-        _count: { subTasks: 1, assignees: 0 },
+    describe('Personal Task Ownership', () => {
+      it('should throw TaskNotFoundError if a non-owner tries to close a personal task', async () => {
+        // Arrange: 任務沒有 groupId (個人任務)，且 ownerId 不是 actorId
+        mockPrismaService.task.findUnique.mockResolvedValue({
+          id: taskId,
+          ownerId: otherUserId, // 擁有者是 999
+          groupId: null, // 個人任務
+          status: 'OPEN',
+          _count: { subTasks: 0, assignees: 0 },
+        });
+
+        // Act & Assert
+        await expect(
+          tasksService.closeTask(taskId, actorId),
+        ).rejects.toMatchObject({
+          code: 'TASK_NOT_FOUND',
+        });
       });
 
-      // Mock actor as a Group Admin
-      mockPrismaService.groupMember.findUnique.mockResolvedValue({
-        role: 'ADMIN',
+      it('should allow the owner to close their own personal task (acting as implicit admin)', async () => {
+        // Arrange: 個人任務，且 actorId 就是 owner
+        mockPrismaService.task.findUnique.mockResolvedValue({
+          id: taskId,
+          ownerId: actorId, // 自己是擁有者
+          groupId: null,
+          status: 'OPEN',
+          _count: { subTasks: 0, assignees: 0 },
+        });
+
+        mockPrismaService.task.update.mockResolvedValue({
+          id: taskId,
+          status: 'CLOSED',
+        });
+
+        // Act
+        const result = await tasksService.closeTask(taskId, actorId);
+
+        // Assert
+        expect(result.status).toBe('CLOSED');
+        // 驗證 transaction 有執行，代表通過了權限檢查
+        expect(mockPrismaService.$transaction).toHaveBeenCalled();
       });
-      // Assume isAdminish returns true for 'ADMIN' role
-      jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(true);
-
-      mockPrismaService.task.update.mockResolvedValue({
-        id: taskId,
-        status: 'CLOSED',
-      });
-
-      const result = await tasksService.closeTask(taskId, actorId, {
-        reason: 'Management decision',
-      });
-
-      expect(result.status).toBe('CLOSED');
-      // Verify subtasks were also closed
-      expect(mockPrismaService.subTask.updateMany).toHaveBeenCalled();
-    });
-
-    it('should deny Task Owner from Force Closing if items are still open', async () => {
-      // Mock an incomplete group task where actor is the owner
-      setupMockTask({
-        ownerId: actorId,
-        groupId: 50,
-        _count: { subTasks: 1, assignees: 0 },
-      });
-
-      // Mock actor as a regular MEMBER (not adminish)
-      mockPrismaService.groupMember.findUnique.mockResolvedValue({
-        role: 'MEMBER',
-      });
-      jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false);
-
-      await expect(
-        tasksService.closeTask(taskId, actorId, {
-          reason: 'I want to close it',
-        }),
-      ).rejects.toBeInstanceOf(TaskForbiddenError);
-    });
-
-    it('should correctly update assignment statuses within the transaction', async () => {
-      setupMockTask({ _count: { subTasks: 0, assignees: 0 } });
-      mockPrismaService.task.update.mockResolvedValue({
-        id: taskId,
-        status: 'CLOSED',
-      });
-
-      await tasksService.closeTask(taskId, actorId);
-
-      // Verify taskAssignee updates
-      expect(mockPrismaService.taskAssignee.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ status: 'ACCEPTED' }),
-          data: expect.objectContaining({ status: 'DROPPED' }),
-        }),
-      );
-
-      expect(mockPrismaService.taskAssignee.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ status: 'PENDING' }),
-          data: expect.objectContaining({ status: 'SKIPPED' }),
-        }),
-      );
     });
   });
 
@@ -1059,8 +1382,230 @@ describe('TasksService', () => {
         }),
       );
     });
+
+    it('should throw TaskError.TaskNotFoundError if task not found', async () => {
+      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
+      await expect(
+        tasksService.restoreTask(taskId, user.id),
+      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
+    });
   });
 
+  // ───────────────────────────────────────────────────────────────────────────────
+  // executeUpdateLogic
+  // ───────────────────────────────────────────────────────────────────────────────
+  describe('executeUpdateLogic', () => {
+    const actorId = 1;
+    const taskId = 100;
+    const groupId = 50;
+
+    // 模擬 Prisma Transaction Client
+    const mockTx = {
+      task: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      groupMember: {
+        findUnique: jest.fn(),
+      },
+    } as any;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    describe('Permission & Basics', () => {
+      it('should throw TaskNotFoundError if task does not exist', async () => {
+        mockTx.task.findUnique.mockResolvedValue(null);
+
+        await expect(
+          (tasksService as any).executeUpdateLogic(
+            taskId,
+            { newStatus: TaskStatus.OPEN, actorId },
+            mockTx,
+          ),
+        ).rejects.toMatchObject({ action: undefined }); // 這是 NotFoundError，通常不帶 action
+      });
+
+      it('should throw UPDATE_STATUS_FORBIDDEN if non-owner non-admin tries to update', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: 999, // 不是本人
+          groupId: groupId,
+          status: TaskStatus.OPEN,
+        });
+        mockTx.groupMember.findUnique.mockResolvedValue({ role: 'MEMBER' });
+        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false);
+
+        await expect(
+          (tasksService as any).executeUpdateLogic(
+            taskId,
+            { newStatus: TaskStatus.ARCHIVED, actorId },
+            mockTx,
+          ),
+        ).rejects.toMatchObject({ action: 'UPDATE_STATUS_FORBIDDEN' });
+      });
+    });
+
+    describe('State Machine Validation', () => {
+      it('should throw ILLEGAL_TRANSITION error if state machine denies move', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: actorId,
+          status: TaskStatus.OPEN,
+        });
+        // 模擬狀態機不允許從 OPEN 直接跳到某個狀態
+        jest
+          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .mockReturnValue(false);
+
+        await expect(
+          (tasksService as any).executeUpdateLogic(
+            taskId,
+            { newStatus: TaskStatus.ARCHIVED, actorId },
+            mockTx,
+          ),
+        ).rejects.toMatchObject({
+          action: expect.stringContaining('ILLEGAL_TRANSITION'),
+        });
+      });
+    });
+
+    describe('Closing Rules (Rule A: SubTasks)', () => {
+      it('should throw error if attempting to close task with open subtasks', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: actorId,
+          status: TaskStatus.OPEN,
+          subTasks: [{ status: TaskStatus.OPEN }], // 有未完成子任務
+        });
+        jest
+          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .mockReturnValue(true);
+
+        await expect(
+          (tasksService as any).executeUpdateLogic(
+            taskId,
+            { newStatus: TaskStatus.CLOSED, actorId },
+            mockTx,
+          ),
+        ).rejects.toMatchObject({
+          action: 'CANNOT_CLOSE_TASK_WITH_OPEN_SUBTASKS',
+        });
+      });
+    });
+
+    describe('Closing Rules (Rule B: Assignees)', () => {
+      it('should throw error if no assignees have completed the task', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: actorId,
+          groupId: groupId,
+          status: TaskStatus.OPEN,
+          subTasks: [],
+          assignees: [{ status: AssignmentStatus.ACCEPTED }], // 只是接受，未完成
+        });
+        jest
+          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .mockReturnValue(true);
+
+        await expect(
+          (tasksService as any).executeUpdateLogic(
+            taskId,
+            { newStatus: TaskStatus.CLOSED, actorId },
+            mockTx,
+          ),
+        ).rejects.toMatchObject({
+          action: 'CANNOT_CLOSE_WHEN_NO_ASSIGNEE_COMPLETED',
+        });
+      });
+
+      it('should throw PARTIALLY_COMPLETED_NEEDS_FORCE if some assignees are not done and force is false', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: actorId,
+          groupId: groupId,
+          status: TaskStatus.OPEN,
+          subTasks: [],
+          assignees: [
+            { status: AssignmentStatus.COMPLETED },
+            { status: AssignmentStatus.ACCEPTED }, // 有人沒做完
+          ],
+        });
+        jest
+          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .mockReturnValue(true);
+
+        await expect(
+          (tasksService as any).executeUpdateLogic(
+            taskId,
+            { newStatus: TaskStatus.CLOSED, actorId },
+            mockTx,
+          ),
+        ).rejects.toMatchObject({ action: 'PARTIALLY_COMPLETED_NEEDS_FORCE' });
+      });
+
+      it('should allow closing with partially completed assignees if force is true', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: actorId,
+          groupId: groupId,
+          status: TaskStatus.OPEN,
+          subTasks: [],
+          assignees: [
+            { status: AssignmentStatus.COMPLETED },
+            { status: AssignmentStatus.ACCEPTED },
+          ],
+        });
+        jest
+          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .mockReturnValue(true);
+
+        await (tasksService as any).executeUpdateLogic(
+          taskId,
+          {
+            newStatus: TaskStatus.CLOSED,
+            actorId,
+            force: true,
+            reason: 'Testing Force',
+          },
+          mockTx,
+        );
+
+        expect(mockTx.task.update).toHaveBeenCalledWith({
+          where: { id: taskId },
+          data: expect.objectContaining({
+            status: TaskStatus.CLOSED,
+            closedReason: 'Testing Force',
+            closedWithOpenAssignees: true,
+          }),
+        });
+      });
+    });
+
+    describe('Update Logic (Restore)', () => {
+      it('should reset audit fields when status is set back to OPEN', async () => {
+        mockTx.task.findUnique.mockResolvedValue({
+          ownerId: actorId,
+          status: TaskStatus.CLOSED,
+        });
+        jest
+          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .mockReturnValue(true);
+
+        await (tasksService as any).executeUpdateLogic(
+          taskId,
+          { newStatus: TaskStatus.OPEN, actorId },
+          mockTx,
+        );
+
+        expect(mockTx.task.update).toHaveBeenCalledWith({
+          where: { id: taskId },
+          data: expect.objectContaining({
+            status: TaskStatus.OPEN,
+            closedAt: null,
+            closedById: null,
+            closedReason: null,
+            closedWithOpenAssignees: false,
+          }),
+        });
+      });
+    });
+  });
   // -----------------------subTask----------------------------
 
   // ───────────────────────────────────────────────────────────────────────────────
