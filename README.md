@@ -10,7 +10,7 @@
 
 本專案已完全容器化，您可以透過以下步驟快速啟動開發環境：
 1. .env.example 涵蓋了多數環境變數範例，可以根據需求調整。
-2. 本系統含郵件發送的功能，建議於[Mailtrap](https://mailtrap.io/)申請帳號，並將SMTP認證資訊填入.env
+2. 本系統含郵件發送的功能，建議於[Mailtrap](https://mailtrap.io/)申請免費帳號，並將SMTP認證資訊填入.env
 3. docker compose up --build
 
 ## 系統架構
