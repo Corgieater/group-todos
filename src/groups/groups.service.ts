@@ -141,7 +141,7 @@ export class GroupsService {
     return group;
   }
 
-  async requireMemberRole(groupId: number, userId: number) {
+  async getGroupMemberContext(groupId: number, userId: number) {
     const member = await this.prismaService.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
       include: {
@@ -322,6 +322,38 @@ export class GroupsService {
   }
 
   async verifyInvitation(id: number, token: string): Promise<UserAccessInfo> {
+    /**
+     * Verifies a group invitation token and joins the user to the group.
+     *
+     * Flow:
+     * - Look up the ActionToken by ID and verify its type (GROUP_INVITE).
+     * - Validate the token's state (not consumed, not revoked, and not expired).
+     * - Ensure the token is properly linked to both a user and a group.
+     * - Re-compute the HMAC-SHA-256 hash using the provided raw token and server secret.
+     * - Perform a constant-time comparison to verify the token hash.
+     * - Execute a DB transaction:
+     * 1. Atomically mark the token as consumed (using updateMany for concurrency control).
+     * 2. Idempotently add the user to the group using UPSERT (prevents unique constraint errors).
+     * - Generate the necessary user metadata for session creation.
+     *
+     * Side effects:
+     * - Updates an ActionToken row to mark it as consumed.
+     * - Creates or updates a GroupMember row in the database.
+     *
+     * Security:
+     * - Constant-time comparison (safeEqualB64url) to mitigate timing attacks.
+     * - Atomic consumption logic ensures one-time usage even under high concurrency.
+     * - Does not expose internal token hashes in return values.
+     *
+     * @param id        ActionToken ID from the URL.
+     * @param token     The raw high-entropy token from the URL.
+     * @returns Promise<UserAccessInfo> User metadata (sub, name, email, timeZone) for JWT signing.
+     *
+     * @throws AuthErrors.InvalidTokenError.invite  If the token is missing, invalid, expired, or already used.
+     * @throws AuthErrors.InvalidTokenError.verify  If the HMAC verification fails (token mismatch).
+     * @throws AuthErrors.InternalServerError       If the transaction fails or expected data is missing.
+     * @throws Error                                If required config (e.g., TOKEN_HMAC_SECRET) is missing.
+     * */
     const now = new Date();
     const row = await this.prismaService.actionToken.findFirst({
       where: {

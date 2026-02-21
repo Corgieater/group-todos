@@ -34,7 +34,7 @@ html(lang="en")
         const safeLen = (arr) => Array.isArray(arr) ? arr.length : 0;
         
         const ADMINISH = new Set(['OWNER','ADMIN']);
-        const isAdminishViewer = ADMINISH.has(viewerRole?.role || viewerRole);
+        const isAdminishViewer = ADMINISH.has(viewerContext?.role || viewerContext);
         const canManage = (t) => (isAdminishViewer || t.ownerId === viewerId);
         
         const VIEW_LIMITS = { EXPIRED: 5, TODAY: 15, NONE: 10 };
@@ -43,7 +43,7 @@ html(lang="en")
       .row.mb-4.align-items-center
         .col
           h1.h4.mb-1 #{groupName || 'Group'} Tasks
-          small.text-muted 👥 Role: #{viewerRole.role || viewerRole}
+          small.text-muted 👥 Role: #{viewerContext.role || viewerContext}
         .col-auto.text-end
           a.btn.btn-primary(href=`/groups/${groupId}/tasks/create`)
             i.bi.bi-plus-lg.me-1

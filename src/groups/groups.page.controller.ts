@@ -107,11 +107,11 @@ export class GroupsPageController {
     @Res() res: Response,
   ) {
     // 1) 權限檢查保持不變
-    const viewerRole = await this.groupsService.requireMemberRole(
+    const viewerContext = await this.groupsService.getGroupMemberContext(
       id,
       user.userId,
     );
-    const isAdminish = this.groupsService.isAdminish(viewerRole.role);
+    const isAdminish = this.groupsService.isAdminish(viewerContext.role);
 
     // 2) 取得優化後的資料（已限量、已分類、已排序、已標記 canClose）
     const dashboardData = await this.tasksService.getGroupDashboardData(
@@ -122,9 +122,9 @@ export class GroupsPageController {
     // 3) 渲染
     return res.render('groups/tasks-home', {
       groupId: id,
-      groupName: viewerRole.groupName, // 可考慮從 groupsService 順便抓回 groupName
+      groupName: viewerContext.groupName, // 可考慮從 groupsService 順便抓回 groupName
       viewerId: user.userId,
-      viewerRole,
+      viewerContext,
       isAdminish,
       // 分區資料
       expired: dashboardData.expired,
