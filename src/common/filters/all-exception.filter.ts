@@ -29,7 +29,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       (exception as any)?.message ||
       'Internal server error';
 
-    const errorCode = (exception as any)?.code || 'INTERNAL_SERVER_ERROR';
+    const errorCode =
+      (exception as any)?.code || HttpStatus[status] || 'INTERNAL_SERVER_ERROR';
 
     // 2. 🚀 Winston Log 參數設計
     loggerInstance.error(`[Exception] ${request.method} ${request.url}`, {

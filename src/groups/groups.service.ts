@@ -62,12 +62,11 @@ export class GroupsService {
 
   async updateGroup(actorId: number, id: number, name: string): Promise<void> {
     /**
-     * Currentyl update name only
+     * Currently update name only
      */
     const result = await this.prismaService.group.updateMany({
       where: {
-        id: id,
-        ownerId: actorId,
+        id,
       },
       data: { name },
     });
@@ -169,7 +168,7 @@ export class GroupsService {
 
   async disbandGroupById(id: number, ownerId: number): Promise<void> {
     const { count } = await this.prismaService.group.deleteMany({
-      where: { id, ownerId },
+      where: { id },
     });
 
     if (count !== 1) {
@@ -244,7 +243,6 @@ export class GroupsService {
     const actor = await this.prismaService.groupMember.findUnique({
       where: { groupId_userId: { groupId: id, userId: actorId } },
       select: {
-        role: true,
         user: { select: { id: true, name: true } },
         group: { select: { id: true, name: true } },
       },
@@ -252,12 +250,6 @@ export class GroupsService {
 
     if (!actor) {
       throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
-    }
-
-    const CAN_INVITE = this.isAdminish(actor.role);
-
-    if (!CAN_INVITE) {
-      throw GroupsErrors.GroupActionForbiddenError.inviteMember(id, actorId);
     }
 
     const invitee = await this.usersService.findByEmail(email);
@@ -438,26 +430,12 @@ export class GroupsService {
       const actor = rows.find((r) => r.userId === actorId);
       const target = rows.find((r) => r.userId === targetId);
 
-      // Not a member in group
-      if (!actor) {
-        throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
-      }
-
-      if (actor.role !== GroupRole.OWNER) {
-        throw GroupsErrors.GroupActionForbiddenError.updateRole(
-          id,
-          actorId,
-          actor.role,
-          targetId,
-        );
-      }
-
       if (!target) {
         throw GroupsErrors.GroupMemberNotFoundError.byId(targetId, id);
       }
 
       // If we need to deal with group transfer, we need to change this logic
-      if (actor.userId === target.userId) {
+      if (actor!.userId === target.userId) {
         throw GroupsErrors.GroupOwnerConstraintError.ownerRoleCanNotBeUpdated(
           id,
           targetId,
@@ -507,16 +485,6 @@ export class GroupsService {
       if (!actor) {
         // actor not a group member
         throw GroupsErrors.GroupNotFoundError.byId(actorId, id);
-      }
-
-      // If actor is only a member, we don't need to check other things anymore
-      if (actor.role === GroupRole.MEMBER) {
-        throw GroupsErrors.GroupActionForbiddenError.removeMember(
-          id,
-          actorId,
-          actor.role,
-          targetId,
-        );
       }
 
       const target = rows.find((r) => r.userId === targetId);

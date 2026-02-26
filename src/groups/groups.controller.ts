@@ -8,6 +8,7 @@ import {
   Req,
   Res,
   UseFilters,
+  UseGuards,
 } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { Request, Response } from 'express';
@@ -27,8 +28,14 @@ import { TasksAddDto } from 'src/tasks/dto/tasks.dto';
 import { TasksAddPayload } from 'src/tasks/types/tasks';
 import { Public } from 'src/common/decorators/public.decorator';
 import { SecurityService } from 'src/security/security.service';
+import {
+  MemberRoles,
+  RequireRoles,
+} from 'src/common/decorators/require-roles.decorator';
+import { RolesGuard } from 'src/auth/guards/role.guard';
 
 @Controller('/api/groups')
+@UseGuards(RolesGuard)
 @UseFilters(GroupsPageFilter)
 export class GroupsController {
   constructor(
@@ -50,6 +57,7 @@ export class GroupsController {
   }
 
   @Post(':id/update')
+  @RequireRoles([MemberRoles.OWNER])
   async update(
     @Req() req: Request,
     @CurrentUserDecorator() user: CurrentUser,
@@ -69,6 +77,7 @@ export class GroupsController {
   }
 
   @Post(':id/invitations')
+  @RequireRoles([MemberRoles.OWNER, MemberRoles.ADMIN])
   async invite(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
@@ -103,6 +112,7 @@ export class GroupsController {
   }
 
   @Post(':id/update/role')
+  @RequireRoles([MemberRoles.OWNER])
   async updateMemberRole(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
@@ -121,6 +131,7 @@ export class GroupsController {
   }
 
   @Post(':id/disband')
+  @RequireRoles([MemberRoles.OWNER])
   async disband(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
@@ -146,6 +157,7 @@ export class GroupsController {
   }
 
   @Post(':id/kick-out-members')
+  @RequireRoles([MemberRoles.OWNER, MemberRoles.ADMIN])
   async kickOutMember(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,

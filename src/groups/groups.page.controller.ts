@@ -17,6 +17,7 @@ import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
 import { TasksService } from 'src/tasks/tasks.service';
 import { GroupsErrors } from 'src/errors';
 import { GroupPageDto } from './dto/groups.dto';
+import { GroupRole } from 'src/generated/prisma/enums';
 
 @Controller('groups')
 @UseFilters(GroupsPageFilter)
@@ -74,15 +75,14 @@ export class GroupsPageController {
       user.userId,
     );
     const viewModel = buildGroupVM(group, user.timeZone);
-
+    console.log(viewModel);
     // 推導檢視者角色
     const viewer = viewModel.members.find(
       (m) => m.user && m.user.id === user.userId,
     );
     const isOwner = viewModel.ownerId === user.userId;
-    const isAdmin = !!viewer && viewer.role === 'ADMIN';
+    const isAdmin = !!viewer && viewer.role === GroupRole.ADMIN;
     const canManageMembers = isOwner || isAdmin;
-
     res.render('groups/details', {
       group: {
         id: viewModel.id,
