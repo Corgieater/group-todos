@@ -32,10 +32,10 @@ import {
   MemberRoles,
   RequireRoles,
 } from 'src/common/decorators/require-roles.decorator';
-import { RolesGuard } from 'src/auth/guards/role.guard';
+import { GroupRolesGuard } from 'src/auth/guards/group-role.guard';
 
 @Controller('/api/groups')
-@UseGuards(RolesGuard)
+@UseGuards(GroupRolesGuard)
 @UseFilters(GroupsPageFilter)
 export class GroupsController {
   constructor(

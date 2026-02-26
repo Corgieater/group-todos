@@ -75,7 +75,7 @@ export class GroupsPageController {
       user.userId,
     );
     const viewModel = buildGroupVM(group, user.timeZone);
-
+    console.log(viewModel);
     // 推導檢視者角色
     const viewer = viewModel.members.find(
       (m) => m.user && m.user.id === user.userId,
