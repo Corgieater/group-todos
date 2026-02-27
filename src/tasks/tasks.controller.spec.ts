@@ -18,9 +18,10 @@ import { setSession } from 'src/common/helpers/flash-helper';
 import { TaskPriority } from './types/enum';
 import { HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { SecurityService } from 'src/security/security.service';
 import { createMockSecurityService } from 'src/test/factories/mock-security.service';
+import { TaskContext } from './types/tasks';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
@@ -44,6 +45,11 @@ describe('TasksController', () => {
   };
 
   const mockSecurityService = createMockSecurityService();
+  const mockPrismaService = {
+    task: {
+      findUnique: jest.fn(),
+    },
+  };
 
   beforeAll(async () => {
     user = createMockUser();
@@ -87,6 +93,10 @@ describe('TasksController', () => {
         {
           provide: SecurityService,
           useValue: mockSecurityService,
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();
@@ -171,9 +181,9 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   // update
   // ───────────────────────────────────────────────────────────────────────────────
-
   describe('update', () => {
     let dto: UpdateTaskDto;
+    let ctx: TaskContext;
 
     beforeEach(() => {
       dto = {
@@ -181,6 +191,18 @@ describe('TasksController', () => {
         allDay: false,
         dueDate: '2025-09-09',
         dueTime: '13:39',
+      };
+      ctx = {
+        task: {
+          id: 1,
+          ownerId: 1,
+          groupId: 1,
+          status: TaskStatus.OPEN,
+        } as Task,
+        userId: currentUser.userId,
+        isAdminish: true,
+        isMember: true,
+        isOwner: true,
       };
     });
 
@@ -191,11 +213,17 @@ describe('TasksController', () => {
         allDay: false,
         dueAtUtc: '2025-09-17T13:39:00.000Z',
       });
-      await tasksController.update(req, dto, currentUser, 1, res);
+      await tasksController.update(req, dto, currentUser, ctx, res);
 
       expect(mockTasksService.updateTask).toHaveBeenCalledWith(
-        1,
-        currentUser.userId,
+        {
+          id: 1,
+          isAdminish: true,
+          isOwner: true,
+          timeZone: 'Asia/Taipei',
+          userId: 1,
+          userName: 'test',
+        },
         dto,
       );
       expect(setSession).toHaveBeenCalledWith(

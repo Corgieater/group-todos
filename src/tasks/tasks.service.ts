@@ -12,6 +12,7 @@ import {
   UpdateStatusOpts,
   InternalAssignOptions,
   ListTasksResult,
+  TaskUpdateContext,
 } from './types/tasks';
 import {
   AssignmentStatus,
@@ -450,28 +451,43 @@ export class TasksService {
   }
 
   async updateTask(
-    id: number,
-    userId: number,
+    ctx: TaskUpdateContext,
     payload: TaskUpdatePayload,
   ): Promise<TaskModel> {
     /**
-     * Updates an existing task's attributes based on the provided payload.
-     * * This method retrieves the user's settings (e.g., timezone) to ensure
-     * date-related updates are correctly converted to UTC. It also triggers
-     * a notification after a successful update.
+     * Updates an existing task's attributes based on the provided payload and context.
+     * * This method serves as the core logic for task updates, handling:
+     * 1. **Permission Enforcement**: Ensures the actor is either the task owner or a group administrator.
+     * 2. **Data Transformation**: Converts local dates/times to UTC based on the actor's timezone.
+     * 3. **Audit & Notification**: Triggers real-time notifications to relevant parties after a successful update.
      *
-     * @param id - The unique identifier of the task to be updated.
-     * @param userId - The ID of the actor performing the update (used for permissions and notifications).
-     * @param payload - An object containing the task fields to update (description, dueDate, etc.).
-     * * @returns {Promise<TaskModel>} The updated task record.
-     * * @throws {TaskNotFoundError}
-     * Thrown if the task does not exist or if the update violates unique constraints.
+     * @param ctx - The execution context containing actor info and pre-calculated permissions:
+     * - `id`: The unique identifier of the task to update.
+     * - `userId`: The ID of the user performing the action.
+     * - `timeZone`: The IANA timezone string of the actor.
+     * - `userName`: The display name of the actor for notifications.
+     * - `isAdminish`: Boolean indicating if the actor has administrative rights.
+     * - `isOwner`: Boolean indicating if the actor created the task.
+     * @param payload - Data transfer object containing the fields to be updated.
+     * * @returns {Promise<TaskModel>} The updated task record from the database.
+     * * @throws {TasksErrors.TaskForbiddenError}
+     * Thrown if the actor is neither the owner nor an administrator.
+     * @throws {TasksErrors.TaskNotFoundError}
+     * Thrown if the task ID is invalid or if a unique constraint (P2002) is violated during update.
      */
-    const user = await this.usersService.findByIdOrThrow(userId);
+    const { id, userId, timeZone, userName, isAdminish, isOwner } = ctx;
+
+    if (!isAdminish && !isOwner) {
+      throw TasksErrors.TaskForbiddenError.byActorOnTask(
+        userId,
+        id,
+        'UPDATE-TASK',
+      );
+    }
 
     const commonData = this.getCommonUpdateData<Prisma.TaskUpdateInput>(
       payload,
-      user.timeZone,
+      timeZone,
     );
 
     const data: Prisma.TaskUpdateInput = commonData;
@@ -481,7 +497,7 @@ export class TasksService {
         where: { id },
         data,
       });
-      this.notifyTaskChange(task.id, userId, user.name, 'UPDATED');
+      this.notifyTaskChange(task.id, userId, userName, 'UPDATED');
       return task;
     } catch (e) {
       if (

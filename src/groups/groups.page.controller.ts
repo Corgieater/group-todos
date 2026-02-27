@@ -9,7 +9,7 @@ import {
   UseFilters,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { GroupsService } from './groups.service';
 import { buildGroupVM } from 'src/common/helpers/util';
@@ -36,7 +36,7 @@ export class GroupsPageController {
   async list(
     @Query() query: GroupPageDto,
     @Res() res: Response,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Req() req: Request,
   ) {
     const page = query.page ? query.page : 1;
@@ -66,7 +66,7 @@ export class GroupsPageController {
   @Get(':id')
   async detail(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
@@ -102,7 +102,7 @@ export class GroupsPageController {
   @Get(':id/tasks')
   async groupTaskHome(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
@@ -140,7 +140,7 @@ export class GroupsPageController {
   async createTask(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const member = await this.groupsService.getMember(id, user.userId);

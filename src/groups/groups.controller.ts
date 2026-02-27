@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { Request, Response } from 'express';
-import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
   CreateGroupDto,
@@ -32,7 +32,7 @@ import {
   MemberRoles,
   RequireRoles,
 } from 'src/common/decorators/require-roles.decorator';
-import { GroupRolesGuard } from 'src/auth/guards/group-role.guard';
+import { GroupRolesGuard } from 'src/groups/guard/group-role.guard';
 
 @Controller('/api/groups')
 @UseGuards(GroupRolesGuard)
@@ -47,7 +47,7 @@ export class GroupsController {
   @Post('new')
   async create(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: CreateGroupDto,
     @Res() res: Response,
   ) {
@@ -60,7 +60,7 @@ export class GroupsController {
   @RequireRoles([MemberRoles.OWNER])
   async update(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateGroupDto,
     @Res() res: Response,
@@ -81,7 +81,7 @@ export class GroupsController {
   async invite(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: InviteGroupMemberDto,
     @Res() res: Response,
   ) {
@@ -128,7 +128,7 @@ export class GroupsController {
   async updateMemberRole(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: UpdateMemberRoleDto,
     @Res() res: Response,
   ) {
@@ -147,7 +147,7 @@ export class GroupsController {
   async disband(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.groupsService.disbandGroupById(id, user.userId);
@@ -160,7 +160,7 @@ export class GroupsController {
   async leave(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.groupsService.leaveGroup(id, user.userId);
@@ -173,7 +173,7 @@ export class GroupsController {
   async kickOutMember(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: KickOutMemberFromGroupDto,
     @Res() res: Response,
   ) {
@@ -186,7 +186,7 @@ export class GroupsController {
   async createGroupTask(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: TasksAddDto,
     @Res() res: Response,
   ) {

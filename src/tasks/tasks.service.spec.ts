@@ -12,7 +12,11 @@ import { TaskStatus } from './types/enum';
 import { TasksService } from './tasks.service';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { TasksAddPayload, TaskUpdatePayload } from './types/tasks';
+import {
+  TasksAddPayload,
+  TaskUpdatePayload,
+  TaskUpdateContext,
+} from './types/tasks';
 import { TaskPriority } from './types/enum';
 import { TasksErrors, UsersErrors } from 'src/errors';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
@@ -704,6 +708,15 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('updateTask', () => {
+    const ctx: TaskUpdateContext = {
+      id: lowTask.id,
+      userId: user.id,
+      timeZone: user.timeZone,
+      userName: 'test',
+      isAdminish: true,
+      isOwner: true,
+    };
+
     const payload: TaskUpdatePayload = {
       title: 'walk cat',
       description: 'walk your cat',
@@ -730,7 +743,7 @@ describe('TasksService', () => {
       // 🚀 關鍵：必須設定 Prisma update 的回傳值
       mockPrismaService.task.update.mockResolvedValueOnce(mockUpdatedTask);
 
-      await tasksService.updateTask(taskId, user.id, payload);
+      await tasksService.updateTask(ctx, payload);
 
       expect(mockPrismaService.task.update).toHaveBeenCalledTimes(1);
       const [{ data, where }] = mockPrismaService.task.update.mock.calls[0];
@@ -770,7 +783,7 @@ describe('TasksService', () => {
       // 🚀 2. 設定 Prisma Update 的 Mock 回傳值
       mockPrismaService.task.update.mockResolvedValueOnce(updatedTaskMock);
 
-      await tasksService.updateTask(taskId, user.id, allDayPayload);
+      await tasksService.updateTask(ctx, allDayPayload);
 
       // 驗證呼叫次數
       expect(mockPrismaService.task.update).toHaveBeenCalledTimes(1);
@@ -790,20 +803,21 @@ describe('TasksService', () => {
       });
     });
 
-    it('should not hit database when user not found', async () => {
-      mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
-        UsersErrors.UserNotFoundError.byId(999),
-      );
+    // it('should not hit database when user not found', async () => {
+    //   mockUsersService.findByIdOrThrow.mockRejectedValueOnce(
+    //     UsersErrors.UserNotFoundError.byId(999),
+    //   );
 
-      await expect(
-        tasksService.updateTask(lowTask.id, 999, payload),
-      ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
+    //   await expect(
+    //     tasksService.updateTask(lowTask.id, 999, payload),
+    //   ).rejects.toBeInstanceOf(UsersErrors.UserNotFoundError);
 
-      expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
-      expect(mockPrismaService.task.update).not.toHaveBeenCalled();
-    });
+    //   expect(mockUsersService.findByIdOrThrow).toHaveBeenCalledWith(999);
+    //   expect(mockPrismaService.task.update).not.toHaveBeenCalled();
+    // });
 
     it('should throws TaskNotFoundError', async () => {
+      ctx['id'] = 999;
       const e = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
         code: 'P2002',
         clientVersion: 'test',
@@ -812,7 +826,7 @@ describe('TasksService', () => {
       mockPrismaService.task.update.mockRejectedValueOnce(e);
 
       await expect(
-        tasksService.updateTask(999, user.id, payload),
+        tasksService.updateTask(ctx, payload),
       ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
 
       expect(mockPrismaService.task.update).toHaveBeenCalledTimes(1);

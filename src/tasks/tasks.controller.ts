@@ -10,9 +10,10 @@ import {
   Get,
   Query,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
   AssignTaskDto,
@@ -26,6 +27,7 @@ import { TasksService } from './tasks.service';
 import {
   AssignTaskPayload,
   SubTaskAddPayload,
+  TaskContext,
   TasksAddPayload,
 } from './types/tasks';
 import { setSession } from 'src/common/helpers/flash-helper';
@@ -34,6 +36,8 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { AssignmentStatus } from 'src/generated/prisma/enums';
 import { SerializationInterceptor } from 'src/common/interceptors/serialization/serialization.interceptor';
 import { SecurityService } from 'src/security/security.service';
+import { TaskMemberGuard } from './guard/task-member.guard';
+import { GetTaskContext } from 'src/common/decorators/task-context.decorator';
 
 @Controller('api/tasks')
 @UseFilters(TasksPageFilter)
@@ -46,7 +50,7 @@ export class TasksController {
   @Post()
   async create(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: TasksAddDto,
     @Res() res: Response,
   ) {
@@ -72,14 +76,23 @@ export class TasksController {
   // Currently allowed empty data update,
   // once frontend been separated, we can check by frontend
   @Post(':id/update')
+  @UseGuards(TaskMemberGuard)
   async update(
     @Req() req: Request,
     @Body() dto: UpdateTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
-    @Param('id', ParseIntPipe) id: number,
+    @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Res() res: Response,
   ) {
-    const task = await this.tasksService.updateTask(id, user.userId, dto);
+    const updateCtx = {
+      id: ctx.task.id,
+      userId: ctx.userId,
+      timeZone: user.timeZone,
+      userName: user.userName,
+      isAdminish: ctx.isAdminish,
+      isOwner: ctx.isOwner,
+    };
+    const task = await this.tasksService.updateTask(updateCtx, dto);
     setSession(req, 'success', 'Task has been updated');
     return res.redirect(`/tasks/${task.id}`);
   }
@@ -90,7 +103,7 @@ export class TasksController {
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAssigneeStatusDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.tasksService.updateAssigneeStatus(
@@ -107,7 +120,7 @@ export class TasksController {
   async close(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason?: string },
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
     @Req() req: Request, // 引入 Request 以檢查 Header
   ) {
@@ -167,7 +180,7 @@ export class TasksController {
   @Post(':id/archive')
   async archiveTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
@@ -179,7 +192,7 @@ export class TasksController {
   @Post(':id/restore')
   async restoreTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
@@ -192,10 +205,7 @@ export class TasksController {
 
   @Get('notifications')
   @UseInterceptors(new SerializationInterceptor(NotificationDto))
-  async getNotifications(
-    @Req() req,
-    @CurrentUserDecorator() user: CurrentUser,
-  ) {
+  async getNotifications(@Req() req, @GetCurrentUser() user: CurrentUser) {
     return await this.tasksService.getPendingNotifications(user.userId);
   }
 
@@ -204,7 +214,7 @@ export class TasksController {
   @Post(':id/sub-tasks')
   async addSubTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SubTasksAddDto,
     @Res() res: Response,
@@ -230,7 +240,7 @@ export class TasksController {
   @Post(':taskId/sub-tasks/:id/close')
   async closeSubTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('taskId') taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
@@ -245,7 +255,7 @@ export class TasksController {
   async updateSubTask(
     @Req() req: Request,
     @Body() dto: UpdateTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('taskId') taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
@@ -258,7 +268,7 @@ export class TasksController {
   @Post(':taskId/sub-tasks/:id/restore')
   async restoreSubTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('taskId') taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
@@ -275,7 +285,7 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAssigneeStatusDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.tasksService.updateSubTaskAssigneeStatus(
@@ -294,7 +304,7 @@ export class TasksController {
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const payload: AssignTaskPayload = {
@@ -331,7 +341,7 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const payload: AssignTaskPayload = {
