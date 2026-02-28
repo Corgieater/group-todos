@@ -99,6 +99,7 @@ export class TasksController {
 
   // self-assign, claim, assigned task status report
   @Post(':id/update/assignee-status')
+  @UseGuards(TaskMemberGuard)
   async updateAssigneeStatus(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,

@@ -517,43 +517,44 @@ export class TasksService {
     actorId: number,
     dto: { status: AssignmentStatus; reason?: string },
     updatedBy: string | null = null,
-  ) {
+  ): Promise<void> {
     /**
-     * Updates the assignment status for a user on a specific task.
-     * * This method handles three core business scenarios:
-     * 1. **Claiming (Self-Assign)**: If no assignment record exists and status is 'ACCEPTED',
-     * it creates a new record.
-     * 2. **Declining**: Transitions a 'PENDING' assignment to 'DECLINED' (requires a reason).
-     * 3. **Progress Tracking**: Transitions between 'ACCEPTED', 'COMPLETED', or 'CLOSED'
-     * based on the user's progress.
+     * @TODO Refactpr request
+     * Split into `claimTask` and `updateAssignmentStatus`
+     * POST /tasks/:id/claim
      *
-     * @param id - The unique identifier of the Task.
-     * @param actorId - The ID of the user performing the update.
-     * @param dto - Data transfer object containing:
-     * - `status`: Target AssignmentStatus (e.g., ACCEPTED, DECLINED).
-     * - `reason`: Optional string, mandatory when declining a task.
-     * @param updatedBy - The display name of the actor for WebSocket notifications.
-     * * @throws {TasksErrors.TaskNotFoundError} If the task ID does not exist.
+     * Updates the assignment status for a user on a specific task, handling self-claims and status reports.
+     * * This method implements a "Group Task Assignment" workflow with two primary entry points:
+     * 1. **Self-Claim (New Assignment)**: If the actor has no existing assignment for the task,
+     * they can "claim" it by setting the status to 'ACCEPTED'. This creates a new assignment record.
+     * 2. **Status Transition (Existing Assignment)**: If the actor is already assigned,
+     * the method validates the state transition (e.g., ACCEPTED -> COMPLETED) against the current
+     * task and assignment status.
+     * * @param id - The unique identifier of the task.
+     * @param actorId - The ID of the user performing the update (the actor).
+     * @param dto - The data transfer object containing:
+     * - `status`: The target AssignmentStatus the actor wants to transition to.
+     * - `reason`: An optional string explaining the status change (e.g., for declining or reporting).
+     * @param updatedBy - The display name of the actor, used for broadcasting notifications.
+     * * @returns {Promise<void>} Resolves when the transaction is successfully committed and notifications are sent.
+     * * @throws {Error} 'Task lost in transaction' if the task becomes unavailable during the atomic operation.
      * @throws {TasksErrors.TaskForbiddenError}
-     * - If the task is a Personal Task (assignments only allowed for Group Tasks).
-     * - If the actor is not a member of the group associated with the task.
-     * - If the status transition is illegal (e.g., moving from 'CLOSED' back to 'PENDING').
-     * - If attempting to update a non-existent assignment with a status other than 'ACCEPTED'.
-     * * @returns A promise that resolves to { ok: true } upon successful update.
-     *
-     * *@todo
-     * I should separate slef-claim and task status report to 2 methods
+     * - Action: 'ILLEGAL_WITHOUT_ASSIGNMENT' if a non-assigned user attempts a status other than 'ACCEPTED'.
+     * - Action: 'TRANSITION_ERROR' if the status change is invalid based on current assignment or task states.
+     * - Action: 'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK' if try to update status for a non-group task
      */
-
     const { status: next, reason } = dto;
+    let shouldNotify = false;
 
     return this.prismaService.$transaction(async (tx) => {
+      // Check if task exitsts in transaction although we already checked in Guard,
+      // for making sure the data status not changed during updating
       const task = await tx.task.findUnique({
         where: { id },
         select: {
           id: true,
-          groupId: true,
           status: true,
+          groupId: true,
           assignees: {
             where: { assigneeId: actorId },
             select: { status: true },
@@ -561,48 +562,30 @@ export class TasksService {
         },
       });
 
-      if (!task) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-
-      // Check if really a group task
-      if (!task.groupId) {
+      if (!task) throw new Error('Task lost in transaction');
+      // If not group task, throw error
+      if (!task.groupId)
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           actorId,
-          id,
-          'ASSIGNEE_STATUS_FOR_PERSONAL_TASK',
+          task.id,
+          'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK',
         );
-      }
-
-      // Check if actor is a member of group
-      const isMember = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
-        select: { userId: true },
-      });
-
-      if (!isMember) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          id,
-          'ASSIGNEE_STATUS_FOR_NON_MEMBER',
-        );
-      }
 
       const currentAssignee = task.assignees[0];
 
-      // 2. Handle self claim logic
+      // 1. Deal with Self-claim (when no assigned record)
       if (!currentAssignee) {
-        // If user not been assigned to the task, they can only change
-        // assigneeStatus to ACCEPTED (self claim a task)
         if (next !== AssignmentStatus.ACCEPTED) {
           throw TasksErrors.TaskForbiddenError.byActorOnTask(
             actorId,
             id,
-            'ASSIGNEE_STATUS_ILLEGAL_WITHOUT_ASSIGNMENT',
+            'ILLEGAL_WITHOUT_ASSIGNMENT',
           );
         }
 
         await tx.taskAssignee.create({
           data: {
-            taskId: task.id,
+            taskId: id,
             assigneeId: actorId,
             assignedById: actorId,
             status: AssignmentStatus.ACCEPTED,
@@ -610,39 +593,36 @@ export class TasksService {
             acceptedAt: new Date(),
           },
         });
-        return { ok: true };
+      } else {
+        // 2. Deal with status changing (assigned record found)
+        const isLegal = this.isValidAssignmentTransition(
+          currentAssignee.status,
+          next,
+          task.status,
+        );
+        if (!isLegal) {
+          throw TasksErrors.TaskForbiddenError.byActorOnTask(
+            actorId,
+            id,
+            `TRANSITION_ERROR`,
+          );
+        }
+
+        await tx.taskAssignee.update({
+          where: { taskId_assigneeId: { taskId: id, assigneeId: actorId } },
+          data: this.getAssigneeUpdateData(next, reason),
+        });
+
+        shouldNotify = true;
       }
-
-      // 3. Check if Assignee.status logic is correct
-      // (example: DECLINED -> ACCEPTED is allowed, but CLOSED -> PENDING is not)
-      const prev = currentAssignee.status;
-      const isLegal = this.isValidAssignmentTransition(prev, next, task.status);
-
-      if (!isLegal) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
+      if (shouldNotify) {
+        this.notifyTaskChange(
           id,
-          `ASSIGNEE_STATUS_ILLEGAL_TRANSITION_${prev}_TO_${next}`,
+          actorId,
+          updatedBy!,
+          'ASSIGNEE_STATUS_UPDATED',
         );
       }
-
-      // 4. update
-      const updateData = this.getAssigneeUpdateData(next, reason);
-
-      await tx.taskAssignee.update({
-        where: { taskId_assigneeId: { taskId: task.id, assigneeId: actorId } },
-        data: updateData,
-      });
-
-      // Notification for frontend
-      this.notifyTaskChange(
-        task.id,
-        actorId,
-        updatedBy!,
-        'ASSIGNEE_STATUS_UPDATED',
-      );
-
-      return { ok: true };
     });
   }
 

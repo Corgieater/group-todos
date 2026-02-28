@@ -859,13 +859,9 @@ describe('TasksService', () => {
         }); // 是群組成員
 
         // 2. Act
-        const result = await tasksService.updateAssigneeStatus(
-          taskId,
-          actorId,
-          {
-            status: AssignmentStatus.ACCEPTED,
-          },
-        );
+        await tasksService.updateAssigneeStatus(taskId, actorId, {
+          status: AssignmentStatus.ACCEPTED,
+        });
 
         // 3. Assert
         expect(mockPrismaService.taskAssignee.create).toHaveBeenCalledWith(
@@ -877,7 +873,6 @@ describe('TasksService', () => {
             }),
           }),
         );
-        expect(result).toEqual({ ok: true });
       });
 
       it('should update existing assignment status and call notifyTaskChange', async () => {
@@ -902,7 +897,7 @@ describe('TasksService', () => {
           .mockImplementation();
 
         // 2. Act
-        const result = await tasksService.updateAssigneeStatus(
+        await tasksService.updateAssigneeStatus(
           taskId,
           actorId,
           { status: AssignmentStatus.COMPLETED },
@@ -917,38 +912,15 @@ describe('TasksService', () => {
           'User Name',
           'ASSIGNEE_STATUS_UPDATED',
         );
-        expect(result).toEqual({ ok: true });
       });
     });
 
     describe('Error Cases (Forbidden & Validation)', () => {
-      it('should throw TaskNotFoundError if task does not exist', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(null);
-
-        await expect(
-          tasksService.updateAssigneeStatus(taskId, actorId, {
-            status: AssignmentStatus.ACCEPTED,
-          }),
-        ).rejects.toThrow();
-        // 註：這裡可以根據 TasksErrors 的實作來檢查具體的 Error Class
-      });
-
       it('should throw ForbiddenError if it is a personal task (no groupId)', async () => {
         mockPrismaService.task.findUnique.mockResolvedValue({
           ...mockTask(),
           groupId: null,
         });
-
-        await expect(
-          tasksService.updateAssigneeStatus(taskId, actorId, {
-            status: AssignmentStatus.ACCEPTED,
-          }),
-        ).rejects.toThrow();
-      });
-
-      it('should throw ForbiddenError if actor is not a member of the group', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(mockTask());
-        mockPrismaService.groupMember.findUnique.mockResolvedValue(null); // 非成員
 
         await expect(
           tasksService.updateAssigneeStatus(taskId, actorId, {
