@@ -17,11 +17,13 @@ This project is fully containerized. You can quickly set up the development envi
 
     Configure Environment Variables: See .env.example for a complete list of required variables. Adjust them according to your needs.
 
-2. 本系統含郵件發送的功能，建議於[Mailtrap](https://mailtrap.io/)申請免費帳號，並將SMTP認證資訊填入.env
+2. 本系統含郵件發送的功能，建議於[Mailtrap](https://mailtrap.io/)申請免費帳號，並將SMTP認證資訊填入.env。
 
     Setup Email Service: This system includes email functionality. It is recommended to sign up for a free account at [Mailtrap](https://mailtrap.io/) and add your SMTP credentials to the .env file.
 
 3. `docker compose up --build`
+4. 已經內建帳號密碼，帳號：test@test.com 密碼：test，登入後即可使用。
+       Default account already been set, account: test@test.com, password: test.
 
 ## 系統架構(System Architecture & Modules)
 ![layout-counselor2](https://github.com/user-attachments/assets/c689f357-9716-45c6-8d16-99e567ee62a6)
