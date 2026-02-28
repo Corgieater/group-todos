@@ -99,7 +99,8 @@ describe('GroupsController', () => {
 
   describe('invite', () => {
     const dto: InviteGroupMemberDto = { email: 'test2@test.com' };
-    it('should invite user', async () => {
+    it('should invite user with sucess message', async () => {
+      mockGroupsService.inviteGroupMember.mockResolvedValueOnce(true);
       await groupsController.invite(req, 1, currentUser, dto, res);
 
       expect(mockGroupsService.inviteGroupMember).toHaveBeenCalledWith(
@@ -111,6 +112,23 @@ describe('GroupsController', () => {
         req,
         'success',
         'Invitation suceed.',
+      );
+      expect(res.redirect).toHaveBeenCalledWith(`/groups/1`);
+    });
+
+    it('should show warning message if email not sent due to env problem', async () => {
+      mockGroupsService.inviteGroupMember.mockResolvedValueOnce(false);
+      await groupsController.invite(req, 1, currentUser, dto, res);
+
+      expect(mockGroupsService.inviteGroupMember).toHaveBeenCalledWith(
+        1,
+        1,
+        'test2@test.com',
+      );
+      expect(setSession).toHaveBeenCalledWith(
+        req,
+        'warning',
+        'Sending Email fails, please check env variables',
       );
       expect(res.redirect).toHaveBeenCalledWith(`/groups/1`);
     });

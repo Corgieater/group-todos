@@ -27,8 +27,29 @@ export class MailService {
     private readonly securityService: SecurityService,
   ) {}
 
-  sendPasswordReset(user: User, link: string) {
-    this.mailService.sendMail({
+  private async executeSend(options: any) {
+    const user = this.configService.get('MAIL_USER');
+    const pass = this.configService.get('MAIL_PASS');
+
+    if (!user || !pass) {
+      console.warn(
+        `[MailService] Skip sending email to ${options.to} since there is no MAIL_USER/PASS`,
+      );
+      return false;
+    }
+
+    this.mailService.sendMail(options).catch((error) => {
+      console.error(
+        `[MailService] Background error when sending mail to ${options.to}:`,
+        error,
+      );
+    });
+
+    return true;
+  }
+
+  async sendPasswordReset(user: User, link: string) {
+    return this.executeSend({
       to: user.email,
       subject: 'Password Reset',
       template: 'auth/reset-password-letter',
@@ -43,7 +64,7 @@ export class MailService {
     inviterName: string,
     groupName: string,
   ) {
-    this.mailService.sendMail({
+    return this.executeSend({
       to: email,
       subject: 'You are invited to join a group',
       template: 'groups/invite-letter',
@@ -66,7 +87,7 @@ export class MailService {
       );
     }
 
-    this.mailService.sendMail({
+    return this.executeSend({
       to: data.email,
       subject: `[Urgent] Task from - ${data.assignerName} of ${data.groupName}`,
       template: 'tasks/urgent-notification-letter',

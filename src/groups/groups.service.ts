@@ -201,7 +201,7 @@ export class GroupsService {
     id: number,
     actorId: number,
     email: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     /**
      * Invites a user to join a group by email.
      *
@@ -304,13 +304,14 @@ export class GroupsService {
       baseUrl,
     ).toString();
 
-    this.mailService.sendGroupInvite(
+    const mailSent = this.mailService.sendGroupInvite(
       invitee.email,
       invitee.name,
       link,
       actor.user.name,
       actor.group.name,
     );
+    return mailSent;
   }
 
   async verifyInvitation(id: number, token: string): Promise<UserAccessInfo> {

@@ -153,7 +153,8 @@ describe('AuthController', () => {
       email: 'test@test.com',
     };
 
-    it('should always redirect with a success flash message', async () => {
+    it('should redirect with a success flash message', async () => {
+      mockAuthService.resetPassword.mockResolvedValueOnce(true);
       await authController.resetPassword(req, dto, res);
 
       expect(mockAuthService.resetPassword).toHaveBeenCalledWith(dto.email);
@@ -161,6 +162,18 @@ describe('AuthController', () => {
         type: 'success',
         message:
           'If this email is registered, a password reset link has been sent.',
+      });
+      expect(res.redirect).toHaveBeenCalledWith('/');
+    });
+
+    it('should redirect with a warning flash message if email not sent due to env problem', async () => {
+      mockAuthService.resetPassword.mockResolvedValueOnce(false);
+      await authController.resetPassword(req, dto, res);
+
+      expect(mockAuthService.resetPassword).toHaveBeenCalledWith(dto.email);
+      expect(req.session.flash).toEqual({
+        type: 'warning',
+        message: 'Sending mail fails, please check env variables',
       });
       expect(res.redirect).toHaveBeenCalledWith('/');
     });

@@ -93,7 +93,7 @@ export class AuthService {
     });
   }
 
-  async resetPassword(email: string): Promise<void> {
+  async resetPassword(email: string): Promise<boolean | void> {
     /**
      * Starts the password-reset flow for a given email.
      *
@@ -156,7 +156,8 @@ export class AuthService {
       baseUrl,
     ).toString();
 
-    this.mailService.sendPasswordReset(user, link);
+    const mailSent = this.mailService.sendPasswordReset(user, link);
+    return mailSent;
   }
 
   async verifyResetToken(

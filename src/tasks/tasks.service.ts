@@ -19,7 +19,7 @@ import {
   Prisma,
   Task as TaskModel,
 } from 'src/generated/prisma/client';
-import type { Task } from 'src/generated/prisma/client';
+import type { SubTaskAssignee, Task } from 'src/generated/prisma/client';
 import { TaskStatus } from './types/enum';
 import { TasksErrors, UsersErrors } from 'src/errors';
 import { dayBoundsUtc } from 'src/common/helpers/util';
@@ -1838,8 +1838,8 @@ export class TasksService {
 
   // ------------------ Assign task -------------------
 
-  async assignTask(payload: AssignTaskPayload) {
-    const assignment = await this.handleAssignment({
+  async assignTask(payload: AssignTaskPayload): Promise<boolean | void> {
+    const { assignment, mailSent } = await this.handleAssignment({
       type: 'TASK',
       targetId: payload.id,
       assigneeId: payload.assigneeId,
@@ -1854,7 +1854,7 @@ export class TasksService {
       'ASSIGNMENT_UPDATED',
     );
 
-    return assignment;
+    return mailSent;
   }
 
   async assignSubTask(payload: AssignTaskPayload) {
@@ -1867,7 +1867,9 @@ export class TasksService {
     });
   }
 
-  private async handleAssignment(options: InternalAssignOptions) {
+  private async handleAssignment(
+    options: InternalAssignOptions,
+  ): Promise<{ assignment: SubTaskAssignee; mailSent: boolean }> {
     /**
      * Internal orchestrator for handling task and sub-task assignments.
      * * @param options - Configuration for the assignment process, including target type and notification flags.
@@ -1904,6 +1906,7 @@ export class TasksService {
     let description: string | null;
     let dueAt: Date | null;
     let redirectTaskId: number;
+    let mailSent: boolean = false;
 
     if (type === 'TASK') {
       const task = await this.prismaService.task.findUnique({
@@ -2020,7 +2023,7 @@ export class TasksService {
             ? `${this.config.get('BASE_URL')}tasks/${targetId}`
             : `${this.config.get('BASE_URL')}tasks/${redirectTaskId}/sub-tasks/${targetId}`;
 
-        await this.mailService.sendTaskAssignNotification({
+        mailSent = await this.mailService.sendTaskAssignNotification({
           assigneeId,
           assigneeName: assigneeUser.name,
           email: assigneeUser.email,
@@ -2037,7 +2040,7 @@ export class TasksService {
       }
     }
 
-    return assignment;
+    return { assignment, mailSent };
   }
 
   // ------------- Notifications --------------------

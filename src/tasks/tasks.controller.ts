@@ -305,8 +305,23 @@ export class TasksController {
       assignerId: user.userId,
       updatedBy: user.userName,
     };
-    await this.tasksService.assignTask(payload);
-    setSession(req, 'success', 'Task is pending now.');
+    const mailSent = await this.tasksService.assignTask(payload);
+    if (!dto.sendUrgentEmail) {
+      setSession(req, 'success', 'Task is pending now.');
+    } else if (mailSent) {
+      setSession(
+        req,
+        'success',
+        'Task is pending now and Email successfully send',
+      );
+    } else {
+      setSession(
+        req,
+        'warning',
+        'Task is pending, but Email not send, please check env variables',
+      );
+    }
+
     return res.redirect(`/tasks/${id}`);
   }
 

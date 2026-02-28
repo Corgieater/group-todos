@@ -85,9 +85,21 @@ export class GroupsController {
     @Body() dto: InviteGroupMemberDto,
     @Res() res: Response,
   ) {
-    await this.groupsService.inviteGroupMember(id, user.userId, dto.email);
+    const mailSent = await this.groupsService.inviteGroupMember(
+      id,
+      user.userId,
+      dto.email,
+    );
+    if (mailSent) {
+      setSession(req, 'success', 'Invitation suceed.');
+    } else {
+      setSession(
+        req,
+        'warning',
+        'Sending Email fails, please check env variables',
+      );
+    }
 
-    setSession(req, 'success', 'Invitation suceed.');
     res.redirect(`/groups/${id}`);
   }
 

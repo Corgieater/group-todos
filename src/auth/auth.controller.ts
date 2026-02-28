@@ -104,19 +104,28 @@ export class AuthController {
     return res.redirect('/');
   }
 
+  @Public()
   @Post('reset-password')
   async resetPassword(
     @Req() req: Request,
     @Body() dto: AuthForgotPasswordDto,
     @Res() res: Response,
   ) {
-    await this.authService.resetPassword(dto.email);
+    const mailSent = await this.authService.resetPassword(dto.email);
 
-    req.session.flash = {
-      type: 'success',
-      message:
+    if (mailSent) {
+      setSession(
+        req,
+        'success',
         'If this email is registered, a password reset link has been sent.',
-    };
+      );
+    } else {
+      setSession(
+        req,
+        'warning',
+        'Sending mail fails, please check env variables',
+      );
+    }
     return res.redirect('/');
   }
 
