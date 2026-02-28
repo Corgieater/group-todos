@@ -53,7 +53,7 @@ export class GroupsController {
   ) {
     await this.groupsService.createGroup(user.userId, dto.name);
     setSession(req, 'success', 'Group created');
-    res.redirect('/users-home');
+    res.redirect('/groups/list');
   }
 
   @Post(':id/update')

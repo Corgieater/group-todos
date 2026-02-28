@@ -20,8 +20,6 @@ import {
 import { TasksService } from 'src/tasks/tasks.service';
 import { TasksAddPayload } from 'src/tasks/types/tasks';
 import { GroupsErrors } from 'src/errors';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { SecurityService } from 'src/security/security.service';
 import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
@@ -91,7 +89,7 @@ describe('GroupsController', () => {
         'test group',
       );
       expect(setSession).toHaveBeenCalledWith(req, 'success', 'Group created');
-      expect(res.redirect).toHaveBeenCalledWith('/users-home');
+      expect(res.redirect).toHaveBeenCalledWith('/groups/list');
     });
   });
 
