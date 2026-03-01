@@ -189,25 +189,41 @@ export class TasksController {
   }
 
   @Post(':id/archive')
+  @UseGuards(TaskMemberGuard)
   async archiveTask(
     @Req() req: Request,
     @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    await this.tasksService.archiveTask(id, user.userId);
+    await this.tasksService.archiveTask(
+      id,
+      user.userId,
+      ctx.isOwner,
+      ctx.isAdminish,
+      user.userName,
+    );
     setSession(req, 'success', 'Task has been archived.');
     return res.redirect(`/tasks/${id}`);
   }
 
   @Post(':id/restore')
+  @UseGuards(TaskMemberGuard)
   async restoreTask(
     @Req() req: Request,
     @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    await this.tasksService.restoreTask(id, user.userId);
+    await this.tasksService.restoreTask(
+      id,
+      user.userId,
+      ctx.isOwner,
+      ctx.isAdminish,
+      user.userName,
+    );
     setSession(req, 'success', 'Task has been restored.');
     return res.redirect(`/tasks/${id}`);
   }

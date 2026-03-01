@@ -1111,7 +1111,7 @@ describe('TasksService', () => {
         .mockResolvedValueOnce(lowTask)
         .mockResolvedValueOnce(lowTask)
         .mockResolvedValueOnce(lowTask);
-      await tasksService.archiveTask(1, user.id);
+      await tasksService.archiveTask(1, user.id, true, true, 'test');
 
       expect(mockPrismaService.task.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -1139,7 +1139,7 @@ describe('TasksService', () => {
         role: GroupRole.ADMIN,
       });
 
-      await tasksService.archiveTask(1, user.id);
+      await tasksService.archiveTask(1, user.id, false, true, 'test');
 
       expect(mockPrismaService.task.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -1157,30 +1157,6 @@ describe('TasksService', () => {
       });
     });
 
-    it('should throw TaskNotFoundError', async () => {
-      mockPrismaService.task.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null);
-
-      await expect(
-        tasksService.archiveTask(999, user.id),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
-    });
-
-    it('should throw TaskForbiddenError not in the same group', async () => {
-      const groupTask = { ...lowTask, ownerId: 6, groupId: 2 };
-      mockPrismaService.task.findUnique
-        .mockResolvedValueOnce(groupTask)
-        .mockResolvedValueOnce(groupTask)
-        .mockResolvedValueOnce(groupTask);
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
-
-      await expect(tasksService.archiveTask(1, user.id)).rejects.toBeInstanceOf(
-        TasksErrors.TaskForbiddenError,
-      );
-    });
-
     it('should throw TaskForbiddenError not adminish', async () => {
       const groupTask = { ...lowTask, ownerId: 6, groupId: 2 };
       mockPrismaService.task.findUnique
@@ -1191,9 +1167,9 @@ describe('TasksService', () => {
         role: GroupRole.MEMBER,
       });
 
-      await expect(tasksService.archiveTask(1, user.id)).rejects.toBeInstanceOf(
-        TasksErrors.TaskForbiddenError,
-      );
+      await expect(
+        tasksService.archiveTask(1, user.id, false, false, 'test'),
+      ).rejects.toBeInstanceOf(TasksErrors.TaskForbiddenError);
     });
   });
 
@@ -1229,7 +1205,7 @@ describe('TasksService', () => {
         .mockReturnValue(true);
 
       // 2. 執行 Service 方法
-      await tasksService.restoreTask(taskId, user.id);
+      await tasksService.restoreTask(taskId, user.id, true, true, 'test');
 
       // 3. 斷言檢查
       expect(mockPrismaService.$transaction).toHaveBeenCalled();
@@ -1259,7 +1235,7 @@ describe('TasksService', () => {
         .spyOn(tasksService as any, 'taskStatusCanTransition')
         .mockReturnValue(true);
 
-      await tasksService.restoreTask(taskId, user.id);
+      await tasksService.restoreTask(taskId, user.id, true, true, 'test');
 
       expect(mockPrismaService.taskAssignee.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1271,13 +1247,6 @@ describe('TasksService', () => {
           data: { status: AssignmentStatus.PENDING },
         }),
       );
-    });
-
-    it('should throw TaskError.TaskNotFoundError if task not found', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
-      await expect(
-        tasksService.restoreTask(taskId, user.id),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
     });
   });
 
@@ -1311,28 +1280,12 @@ describe('TasksService', () => {
         await expect(
           (tasksService as any).executeUpdateLogic(
             taskId,
+            true,
+            true,
             { newStatus: TaskStatus.OPEN, actorId },
             mockTx,
           ),
         ).rejects.toMatchObject({ action: undefined }); // 這是 NotFoundError，通常不帶 action
-      });
-
-      it('should throw UPDATE_STATUS_FORBIDDEN if non-owner non-admin tries to update', async () => {
-        mockTx.task.findUnique.mockResolvedValue({
-          ownerId: 999, // 不是本人
-          groupId: groupId,
-          status: TaskStatus.OPEN,
-        });
-        mockTx.groupMember.findUnique.mockResolvedValue({ role: 'MEMBER' });
-        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false);
-
-        await expect(
-          (tasksService as any).executeUpdateLogic(
-            taskId,
-            { newStatus: TaskStatus.ARCHIVED, actorId },
-            mockTx,
-          ),
-        ).rejects.toMatchObject({ action: 'UPDATE_STATUS_FORBIDDEN' });
       });
     });
 
@@ -1350,6 +1303,8 @@ describe('TasksService', () => {
         await expect(
           (tasksService as any).executeUpdateLogic(
             taskId,
+            true,
+            true,
             { newStatus: TaskStatus.ARCHIVED, actorId },
             mockTx,
           ),
@@ -1373,6 +1328,8 @@ describe('TasksService', () => {
         await expect(
           (tasksService as any).executeUpdateLogic(
             taskId,
+            true,
+            true,
             { newStatus: TaskStatus.CLOSED, actorId },
             mockTx,
           ),
@@ -1398,6 +1355,8 @@ describe('TasksService', () => {
         await expect(
           (tasksService as any).executeUpdateLogic(
             taskId,
+            true,
+            true,
             { newStatus: TaskStatus.CLOSED, actorId },
             mockTx,
           ),
@@ -1424,6 +1383,8 @@ describe('TasksService', () => {
         await expect(
           (tasksService as any).executeUpdateLogic(
             taskId,
+            true,
+            true,
             { newStatus: TaskStatus.CLOSED, actorId },
             mockTx,
           ),
@@ -1447,6 +1408,8 @@ describe('TasksService', () => {
 
         await (tasksService as any).executeUpdateLogic(
           taskId,
+          true,
+          true,
           {
             newStatus: TaskStatus.CLOSED,
             actorId,
@@ -1479,6 +1442,8 @@ describe('TasksService', () => {
 
         await (tasksService as any).executeUpdateLogic(
           taskId,
+          true,
+          true,
           { newStatus: TaskStatus.OPEN, actorId },
           mockTx,
         );

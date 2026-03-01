@@ -312,9 +312,15 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   describe('archiveTask', () => {
     it('should archive task', async () => {
-      await tasksController.archiveTask(req, currentUser, 1, res);
+      await tasksController.archiveTask(req, currentUser, taskContext, 1, res);
 
-      expect(mockTasksService.archiveTask).toHaveBeenCalledWith(1, 1);
+      expect(mockTasksService.archiveTask).toHaveBeenCalledWith(
+        1,
+        1,
+        true,
+        true,
+        'test',
+      );
       expect(setSession).toHaveBeenCalledWith(
         req,
         'success',
