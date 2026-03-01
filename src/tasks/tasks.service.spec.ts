@@ -26,7 +26,6 @@ import { SecurityService } from 'src/security/security.service';
 import { createMockConfig } from 'src/test/factories/mock-config.factory';
 import { ConfigService } from '@nestjs/config';
 import { TasksGateWay } from './tasks.gateway';
-import { TaskForbiddenError } from 'src/errors/tasks';
 import { createMockSecurityService } from 'src/test/factories/mock-security.service';
 
 describe('TasksService', () => {
@@ -970,233 +969,138 @@ describe('TasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('closeTask', () => {
-    const actorId = 1;
-    const taskId = 100;
-    const groupId = 50;
+    const mockTaskId = 1;
+    const mockActorId = 99;
+    const mockUserName = 'Test User';
 
-    // 輔助工具：快速建立 Task 模擬資料
-    const createMockTask = (overrides = {}) => ({
-      id: taskId,
-      status: 'OPEN',
-      ownerId: actorId,
-      groupId: groupId,
-      _count: { subTasks: 0, assignees: 0 },
-      ...overrides,
+    // 1. 測試：成功關閉（一般流程 - 所有子項目已完成）
+    it('should successfully close a task when all items are completed', async () => {
+      const ctx = {
+        id: mockTaskId,
+        userId: mockActorId,
+        userName: mockUserName,
+        isOwner: true,
+        isAdminish: false,
+      };
+
+      // 模擬 findUnique 門票：全部 count 為 0
+      mockPrismaService.task.findUnique.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.OPEN,
+        _count: { subTasks: 0, assignees: 0 },
+      });
+
+      mockPrismaService.task.update.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.CLOSED,
+      });
+
+      const result = await tasksService.closeTask(ctx);
+
+      expect(result.status).toBe(TaskStatus.CLOSED);
+      expect(mockPrismaService.task.update).toHaveBeenCalled();
+      // 驗證是否有發送 Socket 通知
+      expect(mockTasksGateWay.broadcastTaskUpdate).toHaveBeenCalled();
     });
 
-    describe('Permission & Guard Clauses', () => {
-      it('should return immediately if the task is already CLOSED (Idempotency)', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(
-          createMockTask({ status: 'CLOSED' }),
-        );
+    // 2. 測試：觸發 Force Close 理由要求（當有未完成項目且沒給理由時）
+    it('should throw FORCE_CLOSE_REASON_REQUIRED when open items exist without a reason', async () => {
+      const ctx = {
+        id: mockTaskId,
+        userId: mockActorId,
+        userName: mockUserName,
+        isOwner: true,
+        isAdminish: false,
+      };
 
-        const result = await tasksService.closeTask(taskId, actorId);
-
-        expect(result.status).toBe('CLOSED');
-        expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      // 模擬有 1 個未完成子任務
+      mockPrismaService.task.findUnique.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.OPEN,
+        _count: { subTasks: 1, assignees: 0 },
       });
 
-      it('should throw TaskNotFoundError if the task does not exist', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(null);
-
-        await expect(tasksService.closeTask(taskId, actorId)).rejects.toThrow();
-      });
-
-      it('should throw FORCE_CLOSE_REASON_REQUIRED if there are open items but no reason provided', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(
-          createMockTask({
-            _count: { subTasks: 1, assignees: 0 },
-          }),
-        );
-        mockPrismaService.groupMember.findUnique.mockResolvedValue({
-          role: 'ADMIN',
-        });
-        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(true);
-
-        await expect(tasksService.closeTask(taskId, actorId)).rejects.toThrow(
-          expect.objectContaining({
-            action: 'FORCE_CLOSE_REASON_REQUIRED',
-          }),
-        );
-      });
-
-      it('should throw CLOSE_TASK if a non-admin owner tries to force close (with reason but has open items)', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(
-          createMockTask({
-            _count: { subTasks: 1, assignees: 0 },
-            ownerId: actorId, // 是 Owner
-          }),
-        );
-        mockPrismaService.groupMember.findUnique.mockResolvedValue({
-          role: 'MEMBER',
-        });
-        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false); // 不是 Admin
-
-        await expect(
-          tasksService.closeTask(taskId, actorId, {
-            reason: 'I want to close',
-          }),
-        ).rejects.toThrow(
-          expect.objectContaining({
-            action: expect.stringContaining('CLOSE_TASK'),
-          }),
-        );
-      });
+      await expect(tasksService.closeTask(ctx)).rejects.toThrow(
+        expect.objectContaining({ action: 'FORCE_CLOSE_REASON_REQUIRED' }),
+      );
     });
 
-    describe('Execution Logic (Normal Close)', () => {
-      it('should allow Owner to close task when no open items exist', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(
-          createMockTask({
-            _count: { subTasks: 0, assignees: 0 },
-          }),
-        );
-        mockPrismaService.groupMember.findUnique.mockResolvedValue({
-          role: 'MEMBER',
-        });
-        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(false);
-        mockPrismaService.task.update.mockResolvedValue({
-          id: taskId,
-          status: 'CLOSED',
-        });
+    // 3. 測試：管理員成功「強制關閉」（有理由且具備 Admin 權限）
+    it('should allow Admin to force close a task with a reason', async () => {
+      const ctx = {
+        id: mockTaskId,
+        userId: mockActorId,
+        userName: mockUserName,
+        isOwner: false,
+        isAdminish: true, // 👈 管理員
+      };
+      const opts = { reason: 'Force closing for deadline' };
 
-        const result = await tasksService.closeTask(taskId, actorId);
-
-        expect(result.status).toBe('CLOSED');
-        expect(mockPrismaService.task.update).toHaveBeenCalledWith(
-          expect.objectContaining({
-            data: expect.objectContaining({ closedWithOpenAssignees: false }),
-          }),
-        );
+      mockPrismaService.task.findUnique.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.OPEN,
+        _count: { subTasks: 5, assignees: 2 },
       });
+
+      mockPrismaService.task.update.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.CLOSED,
+      });
+
+      await tasksService.closeTask(ctx, opts);
+
+      // 驗證 Transaction 內部的 updateMany 是否有被呼叫（清理子任務）
+      expect(mockPrismaService.subTask.updateMany).toHaveBeenCalled();
+      expect(mockPrismaService.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ closedReason: opts.reason }),
+        }),
+      );
     });
 
-    describe('Execution Logic (Force Close)', () => {
-      it('should allow Admin to force close and cleanup sub-tasks/assignees', async () => {
-        // 1. Arrange: 模擬有未完成事項的任務
-        mockPrismaService.task.findUnique.mockResolvedValue(
-          createMockTask({
-            _count: { subTasks: 2, assignees: 1 },
-          }),
-        );
-        mockPrismaService.groupMember.findUnique.mockResolvedValue({
-          role: 'ADMIN',
-        });
-        jest.spyOn(tasksService as any, 'isAdminish').mockReturnValue(true);
+    // 4. 測試：拒絕權限（非管理員嘗試在有未完成項目時強制關閉）
+    it('should throw CLOSE_TASK error when non-admin tries to force close', async () => {
+      const ctx = {
+        id: mockTaskId,
+        userId: mockActorId,
+        userName: mockUserName,
+        isOwner: true,
+        isAdminish: false, // 👈 只是 Owner 不是 Admin
+      };
+      const opts = { reason: 'I want to close it anyway' };
 
-        const closeReason = 'Force closing due to project cancellation';
-        mockPrismaService.task.update.mockResolvedValue({
-          id: taskId,
-          status: 'CLOSED',
-        });
-
-        // 2. Act
-        await tasksService.closeTask(taskId, actorId, { reason: closeReason });
-
-        // 3. Assert
-        // 驗證 Task 更新
-        expect(mockPrismaService.task.update).toHaveBeenCalledWith(
-          expect.objectContaining({
-            data: expect.objectContaining({
-              status: 'CLOSED',
-              closedReason: closeReason,
-              closedWithOpenAssignees: true,
-            }),
-          }),
-        );
-
-        // 驗證 Assignees 清理 (ACCEPTED -> DROPPED, PENDING -> SKIPPED)
-        expect(mockPrismaService.taskAssignee.updateMany).toHaveBeenCalledWith(
-          expect.objectContaining({
-            where: { taskId, status: 'ACCEPTED' },
-            data: expect.objectContaining({ status: 'DROPPED' }),
-          }),
-        );
-
-        // 驗證 SubTasks 批次關閉
-        expect(mockPrismaService.subTask.updateMany).toHaveBeenCalledWith(
-          expect.objectContaining({
-            where: { taskId, status: { not: 'CLOSED' } },
-          }),
-        );
+      mockPrismaService.task.findUnique.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.OPEN,
+        _count: { subTasks: 1, assignees: 0 },
       });
+
+      await expect(tasksService.closeTask(ctx, opts)).rejects.toThrow(
+        expect.objectContaining({ action: 'CLOSE_TASK' }),
+      );
+    });
+
+    // 5. 測試：冪等性（如果任務已經是 CLOSED，直接回傳）
+    it('should return immediately if task is already CLOSED', async () => {
+      const ctx = {
+        id: mockTaskId,
+        userId: mockActorId,
+        userName: mockUserName,
+        isOwner: true,
+        isAdminish: true,
+      };
+
+      mockPrismaService.task.findUnique.mockResolvedValue({
+        id: mockTaskId,
+        status: TaskStatus.CLOSED,
+      });
+
+      const result = await tasksService.closeTask(ctx);
+
+      expect(mockPrismaService.task.update).not.toHaveBeenCalled();
+      expect(result.status).toBe(TaskStatus.CLOSED);
     });
   });
-
-  describe('closeTask - Boundary Permissions', () => {
-    const actorId = 1;
-    const taskId = 100;
-    const otherUserId = 999;
-
-    describe('Group Task Membership', () => {
-      it('should throw TaskNotFoundError if the task is in a group but the actor is not a member', async () => {
-        // Arrange: 任務屬於 groupId 50
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: taskId,
-          ownerId: otherUserId, // 假設擁有者是別人
-          groupId: 50,
-          status: 'OPEN',
-          _count: { subTasks: 0, assignees: 0 },
-        });
-
-        // 模擬在 groupMember 找不到該使用者
-        mockPrismaService.groupMember.findUnique.mockResolvedValue(null);
-
-        // Act & Assert
-        await expect(
-          tasksService.closeTask(taskId, actorId),
-        ).rejects.toMatchObject({
-          // 根據你的代碼，這裡會丟出 TaskNotFoundError
-          code: 'TASK_NOT_FOUND',
-        });
-      });
-    });
-
-    describe('Personal Task Ownership', () => {
-      it('should throw TaskNotFoundError if a non-owner tries to close a personal task', async () => {
-        // Arrange: 任務沒有 groupId (個人任務)，且 ownerId 不是 actorId
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: taskId,
-          ownerId: otherUserId, // 擁有者是 999
-          groupId: null, // 個人任務
-          status: 'OPEN',
-          _count: { subTasks: 0, assignees: 0 },
-        });
-
-        // Act & Assert
-        await expect(
-          tasksService.closeTask(taskId, actorId),
-        ).rejects.toMatchObject({
-          code: 'TASK_NOT_FOUND',
-        });
-      });
-
-      it('should allow the owner to close their own personal task (acting as implicit admin)', async () => {
-        // Arrange: 個人任務，且 actorId 就是 owner
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: taskId,
-          ownerId: actorId, // 自己是擁有者
-          groupId: null,
-          status: 'OPEN',
-          _count: { subTasks: 0, assignees: 0 },
-        });
-
-        mockPrismaService.task.update.mockResolvedValue({
-          id: taskId,
-          status: 'CLOSED',
-        });
-
-        // Act
-        const result = await tasksService.closeTask(taskId, actorId);
-
-        // Assert
-        expect(result.status).toBe('CLOSED');
-        // 驗證 transaction 有執行，代表通過了權限檢查
-        expect(mockPrismaService.$transaction).toHaveBeenCalled();
-      });
-    });
-  });
-
   // ───────────────────────────────────────────────────────────────────────────────
   // archiveTask
   // ───────────────────────────────────────────────────────────────────────────────

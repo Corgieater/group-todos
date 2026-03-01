@@ -36,6 +36,7 @@ export class TasksGateWay implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   broadcastTaskUpdate(taskId: number, data: any) {
+    console.log(data);
     this.server.to(`task_${taskId}`).emit('taskUpdated', data);
   }
 

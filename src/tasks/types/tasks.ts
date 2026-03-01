@@ -60,6 +60,12 @@ export interface TaskUpdatePayload {
   location?: string | null;
 }
 
+export interface TaskCloseContext
+  extends Pick<TaskContext, 'userId' | 'isAdminish' | 'isOwner'> {
+  id: number;
+  userName: string;
+}
+
 // finish this
 export const taskWithAssigneesArgs = {
   include: {

@@ -13,6 +13,7 @@ import {
   InternalAssignOptions,
   ListTasksResult,
   TaskUpdateContext,
+  TaskCloseContext,
 } from './types/tasks';
 import {
   AssignmentStatus,
@@ -627,24 +628,31 @@ export class TasksService {
   }
 
   async closeTask(
-    id: number,
-    actorId: number,
+    ctx: TaskCloseContext,
     opts?: { reason?: string },
   ): Promise<Task> {
     /**
-     * Closes a task and manages the transition of all related entities (sub-tasks and assignees).
-     * * This method implements a "Restricted Management" policy:
-     * 1. If the task is fully completed (no open sub-tasks/assignees), the Owner or an Admin can close it.
-     * 2. If the task has incomplete items, ONLY an Admin can "Force Close" it by providing a reason.
-     * * @param id - The unique identifier of the task to close.
-     * @param actorId - The ID of the user performing the action.
-     * @param opts - Optional parameters, specifically the closure reason for force-closing.
-     * @returns {Promise<Task>} The updated task record.
-     * * @throws {TasksErrors.TaskNotFoundError} If the task does not exist or the user lacks access.
+     * Closes a task and orchestrates the state transition of all related entities.
+     * * This method implements a **"Restricted Management"** policy:
+     * 1. **Standard Closure**: If the task and all sub-items are completed, the Task Owner or
+     * a Group Administrator can close it.
+     * 2. **Force Closure**: If the task still has open sub-tasks or active assignees,
+     * ONLY a Group Administrator can perform a "Force Close," which requires a mandatory reason.
+     * * @param ctx - The pre-validated task context provided by `TaskMemberGuard`.
+     * - `id`: The unique identifier of the task.
+     * - `userId`: The ID of the actor performing the closure.
+     * - `userName`: The name of the actor (used for real-time notifications).
+     * - `isOwner`: Boolean flag indicating if the actor owns the task.
+     * - `isAdminish`: Boolean flag indicating if the actor has Admin/Owner privileges in the group.
+     * @param opts - Configuration options for the closure.
+     * - `reason`: The justification string required for force-closing tasks with open items.
+     * * @returns {Promise<Task>} The updated Task record with `CLOSED` status.
+     * * @throws {TasksErrors.TaskNotFoundError} If the task record is missing (Defensive check).
      * @throws {TasksErrors.TaskForbiddenError}
-     * - Action: 'FORCE_CLOSE_REASON_REQUIRED' if items are open but no reason is provided.
-     * - Action: 'CLOSE_TASK' if a non-admin tries to force close or unauthorized access.
+     * - Action: `FORCE_CLOSE_REASON_REQUIRED` when open items exist but no reason is provided.
+     * - Action: `CLOSE_TASK` when a non-admin attempts a force-close or lacks general permissions.
      */
+    const { id, userId: actorId, userName, isOwner, isAdminish } = ctx;
 
     // 1. Fetch task and statistics regarding sub-tasks and assignments
     const task = await this.prismaService.task.findUnique({
@@ -676,28 +684,10 @@ export class TasksService {
     if (!task) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
 
     // Return immediately if task is already closed to ensure idempotency
-    if (task.status === TaskStatus.CLOSED) return task as any;
-
-    // 2. Identify roles and permissions
-    let isGroupAdmin = false;
-    const isTaskOwner = task.ownerId === actorId;
-
-    if (task.groupId) {
-      const member = await this.prismaService.groupMember.findUnique({
-        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
-        select: { role: true },
-      });
-
-      // Ensure user is part of the group
-      if (!member) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-      isGroupAdmin = this.isAdminish(member.role);
-    } else {
-      // Personal tasks: Only the owner can manage, acting as an implicit Admin
-      if (!isTaskOwner) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-      isGroupAdmin = true;
+    if (task.status === TaskStatus.CLOSED) {
+      return task as any;
     }
 
-    // 3. Implement Level 2: Restricted Management Logic
     const hasOpenItems = task._count.subTasks > 0 || task._count.assignees > 0;
 
     // A. Request a reason if items are incomplete to trigger the frontend "Force Close" modal
@@ -713,7 +703,7 @@ export class TasksService {
     // - Force Close (items remain): Restricted to Admins.
     // - Normal Close (all items done): Allowed for both Owner and Admin.
     const isAttemptingForceClose = hasOpenItems && opts?.reason;
-    const canPerformAction = isGroupAdmin || (isTaskOwner && !hasOpenItems);
+    const canPerformAction = isAdminish || (isOwner && !hasOpenItems);
 
     if (!canPerformAction) {
       const cause = isAttemptingForceClose
@@ -728,7 +718,7 @@ export class TasksService {
       );
     }
 
-    // 4. Execute Transaction to update task and related assignments/sub-tasks
+    // 2. Execute Transaction to update task and related assignments/sub-tasks
     return this.prismaService.$transaction(async (tx) => {
       const updatedTask = await tx.task.update({
         where: { id },
@@ -763,7 +753,7 @@ export class TasksService {
           },
         });
       }
-
+      this.notifyTaskChange(id, actorId, userName, 'UPDATED');
       return updatedTask;
     });
   }
@@ -2309,7 +2299,7 @@ export class TasksService {
     this.tasksGateway.broadcastTaskUpdate(taskId, {
       type,
       taskId,
-      updatedBy,
+      userName: updatedBy,
       actorId,
     });
   }

@@ -11,6 +11,7 @@ import {
   Query,
   UseInterceptors,
   UseGuards,
+  HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { GetCurrentUser } from 'src/common/decorators/user.decorator';
@@ -118,21 +119,30 @@ export class TasksController {
   }
 
   @Post(':id/close')
+  @UseGuards(TaskMemberGuard)
   async close(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason?: string },
     @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Res() res: Response,
     @Req() req: Request, // 引入 Request 以檢查 Header
   ) {
+    const closeCtx = {
+      id,
+      userId: user.userId,
+      userName: user.userName,
+      isOwner: ctx.isOwner,
+      isAdminish: ctx.isAdminish,
+    };
     try {
-      await this.tasksService.closeTask(id, user.userId, {
+      await this.tasksService.closeTask(closeCtx, {
         reason: body.reason,
       });
 
       // 如果是 AJAX 請求 (Fetch)，回傳 JSON 成功訊息
       if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.status(200).json({ success: true });
+        return res.status(HttpStatus.OK).json({ success: true });
       }
 
       // 如果是傳統 Form 提交，則重導向
@@ -147,7 +157,7 @@ export class TasksController {
 
       if (isForceCloseRequired) {
         if (req.xhr || req.headers.accept?.includes('application/json')) {
-          return res.status(403).json({
+          return res.status(HttpStatus.FORBIDDEN).json({
             success: false,
             action: 'FORCE_CLOSE_REASON_REQUIRED', // 傳給前端觸發彈窗
             message: 'Reason is required for force closure.',
@@ -157,7 +167,7 @@ export class TasksController {
 
       // 其他錯誤處理 (例如真正的權限不足)
       if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.status(error.status || 400).json({
+        return res.status(error.status || HttpStatus.BAD_REQUEST).json({
           success: false,
           message: error.message,
         });
@@ -165,7 +175,7 @@ export class TasksController {
 
       // 其他錯誤處理 (例如權限不足)
       if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.status(error.status || 400).json({
+        return res.status(error.status || HttpStatus.BAD_REQUEST).json({
           success: false,
           message: error.message,
         });
