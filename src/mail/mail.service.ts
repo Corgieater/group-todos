@@ -27,7 +27,7 @@ export class MailService {
     private readonly securityService: SecurityService,
   ) {}
 
-  private async executeSend(options: any) {
+  private async executeSend(options: any): Promise<boolean> {
     const user = this.configService.get('MAIL_USER');
     const pass = this.configService.get('MAIL_PASS');
 
@@ -48,7 +48,7 @@ export class MailService {
     return true;
   }
 
-  async sendPasswordReset(user: User, link: string) {
+  async sendPasswordReset(user: User, link: string): Promise<boolean> {
     return this.executeSend({
       to: user.email,
       subject: 'Password Reset',
@@ -63,7 +63,7 @@ export class MailService {
     link: string,
     inviterName: string,
     groupName: string,
-  ) {
+  ): Promise<boolean> {
     return this.executeSend({
       to: email,
       subject: 'You are invited to join a group',
@@ -72,7 +72,9 @@ export class MailService {
     });
   }
 
-  async sendTaskAssignNotification(data: TaskAssignmentEmailData) {
+  async sendTaskAssignNotification(
+    data: TaskAssignmentEmailData,
+  ): Promise<boolean> {
     let token: string;
     if (!data.subTaskId) {
       token = await this.securityService.signTaskDecisionToken(

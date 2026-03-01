@@ -19,7 +19,11 @@ import {
   Prisma,
   Task as TaskModel,
 } from 'src/generated/prisma/client';
-import type { SubTaskAssignee, Task } from 'src/generated/prisma/client';
+import type {
+  SubTaskAssignee,
+  Task,
+  TaskAssignee,
+} from 'src/generated/prisma/client';
 import { TaskStatus } from './types/enum';
 import { TasksErrors, UsersErrors } from 'src/errors';
 import { dayBoundsUtc } from 'src/common/helpers/util';
@@ -1867,9 +1871,10 @@ export class TasksService {
     });
   }
 
-  private async handleAssignment(
-    options: InternalAssignOptions,
-  ): Promise<{ assignment: SubTaskAssignee; mailSent: boolean }> {
+  private async handleAssignment(options: InternalAssignOptions): Promise<{
+    assignment: TaskAssignee | SubTaskAssignee;
+    mailSent: boolean;
+  }> {
     /**
      * Internal orchestrator for handling task and sub-task assignments.
      * * @param options - Configuration for the assignment process, including target type and notification flags.
@@ -1885,6 +1890,7 @@ export class TasksService {
      * * @throws {TasksErrors.TaskNotFoundError} If the target resource or group context is missing.
      * @throws {TasksErrors.TaskForbiddenError} If a non-administrative member attempts to assign tasks.
      * * @returns {Promise<TaskAssignee | SubTaskAssignee>} The resulting assignment record.
+     * * @returns {Promise<boolean>} A flag indicating whether an urgent email notification was sent.
      * * @todo
      * 1. Currently this method can assign self, this is duplicated with self-claim.
      * But to fix this problem, we need to change a lot of things

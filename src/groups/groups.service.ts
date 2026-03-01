@@ -227,7 +227,7 @@ export class GroupsService {
      * @param id       Group ID
      * @param actorId  Inviter (actor) user ID
      * @param email    Invitee email
-     * @returns Promise<void> Resolves after the token is persisted and the email send is attempted.
+     * @returns Promise<boolean> True if email sent successfully, false otherwise (e.g., mail server config issue).
      *
      * @throws GroupsErrors.NotAuthorizedToInviteMember  If the actor is not in the group or lacks permission.
      * @throws UsersErrors.UserNotFoundError             If the email is not associated with an app user.

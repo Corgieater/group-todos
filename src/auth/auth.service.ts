@@ -115,7 +115,8 @@ export class AuthService {
      * - The function is intentionally silent for unknown emails.
      *
      * @param email - The user's email address.
-     * @returns Promise<void> Resolves whether or not a user exists for the email.
+     * @returns Promise<boolean> True if email sent successfully, false otherwise (e.g., mail server config issue).
+     * @returns Promise<void> If the email is not associated with any user (silent no-op).
      * @throws Prisma.PrismaClientKnownRequestError If the DB write/upsert fails.
      * @throws Error If configuration (e.g., TOKEN_HMAC_SECRET or BASE_URL) is missing.
      * @throws Mailer errors If sending the email fails.
