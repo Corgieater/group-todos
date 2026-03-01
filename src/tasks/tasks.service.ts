@@ -758,7 +758,13 @@ export class TasksService {
     });
   }
 
-  async archiveTask(id: number, actorId: number): Promise<void> {
+  async archiveTask(
+    id: number,
+    actorId: number,
+    isOwner: boolean,
+    isAdminish: boolean,
+    userName: string,
+  ): Promise<void> {
     /**
      * Archives a specific task and all its associated sub-tasks.
      * * @description
@@ -775,6 +781,8 @@ export class TasksService {
       // 1. Update parent Task
       await this.updateTaskStatus(
         id,
+        isOwner,
+        isAdminish,
         {
           newStatus: TaskStatus.ARCHIVED,
           actorId,
@@ -792,10 +800,17 @@ export class TasksService {
           status: TaskStatus.ARCHIVED,
         },
       });
+      this.notifyTaskChange(id, actorId, userName, 'UPDATED');
     });
   }
 
-  async restoreTask(id: number, actorId: number): Promise<void> {
+  async restoreTask(
+    id: number,
+    actorId: number,
+    isOwner: boolean,
+    isAdminish: boolean,
+    userName: string,
+  ): Promise<void> {
     /**
      * Restores a task to 'OPEN' status from either 'CLOSED' or 'ARCHIVED'.
      * * @description
@@ -832,6 +847,8 @@ export class TasksService {
       // This handles: Permissions, State Machine, and Task audit field resets (closedAt, etc.)
       await this.executeUpdateLogic(
         id,
+        isOwner,
+        isAdminish,
         { newStatus: TaskStatus.OPEN, actorId },
         tx,
       );
@@ -844,6 +861,7 @@ export class TasksService {
       if (originalStatus === TaskStatus.CLOSED) {
         await this.handleRestoreFromClosed(id, tx);
       }
+      this.notifyTaskChange(id, actorId, userName, 'UPDATE');
     });
   }
 
@@ -903,6 +921,8 @@ export class TasksService {
 
   async updateTaskStatus(
     id: number,
+    isOwner: boolean,
+    isAdminish: boolean,
     opts: UpdateStatusOpts,
     txHost?: Prisma.TransactionClient,
   ): Promise<void> {
@@ -928,17 +948,19 @@ export class TasksService {
 
     // If txHost provided, use it directly
     if (txHost) {
-      return this.executeUpdateLogic(id, opts, txHost);
+      return this.executeUpdateLogic(id, isOwner, isAdminish, opts, txHost);
     }
 
     // If not, open a new transaction
     return this.prismaService.$transaction(async (tx) => {
-      return this.executeUpdateLogic(id, opts, tx);
+      return this.executeUpdateLogic(id, isOwner, isAdminish, opts, tx);
     });
   }
 
   private async executeUpdateLogic(
     id: number,
+    isOwner: boolean,
+    isAdminish: boolean,
     opts: UpdateStatusOpts,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
@@ -974,25 +996,7 @@ export class TasksService {
     // -----------------------------------------------------------
     // 2) Permission Validation
     // -----------------------------------------------------------
-    let allowed = task.ownerId === actorId;
-
-    // If not owner, check if user is an ADMIN/OWNER in the group
-    if (!allowed && task.groupId !== null) {
-      const member = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
-        select: { role: true },
-      });
-
-      if (!member) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          id,
-          'UPDATE_STATUS_NOT_MEMBER',
-        );
-      }
-
-      allowed = this.isAdminish(member.role);
-    }
+    const allowed = isOwner || isAdminish;
 
     if (!allowed) {
       throw TasksErrors.TaskForbiddenError.byActorOnTask(
