@@ -18,9 +18,10 @@ import { setSession } from 'src/common/helpers/flash-helper';
 import { TaskPriority } from './types/enum';
 import { HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { SecurityService } from 'src/security/security.service';
 import { createMockSecurityService } from 'src/test/factories/mock-security.service';
+import { TaskContext } from './types/tasks';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
@@ -28,6 +29,7 @@ describe('TasksController', () => {
   let req: Request;
   let res: Response;
   let currentUser: CurrentUser;
+  let taskContext: TaskContext;
   let task: Task;
 
   const mockTasksService = {
@@ -44,6 +46,11 @@ describe('TasksController', () => {
   };
 
   const mockSecurityService = createMockSecurityService();
+  const mockPrismaService = {
+    task: {
+      findUnique: jest.fn(),
+    },
+  };
 
   beforeAll(async () => {
     user = createMockUser();
@@ -57,6 +64,18 @@ describe('TasksController', () => {
       timeZone: user.timeZone,
     };
 
+    taskContext = {
+      task: {
+        id: 1,
+        ownerId: 1,
+        groupId: 1,
+        status: TaskStatus.OPEN,
+      } as Task,
+      userId: currentUser.userId,
+      isAdminish: true,
+      isMember: true,
+      isOwner: true,
+    };
     task = {
       id: 1,
       groupId: null,
@@ -87,6 +106,10 @@ describe('TasksController', () => {
         {
           provide: SecurityService,
           useValue: mockSecurityService,
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();
@@ -171,7 +194,6 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   // update
   // ───────────────────────────────────────────────────────────────────────────────
-
   describe('update', () => {
     let dto: UpdateTaskDto;
 
@@ -191,11 +213,17 @@ describe('TasksController', () => {
         allDay: false,
         dueAtUtc: '2025-09-17T13:39:00.000Z',
       });
-      await tasksController.update(req, dto, currentUser, 1, res);
+      await tasksController.update(req, dto, currentUser, taskContext, res);
 
       expect(mockTasksService.updateTask).toHaveBeenCalledWith(
-        1,
-        currentUser.userId,
+        {
+          id: 1,
+          isAdminish: true,
+          isOwner: true,
+          timeZone: 'Asia/Taipei',
+          userId: 1,
+          userName: 'test',
+        },
         dto,
       );
       expect(setSession).toHaveBeenCalledWith(
@@ -214,11 +242,18 @@ describe('TasksController', () => {
   describe('close', () => {
     it('should redirect on successful traditional form submission', async () => {
       const req = { headers: {} } as any; // Not an AJAX request
-      await tasksController.close(66, {}, currentUser, res, req);
+      await tasksController.close(66, {}, currentUser, taskContext, res, req);
 
-      expect(mockTasksService.closeTask).toHaveBeenCalledWith(66, 1, {
-        reason: undefined,
-      });
+      expect(mockTasksService.closeTask).toHaveBeenCalledWith(
+        {
+          id: 66,
+          isAdminish: true,
+          isOwner: true,
+          userId: 1,
+          userName: 'test',
+        },
+        { reason: undefined },
+      );
       expect(res.redirect).toHaveBeenCalledWith('/tasks/66');
     });
 
@@ -228,6 +263,7 @@ describe('TasksController', () => {
         66,
         { reason: 'Done' },
         currentUser,
+        taskContext,
         res,
         req,
       );
@@ -243,7 +279,7 @@ describe('TasksController', () => {
       };
       mockTasksService.closeTask.mockRejectedValueOnce(forceCloseError);
       const req = { headers: { accept: 'application/json' } } as any;
-      await tasksController.close(66, {}, currentUser, res, req);
+      await tasksController.close(66, {}, currentUser, taskContext, res, req);
 
       expect(res.status).toHaveBeenCalledWith(HttpStatus.FORBIDDEN);
       expect(res.json).toHaveBeenCalledWith({
@@ -261,7 +297,7 @@ describe('TasksController', () => {
       mockTasksService.closeTask.mockRejectedValueOnce(forbiddenError);
 
       const req = { headers: { accept: 'application/json' } } as any;
-      await tasksController.close(66, {}, currentUser, res, req);
+      await tasksController.close(66, {}, currentUser, taskContext, res, req);
 
       expect(res.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
       expect(res.json).toHaveBeenCalledWith({
@@ -276,9 +312,15 @@ describe('TasksController', () => {
   // ───────────────────────────────────────────────────────────────────────────────
   describe('archiveTask', () => {
     it('should archive task', async () => {
-      await tasksController.archiveTask(req, currentUser, 1, res);
+      await tasksController.archiveTask(req, currentUser, taskContext, 1, res);
 
-      expect(mockTasksService.archiveTask).toHaveBeenCalledWith(1, 1);
+      expect(mockTasksService.archiveTask).toHaveBeenCalledWith(
+        1,
+        1,
+        true,
+        true,
+        'test',
+      );
       expect(setSession).toHaveBeenCalledWith(
         req,
         'success',

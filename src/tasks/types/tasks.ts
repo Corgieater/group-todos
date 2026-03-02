@@ -35,6 +35,21 @@ export interface SubTaskWithAssignees extends SubTaskModel {
   }>[];
 }
 
+export interface TaskContext {
+  task: Task;
+  userId: number;
+  isAdminish: boolean;
+  isMember: boolean;
+  isOwner: boolean;
+}
+
+export interface TaskUpdateContext
+  extends Pick<TaskContext, 'userId' | 'isAdminish' | 'isOwner'> {
+  id: number;
+  timeZone: string;
+  userName: string;
+}
+
 export interface TaskUpdatePayload {
   title?: string;
   priority?: TaskPriority;
@@ -43,6 +58,12 @@ export interface TaskUpdatePayload {
   dueDate?: string | null;
   dueTime?: string | null;
   location?: string | null;
+}
+
+export interface TaskCloseContext
+  extends Pick<TaskContext, 'userId' | 'isAdminish' | 'isOwner'> {
+  id: number;
+  userName: string;
 }
 
 // finish this

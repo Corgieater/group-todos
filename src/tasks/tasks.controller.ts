@@ -10,9 +10,11 @@ import {
   Get,
   Query,
   UseInterceptors,
+  UseGuards,
+  HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
   AssignTaskDto,
@@ -26,6 +28,7 @@ import { TasksService } from './tasks.service';
 import {
   AssignTaskPayload,
   SubTaskAddPayload,
+  TaskContext,
   TasksAddPayload,
 } from './types/tasks';
 import { setSession } from 'src/common/helpers/flash-helper';
@@ -34,6 +37,8 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { AssignmentStatus } from 'src/generated/prisma/enums';
 import { SerializationInterceptor } from 'src/common/interceptors/serialization/serialization.interceptor';
 import { SecurityService } from 'src/security/security.service';
+import { TaskMemberGuard } from './guard/task-member.guard';
+import { GetTaskContext } from 'src/common/decorators/task-context.decorator';
 
 @Controller('api/tasks')
 @UseFilters(TasksPageFilter)
@@ -46,7 +51,7 @@ export class TasksController {
   @Post()
   async create(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: TasksAddDto,
     @Res() res: Response,
   ) {
@@ -72,25 +77,35 @@ export class TasksController {
   // Currently allowed empty data update,
   // once frontend been separated, we can check by frontend
   @Post(':id/update')
+  @UseGuards(TaskMemberGuard)
   async update(
     @Req() req: Request,
     @Body() dto: UpdateTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
-    @Param('id', ParseIntPipe) id: number,
+    @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Res() res: Response,
   ) {
-    const task = await this.tasksService.updateTask(id, user.userId, dto);
+    const updateCtx = {
+      id: ctx.task.id,
+      userId: ctx.userId,
+      timeZone: user.timeZone,
+      userName: user.userName,
+      isAdminish: ctx.isAdminish,
+      isOwner: ctx.isOwner,
+    };
+    const task = await this.tasksService.updateTask(updateCtx, dto);
     setSession(req, 'success', 'Task has been updated');
     return res.redirect(`/tasks/${task.id}`);
   }
 
   // self-assign, claim, assigned task status report
   @Post(':id/update/assignee-status')
+  @UseGuards(TaskMemberGuard)
   async updateAssigneeStatus(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAssigneeStatusDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.tasksService.updateAssigneeStatus(
@@ -104,21 +119,30 @@ export class TasksController {
   }
 
   @Post(':id/close')
+  @UseGuards(TaskMemberGuard)
   async close(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason?: string },
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Res() res: Response,
     @Req() req: Request, // 引入 Request 以檢查 Header
   ) {
+    const closeCtx = {
+      id,
+      userId: user.userId,
+      userName: user.userName,
+      isOwner: ctx.isOwner,
+      isAdminish: ctx.isAdminish,
+    };
     try {
-      await this.tasksService.closeTask(id, user.userId, {
+      await this.tasksService.closeTask(closeCtx, {
         reason: body.reason,
       });
 
       // 如果是 AJAX 請求 (Fetch)，回傳 JSON 成功訊息
       if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.status(200).json({ success: true });
+        return res.status(HttpStatus.OK).json({ success: true });
       }
 
       // 如果是傳統 Form 提交，則重導向
@@ -133,7 +157,7 @@ export class TasksController {
 
       if (isForceCloseRequired) {
         if (req.xhr || req.headers.accept?.includes('application/json')) {
-          return res.status(403).json({
+          return res.status(HttpStatus.FORBIDDEN).json({
             success: false,
             action: 'FORCE_CLOSE_REASON_REQUIRED', // 傳給前端觸發彈窗
             message: 'Reason is required for force closure.',
@@ -143,7 +167,7 @@ export class TasksController {
 
       // 其他錯誤處理 (例如真正的權限不足)
       if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.status(error.status || 400).json({
+        return res.status(error.status || HttpStatus.BAD_REQUEST).json({
           success: false,
           message: error.message,
         });
@@ -151,7 +175,7 @@ export class TasksController {
 
       // 其他錯誤處理 (例如權限不足)
       if (req.xhr || req.headers.accept?.includes('application/json')) {
-        return res.status(error.status || 400).json({
+        return res.status(error.status || HttpStatus.BAD_REQUEST).json({
           success: false,
           message: error.message,
         });
@@ -165,25 +189,41 @@ export class TasksController {
   }
 
   @Post(':id/archive')
+  @UseGuards(TaskMemberGuard)
   async archiveTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    await this.tasksService.archiveTask(id, user.userId);
+    await this.tasksService.archiveTask(
+      id,
+      user.userId,
+      ctx.isOwner,
+      ctx.isAdminish,
+      user.userName,
+    );
     setSession(req, 'success', 'Task has been archived.');
     return res.redirect(`/tasks/${id}`);
   }
 
   @Post(':id/restore')
+  @UseGuards(TaskMemberGuard)
   async restoreTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
+    @GetTaskContext() ctx: TaskContext,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
-    await this.tasksService.restoreTask(id, user.userId);
+    await this.tasksService.restoreTask(
+      id,
+      user.userId,
+      ctx.isOwner,
+      ctx.isAdminish,
+      user.userName,
+    );
     setSession(req, 'success', 'Task has been restored.');
     return res.redirect(`/tasks/${id}`);
   }
@@ -192,10 +232,7 @@ export class TasksController {
 
   @Get('notifications')
   @UseInterceptors(new SerializationInterceptor(NotificationDto))
-  async getNotifications(
-    @Req() req,
-    @CurrentUserDecorator() user: CurrentUser,
-  ) {
+  async getNotifications(@Req() req, @GetCurrentUser() user: CurrentUser) {
     return await this.tasksService.getPendingNotifications(user.userId);
   }
 
@@ -204,7 +241,7 @@ export class TasksController {
   @Post(':id/sub-tasks')
   async addSubTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SubTasksAddDto,
     @Res() res: Response,
@@ -230,7 +267,7 @@ export class TasksController {
   @Post(':taskId/sub-tasks/:id/close')
   async closeSubTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('taskId') taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
@@ -245,7 +282,7 @@ export class TasksController {
   async updateSubTask(
     @Req() req: Request,
     @Body() dto: UpdateTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('taskId') taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
@@ -258,7 +295,7 @@ export class TasksController {
   @Post(':taskId/sub-tasks/:id/restore')
   async restoreSubTask(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Param('taskId') taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
@@ -275,7 +312,7 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAssigneeStatusDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.tasksService.updateSubTaskAssigneeStatus(
@@ -294,7 +331,7 @@ export class TasksController {
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const payload: AssignTaskPayload = {
@@ -331,7 +368,7 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignTaskDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const payload: AssignTaskPayload = {
