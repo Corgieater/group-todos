@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
-import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { Request, Response } from 'express';
 import { TasksService } from './tasks.service';
@@ -31,7 +31,7 @@ export class TasksPageController {
   @Get('home')
   async home(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const dashboardData = await this.tasksService.getHomeDashboardData(user);
@@ -57,7 +57,7 @@ export class TasksPageController {
   @Get('list')
   async list(
     @Query() query: TaskQueryDto,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const page = query.page ? query.page : 1;
@@ -92,7 +92,7 @@ export class TasksPageController {
   async detail(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const { task, isAdminish, isRealAdmin, canClose, groupMembers } =
@@ -134,7 +134,7 @@ export class TasksPageController {
   @Get(':id/edit')
   async edit(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const { task, isAdminish } = await this.tasksService.getTaskForViewer(
@@ -156,7 +156,7 @@ export class TasksPageController {
   @Render('partials/_subtask-list') // 💡 指定只渲染這個片段
   async getSubTasksPartial(
     @Param('taskId', ParseIntPipe) taskId: number,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Req() req: any,
   ) {
     const csrfToken = req.csrfToken();
@@ -206,7 +206,7 @@ export class TasksPageController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
   ) {
     // 1. 獲取 SubTask 詳情 (包含 assignees 列表)
     const { subTask, isAdminish, groupMembers } =
@@ -248,7 +248,7 @@ export class TasksPageController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
   ) {
     const { subTask, isAdminish, groupMembers } =
       await this.tasksService.getSubTaskForViewer(taskId, id, user.userId);

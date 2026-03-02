@@ -19,7 +19,7 @@ import {
   AuthResetPasswordDto,
 } from './dto/auth.dto';
 import { Response, Request } from 'express';
-import { CurrentUserDecorator } from 'src/common/decorators/user.decorator';
+import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import {
   AuthUpdatePasswordPayload,
@@ -89,7 +89,7 @@ export class AuthController {
   @Post('change-password')
   async changePassword(
     @Req() req: Request,
-    @CurrentUserDecorator() user: CurrentUser,
+    @GetCurrentUser() user: CurrentUser,
     @Body() dto: AuthUpdatePasswordDto,
     @Res() res: Response,
   ) {

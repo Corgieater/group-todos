@@ -12,6 +12,8 @@ import {
   UpdateStatusOpts,
   InternalAssignOptions,
   ListTasksResult,
+  TaskUpdateContext,
+  TaskCloseContext,
 } from './types/tasks';
 import {
   AssignmentStatus,
@@ -454,28 +456,43 @@ export class TasksService {
   }
 
   async updateTask(
-    id: number,
-    userId: number,
+    ctx: TaskUpdateContext,
     payload: TaskUpdatePayload,
   ): Promise<TaskModel> {
     /**
-     * Updates an existing task's attributes based on the provided payload.
-     * * This method retrieves the user's settings (e.g., timezone) to ensure
-     * date-related updates are correctly converted to UTC. It also triggers
-     * a notification after a successful update.
+     * Updates an existing task's attributes based on the provided payload and context.
+     * * This method serves as the core logic for task updates, handling:
+     * 1. **Permission Enforcement**: Ensures the actor is either the task owner or a group administrator.
+     * 2. **Data Transformation**: Converts local dates/times to UTC based on the actor's timezone.
+     * 3. **Audit & Notification**: Triggers real-time notifications to relevant parties after a successful update.
      *
-     * @param id - The unique identifier of the task to be updated.
-     * @param userId - The ID of the actor performing the update (used for permissions and notifications).
-     * @param payload - An object containing the task fields to update (description, dueDate, etc.).
-     * * @returns {Promise<TaskModel>} The updated task record.
-     * * @throws {TaskNotFoundError}
-     * Thrown if the task does not exist or if the update violates unique constraints.
+     * @param ctx - The execution context containing actor info and pre-calculated permissions:
+     * - `id`: The unique identifier of the task to update.
+     * - `userId`: The ID of the user performing the action.
+     * - `timeZone`: The IANA timezone string of the actor.
+     * - `userName`: The display name of the actor for notifications.
+     * - `isAdminish`: Boolean indicating if the actor has administrative rights.
+     * - `isOwner`: Boolean indicating if the actor created the task.
+     * @param payload - Data transfer object containing the fields to be updated.
+     * * @returns {Promise<TaskModel>} The updated task record from the database.
+     * * @throws {TasksErrors.TaskForbiddenError}
+     * Thrown if the actor is neither the owner nor an administrator.
+     * @throws {TasksErrors.TaskNotFoundError}
+     * Thrown if the task ID is invalid or if a unique constraint (P2002) is violated during update.
      */
-    const user = await this.usersService.findByIdOrThrow(userId);
+    const { id, userId, timeZone, userName, isAdminish, isOwner } = ctx;
+
+    if (!isAdminish && !isOwner) {
+      throw TasksErrors.TaskForbiddenError.byActorOnTask(
+        userId,
+        id,
+        'UPDATE-TASK',
+      );
+    }
 
     const commonData = this.getCommonUpdateData<Prisma.TaskUpdateInput>(
       payload,
-      user.timeZone,
+      timeZone,
     );
 
     const data: Prisma.TaskUpdateInput = commonData;
@@ -485,7 +502,7 @@ export class TasksService {
         where: { id },
         data,
       });
-      this.notifyTaskChange(task.id, userId, user.name, 'UPDATED');
+      this.notifyTaskChange(task.id, userId, userName, 'UPDATED');
       return task;
     } catch (e) {
       if (
@@ -505,43 +522,44 @@ export class TasksService {
     actorId: number,
     dto: { status: AssignmentStatus; reason?: string },
     updatedBy: string | null = null,
-  ) {
+  ): Promise<void> {
     /**
-     * Updates the assignment status for a user on a specific task.
-     * * This method handles three core business scenarios:
-     * 1. **Claiming (Self-Assign)**: If no assignment record exists and status is 'ACCEPTED',
-     * it creates a new record.
-     * 2. **Declining**: Transitions a 'PENDING' assignment to 'DECLINED' (requires a reason).
-     * 3. **Progress Tracking**: Transitions between 'ACCEPTED', 'COMPLETED', or 'CLOSED'
-     * based on the user's progress.
+     * @TODO Refactpr request
+     * Split into `claimTask` and `updateAssignmentStatus`
+     * POST /tasks/:id/claim
      *
-     * @param id - The unique identifier of the Task.
-     * @param actorId - The ID of the user performing the update.
-     * @param dto - Data transfer object containing:
-     * - `status`: Target AssignmentStatus (e.g., ACCEPTED, DECLINED).
-     * - `reason`: Optional string, mandatory when declining a task.
-     * @param updatedBy - The display name of the actor for WebSocket notifications.
-     * * @throws {TasksErrors.TaskNotFoundError} If the task ID does not exist.
+     * Updates the assignment status for a user on a specific task, handling self-claims and status reports.
+     * * This method implements a "Group Task Assignment" workflow with two primary entry points:
+     * 1. **Self-Claim (New Assignment)**: If the actor has no existing assignment for the task,
+     * they can "claim" it by setting the status to 'ACCEPTED'. This creates a new assignment record.
+     * 2. **Status Transition (Existing Assignment)**: If the actor is already assigned,
+     * the method validates the state transition (e.g., ACCEPTED -> COMPLETED) against the current
+     * task and assignment status.
+     * * @param id - The unique identifier of the task.
+     * @param actorId - The ID of the user performing the update (the actor).
+     * @param dto - The data transfer object containing:
+     * - `status`: The target AssignmentStatus the actor wants to transition to.
+     * - `reason`: An optional string explaining the status change (e.g., for declining or reporting).
+     * @param updatedBy - The display name of the actor, used for broadcasting notifications.
+     * * @returns {Promise<void>} Resolves when the transaction is successfully committed and notifications are sent.
+     * * @throws {Error} 'Task lost in transaction' if the task becomes unavailable during the atomic operation.
      * @throws {TasksErrors.TaskForbiddenError}
-     * - If the task is a Personal Task (assignments only allowed for Group Tasks).
-     * - If the actor is not a member of the group associated with the task.
-     * - If the status transition is illegal (e.g., moving from 'CLOSED' back to 'PENDING').
-     * - If attempting to update a non-existent assignment with a status other than 'ACCEPTED'.
-     * * @returns A promise that resolves to { ok: true } upon successful update.
-     *
-     * *@todo
-     * I should separate slef-claim and task status report to 2 methods
+     * - Action: 'ILLEGAL_WITHOUT_ASSIGNMENT' if a non-assigned user attempts a status other than 'ACCEPTED'.
+     * - Action: 'TRANSITION_ERROR' if the status change is invalid based on current assignment or task states.
+     * - Action: 'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK' if try to update status for a non-group task
      */
-
     const { status: next, reason } = dto;
+    let shouldNotify = false;
 
     return this.prismaService.$transaction(async (tx) => {
+      // Check if task exitsts in transaction although we already checked in Guard,
+      // for making sure the data status not changed during updating
       const task = await tx.task.findUnique({
         where: { id },
         select: {
           id: true,
-          groupId: true,
           status: true,
+          groupId: true,
           assignees: {
             where: { assigneeId: actorId },
             select: { status: true },
@@ -549,48 +567,30 @@ export class TasksService {
         },
       });
 
-      if (!task) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-
-      // Check if really a group task
-      if (!task.groupId) {
+      if (!task) throw new Error('Task lost in transaction');
+      // If not group task, throw error
+      if (!task.groupId)
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           actorId,
-          id,
-          'ASSIGNEE_STATUS_FOR_PERSONAL_TASK',
+          task.id,
+          'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK',
         );
-      }
-
-      // Check if actor is a member of group
-      const isMember = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
-        select: { userId: true },
-      });
-
-      if (!isMember) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          id,
-          'ASSIGNEE_STATUS_FOR_NON_MEMBER',
-        );
-      }
 
       const currentAssignee = task.assignees[0];
 
-      // 2. Handle self claim logic
+      // 1. Deal with Self-claim (when no assigned record)
       if (!currentAssignee) {
-        // If user not been assigned to the task, they can only change
-        // assigneeStatus to ACCEPTED (self claim a task)
         if (next !== AssignmentStatus.ACCEPTED) {
           throw TasksErrors.TaskForbiddenError.byActorOnTask(
             actorId,
             id,
-            'ASSIGNEE_STATUS_ILLEGAL_WITHOUT_ASSIGNMENT',
+            'ILLEGAL_WITHOUT_ASSIGNMENT',
           );
         }
 
         await tx.taskAssignee.create({
           data: {
-            taskId: task.id,
+            taskId: id,
             assigneeId: actorId,
             assignedById: actorId,
             status: AssignmentStatus.ACCEPTED,
@@ -598,61 +598,65 @@ export class TasksService {
             acceptedAt: new Date(),
           },
         });
-        return { ok: true };
+      } else {
+        // 2. Deal with status changing (assigned record found)
+        const isLegal = this.isValidAssignmentTransition(
+          currentAssignee.status,
+          next,
+          task.status,
+        );
+        if (!isLegal) {
+          throw TasksErrors.TaskForbiddenError.byActorOnTask(
+            actorId,
+            id,
+            `TRANSITION_ERROR`,
+          );
+        }
+
+        await tx.taskAssignee.update({
+          where: { taskId_assigneeId: { taskId: id, assigneeId: actorId } },
+          data: this.getAssigneeUpdateData(next, reason),
+        });
+
+        shouldNotify = true;
       }
-
-      // 3. Check if Assignee.status logic is correct
-      // (example: DECLINED -> ACCEPTED is allowed, but CLOSED -> PENDING is not)
-      const prev = currentAssignee.status;
-      const isLegal = this.isValidAssignmentTransition(prev, next, task.status);
-
-      if (!isLegal) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
+      if (shouldNotify) {
+        this.notifyTaskChange(
           id,
-          `ASSIGNEE_STATUS_ILLEGAL_TRANSITION_${prev}_TO_${next}`,
+          actorId,
+          updatedBy!,
+          'ASSIGNEE_STATUS_UPDATED',
         );
       }
-
-      // 4. update
-      const updateData = this.getAssigneeUpdateData(next, reason);
-
-      await tx.taskAssignee.update({
-        where: { taskId_assigneeId: { taskId: task.id, assigneeId: actorId } },
-        data: updateData,
-      });
-
-      // Notification for frontend
-      this.notifyTaskChange(
-        task.id,
-        actorId,
-        updatedBy!,
-        'ASSIGNEE_STATUS_UPDATED',
-      );
-
-      return { ok: true };
     });
   }
 
   async closeTask(
-    id: number,
-    actorId: number,
+    ctx: TaskCloseContext,
     opts?: { reason?: string },
   ): Promise<Task> {
     /**
-     * Closes a task and manages the transition of all related entities (sub-tasks and assignees).
-     * * This method implements a "Restricted Management" policy:
-     * 1. If the task is fully completed (no open sub-tasks/assignees), the Owner or an Admin can close it.
-     * 2. If the task has incomplete items, ONLY an Admin can "Force Close" it by providing a reason.
-     * * @param id - The unique identifier of the task to close.
-     * @param actorId - The ID of the user performing the action.
-     * @param opts - Optional parameters, specifically the closure reason for force-closing.
-     * @returns {Promise<Task>} The updated task record.
-     * * @throws {TasksErrors.TaskNotFoundError} If the task does not exist or the user lacks access.
+     * Closes a task and orchestrates the state transition of all related entities.
+     * * This method implements a **"Restricted Management"** policy:
+     * 1. **Standard Closure**: If the task and all sub-items are completed, the Task Owner or
+     * a Group Administrator can close it.
+     * 2. **Force Closure**: If the task still has open sub-tasks or active assignees,
+     * ONLY a Group Administrator can perform a "Force Close," which requires a mandatory reason.
+     * * @param ctx - The pre-validated task context provided by `TaskMemberGuard`.
+     * - `id`: The unique identifier of the task.
+     * - `userId`: The ID of the actor performing the closure.
+     * - `userName`: The name of the actor (used for real-time notifications).
+     * - `isOwner`: Boolean flag indicating if the actor owns the task.
+     * - `isAdminish`: Boolean flag indicating if the actor has Admin/Owner privileges in the group.
+     * @param opts - Configuration options for the closure.
+     * - `reason`: The justification string required for force-closing tasks with open items.
+     * * @returns {Promise<Task>} The updated Task record with `CLOSED` status.
+     * * @throws {TasksErrors.TaskNotFoundError} If the task record is missing (Defensive check).
      * @throws {TasksErrors.TaskForbiddenError}
-     * - Action: 'FORCE_CLOSE_REASON_REQUIRED' if items are open but no reason is provided.
-     * - Action: 'CLOSE_TASK' if a non-admin tries to force close or unauthorized access.
+     * - Action: `FORCE_CLOSE_REASON_REQUIRED` when open items exist but no reason is provided.
+     * - Action: `CLOSE_TASK` when a non-admin attempts a force-close or lacks general permissions.
      */
+    const { id, userId: actorId, userName, isOwner, isAdminish } = ctx;
 
     // 1. Fetch task and statistics regarding sub-tasks and assignments
     const task = await this.prismaService.task.findUnique({
@@ -684,28 +688,10 @@ export class TasksService {
     if (!task) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
 
     // Return immediately if task is already closed to ensure idempotency
-    if (task.status === TaskStatus.CLOSED) return task as any;
-
-    // 2. Identify roles and permissions
-    let isGroupAdmin = false;
-    const isTaskOwner = task.ownerId === actorId;
-
-    if (task.groupId) {
-      const member = await this.prismaService.groupMember.findUnique({
-        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
-        select: { role: true },
-      });
-
-      // Ensure user is part of the group
-      if (!member) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-      isGroupAdmin = this.isAdminish(member.role);
-    } else {
-      // Personal tasks: Only the owner can manage, acting as an implicit Admin
-      if (!isTaskOwner) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-      isGroupAdmin = true;
+    if (task.status === TaskStatus.CLOSED) {
+      return task as any;
     }
 
-    // 3. Implement Level 2: Restricted Management Logic
     const hasOpenItems = task._count.subTasks > 0 || task._count.assignees > 0;
 
     // A. Request a reason if items are incomplete to trigger the frontend "Force Close" modal
@@ -721,7 +707,7 @@ export class TasksService {
     // - Force Close (items remain): Restricted to Admins.
     // - Normal Close (all items done): Allowed for both Owner and Admin.
     const isAttemptingForceClose = hasOpenItems && opts?.reason;
-    const canPerformAction = isGroupAdmin || (isTaskOwner && !hasOpenItems);
+    const canPerformAction = isAdminish || (isOwner && !hasOpenItems);
 
     if (!canPerformAction) {
       const cause = isAttemptingForceClose
@@ -736,7 +722,7 @@ export class TasksService {
       );
     }
 
-    // 4. Execute Transaction to update task and related assignments/sub-tasks
+    // 2. Execute Transaction to update task and related assignments/sub-tasks
     return this.prismaService.$transaction(async (tx) => {
       const updatedTask = await tx.task.update({
         where: { id },
@@ -771,12 +757,18 @@ export class TasksService {
           },
         });
       }
-
+      this.notifyTaskChange(id, actorId, userName, 'UPDATED');
       return updatedTask;
     });
   }
 
-  async archiveTask(id: number, actorId: number): Promise<void> {
+  async archiveTask(
+    id: number,
+    actorId: number,
+    isOwner: boolean,
+    isAdminish: boolean,
+    userName: string,
+  ): Promise<void> {
     /**
      * Archives a specific task and all its associated sub-tasks.
      * * @description
@@ -793,6 +785,8 @@ export class TasksService {
       // 1. Update parent Task
       await this.updateTaskStatus(
         id,
+        isOwner,
+        isAdminish,
         {
           newStatus: TaskStatus.ARCHIVED,
           actorId,
@@ -810,10 +804,17 @@ export class TasksService {
           status: TaskStatus.ARCHIVED,
         },
       });
+      this.notifyTaskChange(id, actorId, userName, 'UPDATED');
     });
   }
 
-  async restoreTask(id: number, actorId: number): Promise<void> {
+  async restoreTask(
+    id: number,
+    actorId: number,
+    isOwner: boolean,
+    isAdminish: boolean,
+    userName: string,
+  ): Promise<void> {
     /**
      * Restores a task to 'OPEN' status from either 'CLOSED' or 'ARCHIVED'.
      * * @description
@@ -850,6 +851,8 @@ export class TasksService {
       // This handles: Permissions, State Machine, and Task audit field resets (closedAt, etc.)
       await this.executeUpdateLogic(
         id,
+        isOwner,
+        isAdminish,
         { newStatus: TaskStatus.OPEN, actorId },
         tx,
       );
@@ -862,6 +865,7 @@ export class TasksService {
       if (originalStatus === TaskStatus.CLOSED) {
         await this.handleRestoreFromClosed(id, tx);
       }
+      this.notifyTaskChange(id, actorId, userName, 'UPDATE');
     });
   }
 
@@ -921,6 +925,8 @@ export class TasksService {
 
   async updateTaskStatus(
     id: number,
+    isOwner: boolean,
+    isAdminish: boolean,
     opts: UpdateStatusOpts,
     txHost?: Prisma.TransactionClient,
   ): Promise<void> {
@@ -946,17 +952,19 @@ export class TasksService {
 
     // If txHost provided, use it directly
     if (txHost) {
-      return this.executeUpdateLogic(id, opts, txHost);
+      return this.executeUpdateLogic(id, isOwner, isAdminish, opts, txHost);
     }
 
     // If not, open a new transaction
     return this.prismaService.$transaction(async (tx) => {
-      return this.executeUpdateLogic(id, opts, tx);
+      return this.executeUpdateLogic(id, isOwner, isAdminish, opts, tx);
     });
   }
 
   private async executeUpdateLogic(
     id: number,
+    isOwner: boolean,
+    isAdminish: boolean,
     opts: UpdateStatusOpts,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
@@ -992,25 +1000,7 @@ export class TasksService {
     // -----------------------------------------------------------
     // 2) Permission Validation
     // -----------------------------------------------------------
-    let allowed = task.ownerId === actorId;
-
-    // If not owner, check if user is an ADMIN/OWNER in the group
-    if (!allowed && task.groupId !== null) {
-      const member = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId: task.groupId, userId: actorId } },
-        select: { role: true },
-      });
-
-      if (!member) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          id,
-          'UPDATE_STATUS_NOT_MEMBER',
-        );
-      }
-
-      allowed = this.isAdminish(member.role);
-    }
+    const allowed = isOwner || isAdminish;
 
     if (!allowed) {
       throw TasksErrors.TaskForbiddenError.byActorOnTask(
@@ -2319,7 +2309,7 @@ export class TasksService {
     this.tasksGateway.broadcastTaskUpdate(taskId, {
       type,
       taskId,
-      updatedBy,
+      userName: updatedBy,
       actorId,
     });
   }
