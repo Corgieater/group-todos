@@ -152,7 +152,7 @@ describe('GroupsController', () => {
         'success',
         'You have been invited to a group!',
       );
-      expect(res.redirect).toHaveBeenCalledWith('/groups/1');
+      expect(res.redirect).toHaveBeenCalledWith('/groups/list');
     });
   });
 
