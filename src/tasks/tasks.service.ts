@@ -898,6 +898,8 @@ export class TasksService {
     tx: Prisma.TransactionClient,
   ) {
     /**
+     * @todo
+     * Maybe it would be better to give adminish a 'pending' button if they want to 'rejeck' somebody's complete if they don't do thing right. Currently we don't restore 'complete'.
      * Manages the cascading side effects for task assignees when a task is reopened from 'CLOSED'.
      *
      * @description
