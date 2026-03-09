@@ -120,7 +120,7 @@ export class GroupsController {
       this.securityService.getCookieOptions(),
     );
     setSession(req, 'success', 'You have been invited to a group!');
-    res.redirect(`/groups/${id}`);
+    res.redirect(`/groups/list`);
   }
 
   @Post(':id/update/role')
