@@ -76,6 +76,8 @@ This project is fully containerized. You can quickly set up the development envi
 - 團體任務real live-editing多人共編
 
   Real-time Collaborative Editing: Support for simultaneous multi-user editing (Live-editing) on group tasks to ensure seamless collaboration.
+![websocket同步](https://github.com/user-attachments/assets/4800ed37-690a-4bb0-9c82-99cbf4c27077)
+
 - 任務歷史儀表板 
 
   Task History Dashboard: A dedicated dashboard to track task progress and historical changes.
