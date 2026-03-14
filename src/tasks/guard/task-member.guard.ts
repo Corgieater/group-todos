@@ -4,14 +4,14 @@ import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class TaskMemberGuard implements CanActivate {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prismaService: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const taskId = +request.params.id;
     const userId = request.user.userId;
 
-    const task = await this.prisma.task.findUnique({
+    const task = await this.prismaService.task.findUnique({
       where: { id: taskId },
       select: { id: true, ownerId: true, groupId: true, status: true },
     });
@@ -27,7 +27,7 @@ export class TaskMemberGuard implements CanActivate {
       isAdminish = isMember;
     } else {
       // 群組任務：查一次成員表
-      const member = await this.prisma.groupMember.findUnique({
+      const member = await this.prismaService.groupMember.findUnique({
         where: { groupId_userId: { groupId: task.groupId, userId } },
         select: { role: true },
       });
