@@ -8,23 +8,23 @@ import {
   Req,
   Res,
   UseFilters,
-  UseGuards,
 } from '@nestjs/common';
-import { AccessTokenGuard } from 'src/auth/guards/access-token.guard';
 import { GetCurrentUser } from 'src/common/decorators/user.decorator';
 import { CurrentUser } from 'src/common/types/current-user';
 import { Request, Response } from 'express';
-import { TasksService } from './tasks.service';
+import { TasksService } from '../services/tasks.service';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
 import { buildTaskVM } from 'src/common/helpers/util';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { TaskQueryDto } from './dto/tasks.dto';
+import { TaskQueryDto } from '../dto/tasks.dto';
+import { SubTasksService } from '../services/sub-tasks.service';
 
 @Controller('tasks')
 @UseFilters(TasksPageFilter)
 export class TasksPageController {
   constructor(
     private tasksService: TasksService,
+    private subTaskService: SubTasksService,
     private prismaService: PrismaService,
   ) {}
 
@@ -205,12 +205,11 @@ export class TasksPageController {
     @Res() res: Response,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: Request,
     @GetCurrentUser() user: CurrentUser,
   ) {
-    // 1. 獲取 SubTask 詳情 (包含 assignees 列表)
-    const { subTask, isAdminish, groupMembers } =
-      await this.tasksService.getSubTaskForViewer(taskId, id, user.userId);
+    // 1. 獲取核心資料 (使用我們剛剛重構的 getSubTaskForViewer)
+    const { subTask, isAdminish, isRealAdmin, groupMembers } =
+      await this.subTaskService.getSubTaskForViewer(taskId, id, user.userId);
 
     // 2. 獲取當前登入者在「這個子任務」中的指派狀態
     const viewerAssignment =
@@ -218,27 +217,40 @@ export class TasksPageController {
         where: {
           subTaskId_assigneeId: { subTaskId: id, assigneeId: user.userId },
         },
-        select: { assigneeId: true, status: true, updatedAt: true },
+        select: { assigneeId: true, status: true },
       });
 
-    // 3. 建立基礎 ViewModel
-    // 注意：這裡的 isAdminish 可以根據業務需求決定，通常子任務細節頁面也要傳入權限
-    const viewModel = buildTaskVM(subTask, user.timeZone, false);
+    // 3. 建立基礎 ViewModel (處理時間與狀態標籤)
+    // 注意：這裡第三個參數傳入 isAdminish，讓 buildTaskVM 知道是否具備編輯權限
+    const viewModel = buildTaskVM(subTask, user.timeZone, isAdminish);
 
-    // 4. Render
+    // 4. Render 到 Pug
     res.render('tasks/sub-task-details', {
       ...viewModel,
-      taskId,
-      isAdminish,
-      groupMembers,
-      // --- 🚨 驅動 Pug 模板按鈕的關鍵變數 ---
+
+      // 🚀 關鍵 1：傳入 Parent Task 的 ownerId (解決個人頁面按鈕消失問題)
+      // 這樣 Pug 裡的 const isOwner = Number(ownerId) === Number(currentUserId) 才會成功
+      ownerId: subTask.task.ownerId,
+
+      // 🚀 關鍵 2：isAdminish 傳入 isRealAdmin
+      // 在你的 Pug 裡，canFinalizeSubTask = !!isAdminish，這應該由真正的 Admin 權限控制
+      isAdminish: isRealAdmin,
+
+      // 🚀 關鍵 3：taskId 使用路徑參數的 taskId，確保麵包屑導航正確
+      taskId: taskId,
+      todayISO: new Date().toISOString().slice(0, 10),
+
+      // --- 📋 指派狀態與領取控制 ---
       viewerIsAssignee: !!viewerAssignment,
       viewerAssigneeStatus: viewerAssignment?.status ?? null,
       viewerAssigneeId: user.userId,
 
-      // 只要是群組任務就允許領取 (Service 內會再做一次成員檢查)
-      // 如果 subTask.task 存在，可以從那裡判斷；這裡直接用 viewModel 是否有 groupId
-      allowSelfAssign: !!viewModel.groupId || true,
+      // 只有群組任務才允許 Self Assign
+      allowSelfAssign: !!subTask.task.groupId,
+
+      // 這裡我們假設子任務的關閉權限直接看 assignees 狀態（Pug 裡面已經有算 subTaskCanClose）
+      groupMembers,
+      currentUserId: user.userId,
     });
   }
 
@@ -251,7 +263,7 @@ export class TasksPageController {
     @GetCurrentUser() user: CurrentUser,
   ) {
     const { subTask, isAdminish, groupMembers } =
-      await this.tasksService.getSubTaskForViewer(taskId, id, user.userId);
+      await this.subTaskService.getSubTaskForViewer(taskId, id, user.userId);
 
     const viewModel = buildTaskVM(subTask, user.timeZone, false);
 

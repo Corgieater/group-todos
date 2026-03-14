@@ -23,7 +23,7 @@ jest.mock('src/common/helpers/util', () => ({
   })),
 }));
 import { buildGroupVM } from 'src/common/helpers/util';
-import { TasksService } from 'src/tasks/tasks.service';
+import { TasksService } from 'src/tasks/services/tasks.service';
 
 describe('GroupsPageController', () => {
   let groupsPageController: GroupsPageController;

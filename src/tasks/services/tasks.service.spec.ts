@@ -8,7 +8,7 @@ import type {
   User as Usermodel,
   Task as TaskModel,
 } from 'src/generated/prisma/client';
-import { TaskStatus } from './types/enum';
+import { TaskStatus } from '../types/enum';
 import { TasksService } from './tasks.service';
 import { UsersService } from 'src/users/users.service';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -16,17 +16,14 @@ import {
   TasksAddPayload,
   TaskUpdatePayload,
   TaskUpdateContext,
-} from './types/tasks';
-import { TaskPriority } from './types/enum';
+} from '../types/tasks';
+import { TaskPriority } from '../types/enum';
 import { TasksErrors, UsersErrors } from 'src/errors';
 import { createMockUser } from 'src/test/factories/mock-user.factory';
 import { createMockTask } from 'src/test/factories/mock-task.factory';
-import { MailService } from 'src/mail/mail.service';
-import { SecurityService } from 'src/security/security.service';
-import { createMockConfig } from 'src/test/factories/mock-config.factory';
-import { ConfigService } from '@nestjs/config';
-import { TasksGateWay } from './tasks.gateway';
-import { createMockSecurityService } from 'src/test/factories/mock-security.service';
+import { TaskAssignmentManager } from './task-assignment.service';
+import { TasksHelperService } from './helper.service';
+import { TasksUtils } from '../tasks.util';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
@@ -81,11 +78,10 @@ describe('TasksService', () => {
       return cb(tx);
     }),
   };
-  const mockMailService = { sendTaskAssign: jest.fn() };
 
-  const mockConfigService = createMockConfig();
+  const mockTasksHelper = { notifyTaskChange: jest.fn() };
 
-  const mockSecurityService = createMockSecurityService();
+  const mocktaskAssignmentManager = { execute: jest.fn() };
 
   const mockTasksGateWay = {
     // 模擬 @WebSocketServer() server
@@ -109,13 +105,8 @@ describe('TasksService', () => {
         TasksService,
         { provide: UsersService, useValue: mockUsersService },
         { provide: PrismaService, useValue: mockPrismaService },
-        { provide: MailService, useValue: mockMailService },
-        { provide: ConfigService, useValue: mockConfigService.mock },
-        {
-          provide: SecurityService,
-          useValue: mockSecurityService,
-        },
-        { provide: TasksGateWay, useValue: mockTasksGateWay },
+        { provide: TasksHelperService, useValue: mockTasksHelper },
+        { provide: TaskAssignmentManager, useValue: mocktaskAssignmentManager },
       ],
     }).compile();
 
@@ -270,7 +261,6 @@ describe('TasksService', () => {
           assignees: {
             include: {
               assignee: { select: { id: true, name: true, email: true } },
-              // 注意：您 service code 中 subTasks.assignees 這裡缺少 assignedBy 的 include
             },
             orderBy: { status: 'asc' },
           },
@@ -886,14 +876,11 @@ describe('TasksService', () => {
 
         // 模擬私有工具方法的回傳 (如果這些方法在 service 內部是 public 或可存取)
         jest
-          .spyOn(tasksService as any, 'isValidAssignmentTransition')
+          .spyOn(TasksUtils as any, 'isValidAssignmentTransition')
           .mockReturnValue(true);
         jest
-          .spyOn(tasksService as any, 'getAssigneeUpdateData')
+          .spyOn(TasksUtils as any, 'getAssigneeUpdateData')
           .mockReturnValue({ status: AssignmentStatus.COMPLETED });
-        const notifySpy = jest
-          .spyOn(tasksService as any, 'notifyTaskChange')
-          .mockImplementation();
 
         // 2. Act
         await tasksService.updateAssigneeStatus(
@@ -905,7 +892,7 @@ describe('TasksService', () => {
 
         // 3. Assert
         expect(mockPrismaService.taskAssignee.update).toHaveBeenCalled();
-        expect(notifySpy).toHaveBeenCalledWith(
+        expect(mockTasksHelper.notifyTaskChange).toHaveBeenCalledWith(
           taskId,
           actorId,
           'User Name',
@@ -952,7 +939,7 @@ describe('TasksService', () => {
 
         // 模擬非法轉換
         jest
-          .spyOn(tasksService as any, 'isValidAssignmentTransition')
+          .spyOn(TasksUtils as any, 'isValidAssignmentTransition')
           .mockReturnValue(false);
 
         await expect(
@@ -1000,7 +987,7 @@ describe('TasksService', () => {
       expect(result.status).toBe(TaskStatus.CLOSED);
       expect(mockPrismaService.task.update).toHaveBeenCalled();
       // 驗證是否有發送 Socket 通知
-      expect(mockTasksGateWay.broadcastTaskUpdate).toHaveBeenCalled();
+      expect(mockTasksHelper.notifyTaskChange).toHaveBeenCalled();
     });
 
     // 2. 測試：觸發 Force Close 理由要求（當有未完成項目且沒給理由時）
@@ -1201,7 +1188,7 @@ describe('TasksService', () => {
 
       // 確保狀態機檢查通過
       jest
-        .spyOn(tasksService as any, 'taskStatusCanTransition')
+        .spyOn(TasksUtils as any, 'taskStatusCanTransition')
         .mockReturnValue(true);
 
       // 2. 執行 Service 方法
@@ -1232,7 +1219,7 @@ describe('TasksService', () => {
       mockPrismaService.taskAssignee.updateMany.mockResolvedValue({ count: 1 });
 
       jest
-        .spyOn(tasksService as any, 'taskStatusCanTransition')
+        .spyOn(TasksUtils as any, 'taskStatusCanTransition')
         .mockReturnValue(true);
 
       await tasksService.restoreTask(taskId, user.id, true, true, 'test');
@@ -1297,7 +1284,7 @@ describe('TasksService', () => {
         });
         // 模擬狀態機不允許從 OPEN 直接跳到某個狀態
         jest
-          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .spyOn(TasksUtils as any, 'taskStatusCanTransition')
           .mockReturnValue(false);
 
         await expect(
@@ -1322,7 +1309,7 @@ describe('TasksService', () => {
           subTasks: [{ status: TaskStatus.OPEN }], // 有未完成子任務
         });
         jest
-          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .spyOn(TasksUtils as any, 'taskStatusCanTransition')
           .mockReturnValue(true);
 
         await expect(
@@ -1349,7 +1336,7 @@ describe('TasksService', () => {
           assignees: [{ status: AssignmentStatus.ACCEPTED }], // 只是接受，未完成
         });
         jest
-          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .spyOn(TasksUtils as any, 'taskStatusCanTransition')
           .mockReturnValue(true);
 
         await expect(
@@ -1377,7 +1364,7 @@ describe('TasksService', () => {
           ],
         });
         jest
-          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .spyOn(TasksUtils as any, 'taskStatusCanTransition')
           .mockReturnValue(true);
 
         await expect(
@@ -1403,7 +1390,7 @@ describe('TasksService', () => {
           ],
         });
         jest
-          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .spyOn(TasksUtils as any, 'taskStatusCanTransition')
           .mockReturnValue(true);
 
         await (tasksService as any).executeUpdateLogic(
@@ -1437,7 +1424,7 @@ describe('TasksService', () => {
           status: TaskStatus.CLOSED,
         });
         jest
-          .spyOn(tasksService as any, 'taskStatusCanTransition')
+          .spyOn(TasksUtils as any, 'taskStatusCanTransition')
           .mockReturnValue(true);
 
         await (tasksService as any).executeUpdateLogic(
@@ -1461,822 +1448,11 @@ describe('TasksService', () => {
       });
     });
   });
-  // -----------------------subTask----------------------------
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // createSubTask
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('createSubTask', () => {
-    const actorId = 1;
-    const parentTaskId = 100;
-
-    const basePayload = {
-      parentTaskId: parentTaskId,
-      actorId: actorId,
-      title: 'New Subtask',
-      description: 'Subtask description',
-      location: 'Office',
-      priority: 2,
-      allDay: false,
-      dueDate: '2024-05-20',
-      dueTime: '14:00',
-      status: 'OPEN' as const,
-      updatedBy: 'test',
-    };
-
-    const mockActor = { id: actorId, timeZone: 'Asia/Taipei' };
-
-    beforeEach(() => {
-      // 預設模擬 calculateTaskDates 回傳值 (避免測試依賴日期算法細節)
-      jest.spyOn(tasksService as any, 'calculateTaskDates').mockReturnValue({
-        dueAtUtc: new Date('2024-05-20T06:00:00Z'),
-        allDayLocalDate: null,
-      });
-    });
-
-    describe('Permission Validation', () => {
-      it('should throw TaskNotFoundError if parent task does not exist', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue(null);
-        mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-
-        await expect(tasksService.createSubTask(basePayload)).rejects.toThrow(); // 會拋出 TaskNotFoundError
-      });
-
-      it('should throw TaskForbiddenError if trying to add subtask to a personal task not owned by actor', async () => {
-        // 模擬個人任務，但 Owner 不是目前使用者
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: parentTaskId,
-          ownerId: 999, // Other user
-          groupId: null,
-        });
-        mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-
-        await expect(tasksService.createSubTask(basePayload)).rejects.toThrow(
-          expect.objectContaining({
-            action: 'CREATE_SUBTASK_ON_PERSONAL_TASK_NOT_OWNER',
-          }),
-        );
-      });
-
-      it('should throw TaskForbiddenError if trying to add subtask to a group task where actor is not a member', async () => {
-        // 模擬團體任務
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: parentTaskId,
-          ownerId: 999,
-          groupId: 50, // Group ID exists
-        });
-        mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-        // 模擬該使用者不是成員
-        mockPrismaService.groupMember.findUnique.mockResolvedValue(null);
-
-        await expect(tasksService.createSubTask(basePayload)).rejects.toThrow(
-          expect.objectContaining({
-            action: 'CREATE_SUBTASK_ON_GROUP_TASK_NOT_MEMBER',
-          }),
-        );
-      });
-    });
-
-    describe('Core Logic & Database Interaction', () => {
-      it('should successfully create a subtask with correctly mapped data', async () => {
-        // 模擬合法的個人任務 Owner
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: parentTaskId,
-          ownerId: actorId,
-          groupId: null,
-        });
-        mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-        mockPrismaService.subTask.create.mockResolvedValue({ id: 1 });
-
-        await tasksService.createSubTask(basePayload);
-
-        // 驗證日期計算被正確呼叫
-        expect(tasksService['calculateTaskDates']).toHaveBeenCalledWith(
-          basePayload.allDay,
-          basePayload.dueDate,
-          basePayload.dueTime,
-          mockActor.timeZone,
-        );
-
-        // 驗證 Prisma Create 被正確呼叫
-        expect(mockPrismaService.subTask.create).toHaveBeenCalledWith({
-          data: {
-            title: basePayload.title,
-            description: basePayload.description,
-            location: basePayload.location,
-            status: 'OPEN',
-            priority: 2,
-            allDay: false,
-            dueAtUtc: expect.any(Date),
-            allDayLocalDate: null,
-            task: { connect: { id: parentTaskId } },
-          },
-        });
-      });
-
-      it('should default priority to 3 if not provided in payload', async () => {
-        mockPrismaService.task.findUnique.mockResolvedValue({
-          id: parentTaskId,
-          ownerId: actorId,
-          groupId: null,
-        });
-        mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-
-        const { priority, ...payloadWithoutPriority } = basePayload;
-
-        await tasksService.createSubTask(payloadWithoutPriority as any);
-
-        expect(mockPrismaService.subTask.create).toHaveBeenCalledWith(
-          expect.objectContaining({
-            data: expect.objectContaining({
-              priority: 3,
-            }),
-          }),
-        );
-      });
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // getSubTaskForViewer
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('getSubTaskForViewer', () => {
-    const mockSubTask = {
-      id: 1,
-      taskId: lowTask.id,
-      title: 'Sub Task Example',
-      status: 'OPEN',
-      priority: 3,
-      description: null,
-      location: null,
-      dueAtUtc: null,
-      allDay: true,
-      allDayLocalDate: null,
-      sourceTimeZone: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      assignees: [],
-    };
-
-    const mockGroupMembers = [
-      {
-        groupId: 1,
-        userId: user.id,
-        role: 'OWNER',
-        joinedAt: new Date(),
-        user: { id: 1, name: 'test1' },
-      },
-      {
-        groupId: 1,
-        userId: 2,
-        role: 'MEMBER',
-        joinedAt: new Date(),
-        user: { id: 2, name: 'test2' },
-      },
-    ];
-
-    it('should returns sub-task viewer data for an individual task owner', async () => {
-      // 1. 準備資料：確保 groupId 為 null 以進入個人任務邏輯
-      const personalParentTask = {
-        ...lowTask,
-        groupId: null,
-        ownerId: user.id, // 當前使用者就是 Owner
-      };
-
-      // 模擬資料庫回傳的真實 SubTask 結構
-      // 2. Mock 父任務查詢
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(
-        personalParentTask,
-      );
-
-      // 3. Mock 子任務詳細資訊
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-
-      // 4. 執行
-      const result = await tasksService.getSubTaskForViewer(
-        personalParentTask.id,
-        mockSubTask.id,
-        user.id,
-      );
-
-      // 5. 斷言 - 檢查查詢結構 (與實作代碼的 include 內容一致)
-      expect(mockPrismaService.subTask.findUnique).toHaveBeenCalledWith({
-        where: { id: mockSubTask.id },
-        include: {
-          task: { select: { id: true, groupId: true } },
-          closedBy: { select: { id: true, name: true } },
-          assignees: {
-            include: {
-              assignee: { select: { id: true, name: true, email: true } },
-              assignedBy: { select: { id: true, name: true, email: true } },
-            },
-            orderBy: { status: 'asc' },
-          },
-        },
-      });
-
-      // 6. 斷言 - 檢查最終回傳物件內容
-      expect(result).toEqual({
-        subTask: mockSubTask,
-        isAdminish: true, // 個人任務 Owner 預設為 isAdminish = true
-        groupMembers: [], // 個人任務不應有群組成員列表
-      });
-    });
-
-    it('should returns sub-task viewer data for a group member', async () => {
-      // 準備資料
-      const groupId = 1;
-      const subTaskId = 1;
-      const groupParentTask = { ...lowTask, groupId, ownerId: 999 };
-
-      // 1. Mock 父任務查詢
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(groupParentTask);
-
-      // 2. Mock 判定 Actor 為 Group Member (角色為 MEMBER)
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
-        userId: user.id,
-        role: 'MEMBER',
-      });
-
-      // 3. Mock 子任務詳細資訊
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-
-      // 4. Mock 獲取群組所有成員 (用於下拉選單)
-      mockPrismaService.groupMember.findMany.mockResolvedValueOnce(
-        mockGroupMembers,
-      );
-
-      // 執行
-      const result = await tasksService.getSubTaskForViewer(
-        groupParentTask.id,
-        subTaskId,
-        user.id,
-      );
-
-      // 斷言 1: 檢查查詢結構
-      expect(mockPrismaService.subTask.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: subTaskId },
-          include: expect.objectContaining({
-            assignees: expect.anything(),
-            task: expect.anything(),
-          }),
-        }),
-      );
-
-      // 斷言 2: 檢查最終組合的結果
-      expect(result).toEqual({
-        subTask: mockSubTask,
-        isAdminish: false, // 因為角色是 MEMBER，Set<OWNER, ADMIN> 不包含它
-        groupMembers: [
-          { id: 1, userName: 'test1' },
-          { id: 2, userName: 'test2' },
-        ],
-      });
-    });
-
-    it('should handle non-existent sub-task by returning empty viewer data', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce([]);
-
-      const result = await tasksService.getSubTaskForViewer(
-        lowTask.id,
-        999,
-        user.id,
-      );
-
-      expect(result).toEqual({
-        groupMembers: [],
-        isAdminish: true,
-        subTask: [],
-      });
-    });
-
-    it('should throw TaskNotFoundError if parent task not found', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
-
-      await expect(
-        tasksService.getSubTaskForViewer(999, 1, user.id),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
-
-      expect(mockPrismaService.subTask.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('should throw TaskForbiddenError if a personal parent task exists and actor not owner', async () => {
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(lowTask);
-
-      await expect(
-        tasksService.getSubTaskForViewer(lowTask.id, 1, 999),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskForbiddenError);
-
-      expect(mockPrismaService.subTask.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('should throw TaskForbiddenError if a group parent task exists and actor not member', async () => {
-      const parentTask = { ...lowTask, groupId: 5 };
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(parentTask);
-      // 模擬 actor 不是 group member
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
-
-      await expect(
-        tasksService.getSubTaskForViewer(lowTask.id, 1, 999),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskForbiddenError);
-
-      expect(mockPrismaService.subTask.findFirst).not.toHaveBeenCalled();
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // updateSubTask
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('updateSubTask', () => {
-    const mockActorId = 1;
-    const mockSubTaskId = 101;
-    const mockActorTz = 'Asia/Taipei';
-    const mockPayload: TaskUpdatePayload = {
-      title: 'Updated SubTask Title',
-      priority: 1,
-    };
-
-    it('should throw TaskNotFoundError if subTask does not exist', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValue(null);
-
-      await expect(
-        tasksService.updateSubTask(
-          mockSubTaskId,
-          mockActorId,
-          mockActorTz,
-          mockPayload,
-        ),
-      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
-    });
-
-    it('should throw TaskNotFoundError if personal parent task is not owned by actor', async () => {
-      // 模擬 subTask 屬於個人任務（groupId 為 null），但 ownerId 與 actorId 不同
-      mockPrismaService.subTask.findUnique.mockResolvedValue({
-        id: mockSubTaskId,
-        task: {
-          id: 50,
-          ownerId: 999, // 不同人
-          groupId: null,
-        },
-      });
-
-      await expect(
-        tasksService.updateSubTask(
-          mockSubTaskId,
-          mockActorId,
-          mockActorTz,
-          mockPayload,
-        ),
-      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
-    });
-
-    it('should throw TaskNotFoundError if group task and actor is not a member', async () => {
-      // 模擬 subTask 屬於群組任務，但 group.members 為空（代表 actor 不是成員）
-      mockPrismaService.subTask.findUnique.mockResolvedValue({
-        id: mockSubTaskId,
-        task: {
-          id: 50,
-          ownerId: 1,
-          groupId: 200,
-          group: { members: [] }, // 不是成員
-        },
-      });
-
-      await expect(
-        tasksService.updateSubTask(
-          mockSubTaskId,
-          mockActorId,
-          mockActorTz,
-          mockPayload,
-        ),
-      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
-    });
-
-    it('should successfully update and notify when all checks pass (Group Task)', async () => {
-      // 1. 模擬權限校驗通過
-      mockPrismaService.subTask.findUnique.mockResolvedValue({
-        id: mockSubTaskId,
-        taskId: 50,
-        task: {
-          id: 50,
-          ownerId: 99,
-          groupId: 200,
-          group: { members: [{ role: 'MEMBER' }] },
-        },
-      });
-
-      // 2. 模擬 update 成功
-      mockPrismaService.subTask.update.mockResolvedValue({
-        id: mockSubTaskId,
-        taskId: 50,
-      });
-
-      // 執行
-      await tasksService.updateSubTask(
-        mockSubTaskId,
-        mockActorId,
-        mockActorTz,
-        mockPayload,
-      );
-
-      // 3. 驗證資料處理 (getCommonUpdateData 的產出應該被帶入 update)
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: mockSubTaskId },
-        data: expect.objectContaining({
-          title: mockPayload.title,
-          priority: Number(mockPayload.priority),
-        }),
-      });
-
-      // 4. 驗證 Socket 通知是否正確發出
-      expect(mockTasksGateWay.broadcastTaskUpdate).toHaveBeenCalledWith(
-        50, // parentTaskId
-        expect.objectContaining({
-          type: 'SUBTASK_UPDATED',
-          actorId: mockActorId,
-        }),
-      );
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // closeSubTask
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('closeSubTask', () => {
-    const actorId = 1;
-    const subTaskId = 10;
-
-    it('should successfully close a subtask and record closer info', async () => {
-      // 1. 準備模擬資料
-      const mockSubTask = {
-        id: subTaskId,
-        title: 'Test SubTask',
-        status: 'OPEN',
-        task: {
-          groupId: 1,
-          group: { members: [{ userId: actorId, role: 'MEMBER' }] },
-        },
-      };
-
-      // 2. Mock 查詢與更新
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-      mockPrismaService.subTask.update.mockResolvedValueOnce({
-        ...mockSubTask,
-        status: TaskStatus.CLOSED,
-        closedById: actorId,
-        closedAt: new Date(),
-      });
-
-      // 3. 執行測試
-      const result = await tasksService.closeSubTask(subTaskId, actorId);
-
-      // 4. 斷言檢查
-      expect(mockPrismaService.subTask.findUnique).toHaveBeenCalledWith({
-        where: {
-          id: subTaskId,
-        },
-        include: {
-          task: {
-            select: {
-              id: true,
-              ownerId: true,
-              groupId: true,
-              group: {
-                select: {
-                  members: {
-                    where: { userId: actorId },
-                    select: { role: true },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        data: {
-          status: TaskStatus.CLOSED,
-          closedAt: expect.any(Date),
-          closedById: actorId,
-        },
-      });
-
-      expect(result.status).toBe(TaskStatus.CLOSED);
-      expect(result.closedById).toBe(actorId);
-    });
-
-    it('should throw TaskNotFoundError if the subtask does not exist', async () => {
-      // 模擬找不到任務
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(null);
-
-      // 執行並檢查錯誤
-      await expect(
-        tasksService.closeSubTask(subTaskId, actorId),
-      ).rejects.toThrow();
-
-      // 確保沒有執行後續的 update
-      expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // updateSubTaskStatus
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('updateSubTaskStatus', () => {
-    const subTaskId = 50;
-    const actorId = 1; // 任何人都可以操作
-
-    // 模擬 SubTask 的基礎資料
-    const mockSubTaskBase = {
-      id: subTaskId,
-      status: TaskStatus.OPEN,
-    };
-
-    it('should allow any authenticated actor to close an OPEN SubTask', async () => {
-      // 1. Mock SubTask 存在且為 OPEN
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce({
-        ...mockSubTaskBase,
-        status: TaskStatus.OPEN,
-      });
-
-      await tasksService.updateSubTaskStatus(subTaskId, {
-        newStatus: TaskStatus.CLOSED,
-        actorId: 999, // 非 owner/非 assignee 的用戶
-      });
-
-      // 驗證 findUnique 被呼叫 (只查詢 SubTask 狀態，無需父任務或權限資訊)
-      expect(mockPrismaService.subTask.findUnique).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        select: { id: true, status: true },
-      });
-
-      // 驗證 SubTask 被更新為 CLOSED
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        data: {
-          status: TaskStatus.CLOSED,
-          closedAt: expect.any(Date),
-          closedById: 999,
-        },
-      });
-    });
-
-    it('should allow reopening a CLOSED SubTask (CLOSED -> OPEN)', async () => {
-      // 1. Mock SubTask 存在且為 CLOSED
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce({
-        ...mockSubTaskBase,
-        status: TaskStatus.CLOSED,
-      });
-
-      await tasksService.updateSubTaskStatus(subTaskId, {
-        newStatus: TaskStatus.OPEN,
-        actorId,
-      });
-
-      // 驗證 SubTask 被更新為 OPEN
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        data: {
-          status: TaskStatus.OPEN,
-          closedAt: null,
-          closedById: null,
-        },
-      });
-    });
-
-    it('should allow archiving a CLOSED SubTask (CLOSED -> ARCHIVED)', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce({
-        ...mockSubTaskBase,
-        status: TaskStatus.CLOSED,
-      });
-
-      await tasksService.updateSubTaskStatus(subTaskId, {
-        newStatus: TaskStatus.ARCHIVED,
-        actorId,
-      });
-
-      // 驗證 SubTask 被更新為 ARCHIVED (無需清除審計欄位)
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        data: {
-          status: TaskStatus.ARCHIVED,
-        },
-      });
-    });
-
-    it('should throw TaskNotFoundError if SubTask is not found', async () => {
-      // 1. Mock SubTask 找不到
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(null);
-
-      await expect(
-        tasksService.updateSubTaskStatus(subTaskId, {
-          newStatus: TaskStatus.CLOSED,
-          actorId,
-        }),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskNotFoundError);
-
-      // 驗證 update 沒有被呼叫
-      expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();
-    });
-
-    it('should throw TaskForbiddenError for illegal status transition (ARCHIVED -> CLOSED)', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce({
-        ...mockSubTaskBase,
-        status: TaskStatus.ARCHIVED,
-      });
-
-      // 嘗試從 ARCHIVED 轉移到 CLOSED (非法)
-      await expect(
-        tasksService.updateSubTaskStatus(subTaskId, {
-          newStatus: TaskStatus.CLOSED,
-          actorId,
-        }),
-      ).rejects.toBeInstanceOf(TasksErrors.TaskForbiddenError);
-
-      // 驗證 update 沒有被呼叫
-      expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // restoreSubTask
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('restoreSubTask', () => {
-    it('should update subTask status to OPEN and clear closure metadata', async () => {
-      const subTaskId = 4;
-      const mockUpdatedSubTask = {
-        id: subTaskId,
-        status: TaskStatus.OPEN,
-        closedAt: null,
-        closedById: null,
-        title: 'Test Subtask',
-      };
-
-      mockPrismaService.subTask.update.mockResolvedValueOnce(
-        mockUpdatedSubTask,
-      );
-
-      const result = await tasksService.restoreSubTask(subTaskId);
-
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        data: {
-          status: TaskStatus.OPEN,
-          closedAt: null,
-          closedById: null,
-        },
-      });
-
-      expect(result).toEqual(mockUpdatedSubTask);
-      expect(result.status).toBe(TaskStatus.OPEN);
-      expect(result.closedAt).toBeNull();
-    });
-
-    it('should throw error if prisma update fails', async () => {
-      const subTaskId = 999;
-      mockPrismaService.subTask.update.mockRejectedValueOnce(
-        new Error('Record not found'),
-      );
-
-      await expect(tasksService.restoreSubTask(subTaskId)).rejects.toThrow(
-        'Record not found',
-      );
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // updateSubTaskAssigneeStatus
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  describe('updateSubTaskAssigneeStatus', () => {
-    const actorId = 1;
-    const subTaskId = 10;
-    const groupId = 2;
-    const taskId = 100;
-
-    // 模擬 subTask 及其關聯的 task 資訊
-    const mockSubTask = {
-      id: subTaskId,
-      status: 'OPEN',
-      task: { id: taskId, groupId, status: 'OPEN' },
-    };
-
-    it('should self-assign (claim) a subtask if no assignment record exists', async () => {
-      // 1. Mock 子任務查詢
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-
-      // 2. Mock 群組成員檢查
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
-        userId: actorId,
-      });
-
-      // 3. Mock 目前沒有指派紀錄
-      mockPrismaService.subTaskAssignee.findUnique.mockResolvedValueOnce(null);
-
-      // 4. Mock 建立紀錄
-      mockPrismaService.subTaskAssignee.create.mockResolvedValueOnce({
-        subTaskId,
-        assigneeId: actorId,
-      });
-
-      // 執行
-      await tasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-        status: AssignmentStatus.ACCEPTED,
-      });
-
-      // 斷言：檢查是否正確建立了指派紀錄 (Claim)
-      expect(mockPrismaService.subTaskAssignee.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          subTaskId,
-          assigneeId: actorId,
-          assignedById: actorId,
-          status: AssignmentStatus.ACCEPTED,
-          assignedAt: expect.any(Date),
-          acceptedAt: expect.any(Date),
-        }),
-      });
-    });
-
-    it('should update status from ACCEPTED to COMPLETED for an existing record', async () => {
-      // 1. Mock 子任務查詢
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-
-      // 2. Mock 群組成員檢查
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
-        userId: actorId,
-      });
-
-      // 3. Mock 已有 ACCEPTED 紀錄
-      mockPrismaService.subTaskAssignee.findUnique.mockResolvedValueOnce({
-        status: AssignmentStatus.ACCEPTED,
-      });
-
-      // 4. Mock 更新
-      mockPrismaService.subTaskAssignee.update.mockResolvedValueOnce({
-        subTaskId,
-        status: 'COMPLETED',
-      });
-
-      // 執行
-      await tasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-        status: AssignmentStatus.COMPLETED,
-      });
-
-      // 斷言：檢查是否呼叫了 update 並帶入正確的時間戳記 (由 getAssigneeUpdateData 產生)
-      expect(mockPrismaService.subTaskAssignee.update).toHaveBeenCalledWith({
-        where: {
-          subTaskId_assigneeId: { subTaskId, assigneeId: actorId },
-        },
-        data: expect.objectContaining({
-          status: AssignmentStatus.COMPLETED,
-          completedAt: expect.any(Date),
-        }),
-      });
-    });
-
-    it('should throw forbidden error if trying to claim with a status other than ACCEPTED', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
-        userId: actorId,
-      });
-      mockPrismaService.subTaskAssignee.findUnique.mockResolvedValueOnce(null);
-
-      // 嘗試在沒有紀錄的情況下直接傳送 COMPLETED
-      await expect(
-        tasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-          status: AssignmentStatus.COMPLETED,
-        }),
-      ).rejects.toThrow();
-      // 這裡會拋出 TasksErrors.TaskForbiddenError
-    });
-
-    it('should throw error if user is not a member of the group', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-      // 模擬非成員
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
-
-      await expect(
-        tasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-          status: AssignmentStatus.ACCEPTED,
-        }),
-      ).rejects.toThrow();
-    });
-  });
 
   // -----------------------Assign Tasks------------------------
 
   // ───────────────────────────────────────────────────────────────────────────────
-  // updateSubTaskAssigneeStatus
+  // assignTask
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('assignTask', () => {
@@ -2286,139 +1462,21 @@ describe('TasksService', () => {
       assigneeId: 10,
       assignerId: 1,
       assignerName: 'test',
+      sendUrgentEmail: true,
       updatedBy: 'test',
     };
 
-    const mockTask = {
-      groupId: 2,
-      title: 'Test Task',
-      priority: 1,
-      description: 'desc',
-      dueAtUtc: new Date(),
-    };
-
-    const mockTaskWithGroupMember = {
-      id: payload.id,
-      groupId: 2,
-      group: {
-        id: 2,
-        name: 'Test Group',
-        members: [{ userId: payload.assigneeId }],
-      },
-    };
-
-    const mockAssigner = {
-      groupId: 1,
-      userId: 1,
-      role: 'OWNER',
-      joinedAt: '2025-12-01T02:58:24.612Z',
-      user: { name: 'test1' },
-      group: { name: 'test' },
-    };
-    it('should successfully assign a task using upsert (new assignment)', async () => {
-      // 1. Mock 任務查詢 (必須包含 select 裡的所有欄位)
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(mockTask);
-
-      // 2. Mock 指派者權限檢查 (第一次呼叫 groupMember)
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(
-        mockAssigner,
-      );
-
-      // 3. Mock 被指派者成員檢查 (第二次呼叫 groupMember)
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce({
-        userId: payload.assigneeId,
-        groupId: 2,
-      });
-
-      // 4. Mock Upsert 成功
-      mockPrismaService.taskAssignee.upsert.mockResolvedValueOnce({
-        taskId: payload.id,
-        assigneeId: payload.assigneeId,
-      });
-
-      // 5. 執行測試
+    it('should call taskAssignmentManager to assignTask', async () => {
+      mocktaskAssignmentManager.execute.mockResolvedValueOnce(true);
       await tasksService.assignTask(payload);
-
-      // 6. 修正斷言：確保與實作中的 select 一致
-      expect(mockPrismaService.task.findUnique).toHaveBeenCalledWith({
-        where: {
-          id: payload.id,
-          status: 'OPEN', // 實作代碼中有這行，測試必須對應
-        },
-        select: expect.any(Object),
+      expect(mocktaskAssignmentManager.execute).toHaveBeenCalledWith({
+        type: 'TASK',
+        targetId: 1,
+        assigneeId: 10,
+        assignerId: 1,
+        sendUrgentEmail: true,
+        updatedBy: 'test',
       });
-
-      // 檢查 Upsert
-      expect(mockPrismaService.taskAssignee.upsert).toHaveBeenCalled();
-    });
-
-    it('should throw TaskNotFoundError if task does not exist', async () => {
-      // 模擬任務不存在
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(null);
-
-      await expect(tasksService.assignTask(payload)).rejects.toThrow();
-    });
-
-    it('should throw GroupMemberNotFoundError if assignee is not in the group', async () => {
-      // 模擬任務存在，但 members 為空 (代表該人員不屬於此群組)
-      const taskWithoutMember = {
-        ...mockTaskWithGroupMember,
-        group: { ...mockTaskWithGroupMember.group, members: [] },
-      };
-      mockPrismaService.task.findUnique.mockResolvedValueOnce(
-        taskWithoutMember,
-      );
-
-      await expect(tasksService.assignTask(payload)).rejects.toThrow();
-
-      // 確保不會進到下一步的 upsert
-      expect(mockPrismaService.taskAssignee.upsert).not.toHaveBeenCalled();
     });
   });
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // getPendingAssignmentsDetails
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  // describe('getPendingAssignmentsDetails', () => {
-  //   const pendingTasks = [
-  //     {
-  //       task: {
-  //         id: 66,
-  //         priority: 1,
-  //         title: 'test',
-  //         dueAtUtc: '2025-12-17T00:28:00.000Z',
-  //       },
-  //       group: { id: 9, name: 'test group' },
-  //     },
-  //     {
-  //       task: {
-  //         id: 7,
-  //         priority: 2,
-  //         title: 'test',
-  //         dueAtUtc: '2025-12-17T00:28:00.000Z',
-  //       },
-  //       group: { id: 2, name: 'test group2' },
-  //     },
-  //   ];
-  //   const pendingSubTasks = [
-  //     {
-  //       subTask: {
-  //         id: 11,
-  //         priority: 3,
-  //         taskId: 14,
-  //         title: 'test sub',
-  //         dueAtUtc: null,
-  //       },
-  //     },
-  //   ];
-  //   // get pending tasks from userId
-  //   mockPrismaService.taskAssignee.findMany.mockResolvedValueOnce(pendingTasks);
-  //   mockPrismaService.subTaskAssignee.findMany.mockResolvedValueOnce(
-  //     pendingSubTasks,
-  //   );
-  //   const pendingDetails = await tasksService.getPendingAssignmentsDetails(
-  //     user.id,
-  //   );
-  // });
 });

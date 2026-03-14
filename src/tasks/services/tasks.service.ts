@@ -4,40 +4,30 @@ import { UsersService } from 'src/users/users.service';
 import {
   AssignTaskPayload,
   GroupMemberInfo,
-  SubTaskAddPayload,
-  SubTaskWithAssignees,
   TasksAddPayload,
   TaskUpdatePayload,
   TaskWithAllDetails,
   UpdateStatusOpts,
-  InternalAssignOptions,
   ListTasksResult,
   TaskUpdateContext,
   TaskCloseContext,
-} from './types/tasks';
+  OrderKey,
+} from '../types/tasks';
 import {
   AssignmentStatus,
-  GroupRole,
   Prisma,
   Task as TaskModel,
 } from 'src/generated/prisma/client';
-import type {
-  SubTaskAssignee,
-  Task,
-  TaskAssignee,
-} from 'src/generated/prisma/client';
-import { TaskStatus } from './types/enum';
-import { TasksErrors, UsersErrors } from 'src/errors';
+import type { Task } from 'src/generated/prisma/client';
+import { TaskStatus } from '../types/enum';
+import { TasksErrors } from 'src/errors';
 import { dayBoundsUtc } from 'src/common/helpers/util';
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
-import { ConfigService } from '@nestjs/config';
-import { MailService } from 'src/mail/mail.service';
-import { SecurityService } from 'src/security/security.service';
-import { TasksGateWay } from './tasks.gateway';
 import { PageDto } from 'src/common/dto/page.dto';
 import { PageMetaDto } from 'src/common/dto/page-meta.dto';
 import { CurrentUser } from 'src/common/types/current-user';
-import { UserAccessInfo } from 'src/auth/types/auth';
+import { TasksUtils } from '../tasks.util';
+import { TasksHelperService } from './helper.service';
+import { TaskAssignmentManager } from './task-assignment.service';
 
 /**
  * TODO:
@@ -57,70 +47,14 @@ type ListTasksFilters = {
   range?: { startUtc: Date; endUtc: Date }; // When due day includes range
 };
 
-type OrderKey = 'dueAtAscNullsLast' | 'createdAsc' | 'expiredPriority';
-
-type TaskModelFields = Pick<
-  Prisma.TaskUpdateInput,
-  | 'title'
-  | 'description'
-  | 'location'
-  | 'priority'
-  | 'allDay'
-  | 'allDayLocalDate'
-  | 'dueAtUtc'
-  | 'sourceTimeZone'
->;
-type SubTaskModelFields = Pick<
-  Prisma.SubTaskUpdateInput,
-  | 'title'
-  | 'description'
-  | 'location'
-  | 'priority'
-  | 'allDay'
-  | 'allDayLocalDate'
-  | 'dueAtUtc'
-  | 'sourceTimeZone'
->;
-
 @Injectable()
 export class TasksService {
   constructor(
-    private prismaService: PrismaService,
-    private usersService: UsersService,
-    private readonly mailService: MailService,
-    private readonly config: ConfigService,
-    private readonly securityService: SecurityService,
-    private readonly tasksGateway: TasksGateWay,
+    private readonly prismaService: PrismaService,
+    private readonly usersService: UsersService,
+    private readonly tasksHelper: TasksHelperService,
+    private readonly taskAssignmentManager: TaskAssignmentManager,
   ) {}
-  private static readonly TASK_STATUS_MAP: Record<TaskStatus, TaskStatus[]> = {
-    [TaskStatus.OPEN]: [TaskStatus.CLOSED, TaskStatus.ARCHIVED],
-    [TaskStatus.CLOSED]: [TaskStatus.OPEN, TaskStatus.ARCHIVED],
-    [TaskStatus.ARCHIVED]: [TaskStatus.OPEN],
-  };
-
-  private static readonly ASSIGNMENT_RULES: Record<
-    AssignmentStatus,
-    AssignmentStatus[]
-  > = {
-    [AssignmentStatus.PENDING]: [
-      AssignmentStatus.ACCEPTED,
-      AssignmentStatus.DECLINED,
-      AssignmentStatus.SKIPPED,
-    ],
-    [AssignmentStatus.ACCEPTED]: [
-      AssignmentStatus.COMPLETED,
-      AssignmentStatus.DECLINED,
-      AssignmentStatus.PENDING,
-      AssignmentStatus.DROPPED,
-    ],
-    [AssignmentStatus.DECLINED]: [
-      AssignmentStatus.ACCEPTED,
-      AssignmentStatus.PENDING,
-    ],
-    [AssignmentStatus.SKIPPED]: [],
-    [AssignmentStatus.DROPPED]: [],
-    [AssignmentStatus.COMPLETED]: [],
-  };
 
   async createTask(
     payload: TasksAddPayload,
@@ -145,7 +79,7 @@ export class TasksService {
     const userTz = user.timeZone;
 
     // 2. Process temporal logic based on task type
-    const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
+    const { dueAtUtc, allDayLocalDate } = TasksUtils.calculateTaskDates(
       payload.allDay,
       payload.dueDate,
       payload.dueTime,
@@ -355,7 +289,7 @@ export class TasksService {
       });
 
       // 真正的群組管理員身分
-      isGroupAdmin = member ? this.isAdminish(member.role) : false;
+      isGroupAdmin = member ? TasksUtils.isAdminish(member.role) : false;
     }
 
     return {
@@ -490,7 +424,7 @@ export class TasksService {
       );
     }
 
-    const commonData = this.getCommonUpdateData<Prisma.TaskUpdateInput>(
+    const commonData = TasksUtils.getCommonUpdateData<Prisma.TaskUpdateInput>(
       payload,
       timeZone,
     );
@@ -502,7 +436,7 @@ export class TasksService {
         where: { id },
         data,
       });
-      this.notifyTaskChange(task.id, userId, userName, 'UPDATED');
+      this.tasksHelper.notifyTaskChange(task.id, userId, userName, 'UPDATED');
       return task;
     } catch (e) {
       if (
@@ -600,7 +534,7 @@ export class TasksService {
         });
       } else {
         // 2. Deal with status changing (assigned record found)
-        const isLegal = this.isValidAssignmentTransition(
+        const isLegal = TasksUtils.isValidAssignmentTransition(
           currentAssignee.status,
           next,
           task.status,
@@ -615,13 +549,13 @@ export class TasksService {
 
         await tx.taskAssignee.update({
           where: { taskId_assigneeId: { taskId: id, assigneeId: actorId } },
-          data: this.getAssigneeUpdateData(next, reason),
+          data: TasksUtils.getAssigneeUpdateData(next, reason),
         });
 
         shouldNotify = true;
       }
       if (shouldNotify) {
-        this.notifyTaskChange(
+        this.tasksHelper.notifyTaskChange(
           id,
           actorId,
           updatedBy!,
@@ -757,7 +691,7 @@ export class TasksService {
           },
         });
       }
-      this.notifyTaskChange(id, actorId, userName, 'UPDATED');
+      this.tasksHelper.notifyTaskChange(id, actorId, userName, 'UPDATED');
       return updatedTask;
     });
   }
@@ -804,7 +738,7 @@ export class TasksService {
           status: TaskStatus.ARCHIVED,
         },
       });
-      this.notifyTaskChange(id, actorId, userName, 'UPDATED');
+      this.tasksHelper.notifyTaskChange(id, actorId, userName, 'UPDATED');
     });
   }
 
@@ -865,7 +799,7 @@ export class TasksService {
       if (originalStatus === TaskStatus.CLOSED) {
         await this.handleRestoreFromClosed(id, tx);
       }
-      this.notifyTaskChange(id, actorId, userName, 'UPDATE');
+      this.tasksHelper.notifyTaskChange(id, actorId, userName, 'UPDATE');
     });
   }
 
@@ -1014,7 +948,10 @@ export class TasksService {
     // 3) State Transition Rules (State Machine)
     // -----------------------------------------------------------
     const from = task.status;
-    const isLegalTransition = this.taskStatusCanTransition(from, newStatus);
+    const isLegalTransition = TasksUtils.taskStatusCanTransition(
+      from,
+      newStatus,
+    );
 
     if (!isLegalTransition) {
       throw TasksErrors.TaskForbiddenError.byActorOnTask(
@@ -1116,7 +1053,8 @@ export class TasksService {
      * Enhanced with "Smooth Close" logic to support seamless UI transitions.
      */
     const status = filters.status ?? ['OPEN'];
-    const { startUtc, endUtc, todayDateOnlyUtc } = this.getTaskBounds(timeZone);
+    const { startUtc, endUtc, todayDateOnlyUtc } =
+      TasksUtils.getTaskBounds(timeZone);
     const due = new Set(filters.due ?? []);
     const OR: Prisma.TaskWhereInput[] = [];
 
@@ -1151,7 +1089,7 @@ export class TasksService {
     // 2. Database Query with Aggregated Counts
     const items = await this.prismaService.task.findMany({
       where,
-      orderBy: this.resolveOrderBy(orderByKey),
+      orderBy: TasksUtils.resolveOrderBy(orderByKey),
       take,
       include: {
         assignees: {
@@ -1217,826 +1155,19 @@ export class TasksService {
     };
   }
 
-  // ----------------- SubTask -----------------
-
-  async createSubTask(payload: SubTaskAddPayload): Promise<void> {
-    /**
-     * Creates a new sub-task under a specified parent task.
-     * * @description
-     * This method performs the following workflow:
-     * 1. **Data Retrieval**: Fetches parent task metadata and the actor's time zone settings in parallel.
-     * 2. **Authorization**:
-     * - For personal tasks: Ensures only the task owner can add sub-tasks.
-     * - For group tasks: Validates that the actor is a registered member of the group.
-     * 3. **Temporal Processing**: Delegates local-to-UTC time conversion and all-day date handling
-     * to the specialized `calculateTaskDates` helper.
-     * 4. **Persistence**: Creates the sub-task record in the database using Prisma.
-     * 5. **Event Emission**: Triggers a real-time notification to inform relevant parties of the new sub-task.
-     * * @param payload - The data transfer object (DTO) containing sub-task details and actor information.
-     * @throws {TasksErrors.TaskNotFoundError} If the parent task does not exist.
-     * @throws {UsersErrors.UserNotFoundError} If the actor (user) cannot be found.
-     * @throws {TasksErrors.TaskForbiddenError} If the user lacks the necessary permissions.
-     * @returns {Promise<void>} Resolves when the sub-task is successfully created and notified.
-     */
-
-    // 1. Get parent task info and acotr time zone for time transition
-    const [parentTask, actor] = await Promise.all([
-      this.prismaService.task.findUnique({
-        where: { id: payload.parentTaskId },
-        select: {
-          id: true,
-          ownerId: true,
-          groupId: true,
-        },
-      }),
-      this.prismaService.user.findUnique({
-        where: { id: payload.actorId },
-        select: { id: true, timeZone: true },
-      }),
-    ]);
-
-    if (!parentTask) {
-      throw TasksErrors.TaskNotFoundError.byId(
-        payload.actorId,
-        payload.parentTaskId,
-      );
-    }
-
-    if (!actor) {
-      throw UsersErrors.UserNotFoundError.byId(payload.actorId);
-    }
-
-    const actorTz = actor.timeZone;
-
-    // 2. Permission check
-    if (!parentTask.groupId) {
-      // Personaly task only allowed owner add subTasks
-      if (parentTask.ownerId !== actor.id) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          payload.actorId,
-          payload.parentTaskId,
-          'CREATE_SUBTASK_ON_PERSONAL_TASK_NOT_OWNER',
-        );
-      }
-    } else {
-      // Group task: check member role
-      const member = await this.prismaService.groupMember.findUnique({
-        where: {
-          groupId_userId: {
-            groupId: parentTask.groupId,
-            userId: payload.actorId,
-          },
-        },
-      });
-
-      if (!member) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          payload.actorId,
-          payload.parentTaskId,
-          'CREATE_SUBTASK_ON_GROUP_TASK_NOT_MEMBER',
-        );
-      }
-    }
-
-    // 3. Core daytime logic (deal with infinite)
-    const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
-      payload.allDay,
-      payload.dueDate,
-      payload.dueTime,
-      actorTz,
-    );
-
-    // 4. Build prisma obj
-    const data: Prisma.SubTaskCreateInput = {
-      title: payload.title,
-      description: payload.description,
-      location: payload.location,
-      status: payload.status || 'OPEN',
-      priority: payload.priority ? Number(payload.priority) : 3,
-      allDay: !!payload.allDay,
-      dueAtUtc,
-      allDayLocalDate,
-      task: { connect: { id: parentTask.id } },
-    };
-
-    // Create subTask
-    await this.prismaService.subTask.create({ data });
-
-    // 5. Send notification
-    this.notifyTaskChange(
-      parentTask.id,
-      payload.actorId,
-      payload.updatedBy,
-      'SUBTASK_CREATED',
-    );
-  }
-
-  async getSubTaskForViewer(
-    parentId: number,
-    id: number,
-    actorId: number,
-  ): Promise<{
-    subTask: SubTaskWithAssignees;
-    isAdminish: boolean;
-    groupMembers: GroupMemberInfo[];
-  }> {
-    /**
-     * Retrieves comprehensive sub-task details tailored for the current viewer.
-     * * @description
-     * This method acts as the data provider for the sub-task detail page, performing:
-     * 1. **Authorization**: Validates if the `actorId` has permission to view the parent task.
-     * - For Personal Tasks: Access is restricted to the owner.
-     * - For Group Tasks: Access is restricted to group members.
-     * 2. **Role Determination**: Calculates `isAdminish` status to control administrative UI
-     * elements (e.g., editing, force-closing).
-     * 3. **Data Fetching**: Retrieves the sub-task with its assignees, audit info (who closed it),
-     * and parent task context.
-     * 4. **Contextual Enrichment**: For group tasks, it aggregates a list of potential assignees
-     * (group members) for the "Assign Member" dropdown.
-     * * @param parentId - The ID of the parent task.
-     * @param id - The ID of the sub-task to be retrieved.
-     * @param actorId - The ID of the user requesting the data.
-     * * @throws {TasksErrors.TaskNotFoundError} If the parent task or sub-task does not exist.
-     * @throws {TasksErrors.TaskForbiddenError} If the user is not authorized to view the task.
-     * * @returns {Promise<{
-     * subTask: SubTaskWithAssignees;
-     * isAdminish: boolean;
-     * groupMembers: GroupMemberInfo[];
-     * }>} A structured object containing task data and UI control flags.
-     */
-
-    // 1. Get parent task info
-    const parentTask = await this.prismaService.task.findUnique({
-      where: { id: parentId },
-      select: { id: true, ownerId: true, groupId: true },
-    });
-
-    if (!parentTask) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, parentId);
-    }
-
-    // 2. Permission check and determine if Adminish
-    let isAdminish = false;
-
-    if (!parentTask.groupId) {
-      // Personal task: only reveal info to owner, owner is adminish
-      if (parentTask.ownerId !== actorId) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          id,
-          'NOT_OWNER',
-        );
-      }
-      isAdminish = true;
-    } else {
-      // Group task: check if a member and role
-      const member = await this.prismaService.groupMember.findUnique({
-        where: {
-          groupId_userId: {
-            groupId: parentTask.groupId,
-            userId: actorId,
-          },
-        },
-        select: { role: true },
-      });
-
-      if (!member) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          id,
-          'NOT_MEMBER',
-        );
-      }
-
-      isAdminish = this.isAdminish(member.role);
-    }
-
-    // 3. Core search：get subTask details
-    const subTask = await this.prismaService.subTask.findUnique({
-      where: { id },
-      include: {
-        task: {
-          select: { id: true, groupId: true },
-        },
-        closedBy: {
-          select: { id: true, name: true },
-        },
-        assignees: {
-          include: {
-            assignee: { select: { id: true, name: true, email: true } },
-            assignedBy: { select: { id: true, name: true, email: true } },
-          },
-          orderBy: { status: 'asc' },
-        },
-      },
-    });
-
-    if (!subTask) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    // 4. Get member list for drop list
-    let groupMembers: GroupMemberInfo[] = [];
-    if (parentTask.groupId) {
-      const members = await this.prismaService.groupMember.findMany({
-        where: { groupId: parentTask.groupId },
-        include: {
-          user: { select: { id: true, name: true } },
-        },
-      });
-
-      groupMembers = members.map((m) => ({
-        id: m.user.id,
-        userName: m.user.name,
-      }));
-    }
-
-    return {
-      subTask: subTask as SubTaskWithAssignees,
-      isAdminish,
-      groupMembers,
-    };
-  }
-
-  async updateSubTask(
-    id: number,
-    actorId: number,
-    actorTz: string,
-    payload: TaskUpdatePayload,
-  ): Promise<void> {
-    /**
-     * Updates a sub-task's details with integrated permission and temporal logic.
-     *
-     * @description
-     * This method implements a secure update workflow:
-     * 1. **Data Consolidation**: Uses a single nested query to retrieve the sub-task, its parent task,
-     * and the actor's group membership status to minimize database round-trips.
-     * 2. **Authorization**:
-     * - Personal Tasks: Strict ownership check (Actor must be the parent task owner).
-     * - Group Tasks: Membership check (Any group member can update sub-tasks to foster collaboration).
-     * 3. **Temporal Normalization**: Leverages `getCommonUpdateData` to handle time zone-to-UTC
-     * conversions for due dates.
-     * 4. **Event Propagation**: Dispatches a WebSocket notification via `notifyTaskChange` to
-     * synchronize UI states for all users in the same task room.
-     *
-     * @param id - The unique identifier of the sub-task.
-     * @param actorId - The user performing the update.
-     * @param actorTz - The IANA time zone string of the actor.
-     * @param payload - The update DTO containing partial fields (title, priority, etc.).
-     *
-     * @throws {TasksErrors.TaskNotFoundError} If the sub-task doesn't exist or permissions are denied.
-     * @returns {Promise<void>} Resolves when the update and notification are complete.
-     */
-
-    // 1. Get subTask, parent task and role of the actor
-    const subTask = await this.prismaService.subTask.findUnique({
-      where: { id },
-      include: {
-        task: {
-          select: {
-            id: true,
-            ownerId: true,
-            groupId: true,
-            group: {
-              select: {
-                members: {
-                  where: { userId: actorId },
-                  select: { role: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // 2. Basic checking
-    if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-
-    const parentTask = subTask.task;
-    const groupMember = parentTask.group?.members[0];
-
-    // 3. Permission checking
-    // Personal task: must be owner
-    if (!parentTask.groupId && parentTask.ownerId !== actorId) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    // Group task: must be member
-    if (parentTask.groupId && !groupMember) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    // 4. Build data and time
-    const data = this.getCommonUpdateData<Prisma.SubTaskUpdateInput>(
-      payload,
-      actorTz,
-    );
-
-    // 5. Update
-    await this.prismaService.subTask.update({
-      where: { id },
-      data,
-    });
-
-    // 6. Notification
-    this.notifyTaskChange(
-      subTask.taskId,
-      actorId,
-      'Someone',
-      'SUBTASK_UPDATED',
-    );
-  }
-
-  async closeSubTask(id: number, actorId: number) {
-    // TODO:
-    // 1. Consider if it's a must to split the checking subTask logic
-    // since it's pretty much the same like updateSubTask
-    // 2. Here is no 'force close' like close the parent Task in the frontend and here
-    const subTask = await this.prismaService.subTask.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        task: {
-          select: {
-            id: true,
-            ownerId: true,
-            groupId: true,
-            group: {
-              select: {
-                members: { where: { userId: actorId }, select: { role: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-
-    const parentTask = subTask.task;
-    const groupMember = parentTask.group?.members[0];
-
-    if (!parentTask.groupId && parentTask.ownerId !== actorId) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    if (parentTask.groupId && !groupMember) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    return this.prismaService.subTask.update({
-      where: { id },
-      data: {
-        status: TaskStatus.CLOSED,
-        closedAt: new Date(),
-        closedById: actorId,
-      },
-    });
-  }
-
-  async updateSubTaskStatus(
-    subTaskId: number,
-    opts: UpdateStatusOpts,
-  ): Promise<void> {
-    // TODO:
-    // 1. Should check authentication, there is another reason to pull out
-    // the checking authentication as decorater and separate the service.
-    // 2.Logic about close task should be removed since we have closeSubTask
-    /**
-     * Updates the status of a sub-task with state transition validation.
-     * * @param subTaskId - The unique identifier of the sub-task.
-     * @param opts - Configuration object containing the new status and actor's ID.
-     * * @description
-     * This method manages simple state transitions for sub-tasks. It ensures that
-     * the requested status change adheres to the defined Task State Machine rules.
-     * * @throws {TasksErrors.TaskNotFoundError}
-     * Thrown if the sub-task does not exist or the actor is unauthorized.
-     * * @throws {TasksErrors.TaskForbiddenError}
-     * Thrown if the status transition is logically invalid (e.g., CLOSED to IN_PROGRESS).
-     * * @todo
-     * 1. Extract Authorization: Pull out the authentication logic into a dedicated
-     * Access Control Service or Decorator to align with the Single Responsibility Principle (SRP).
-     * 2. Logic Consolidation: Delegate terminal state logic (CLOSED) to `closeSubTask`
-     * to avoid logic duplication and ensure consistent side-effect management.
-     */
-    const { newStatus, actorId } = opts;
-
-    return this.prismaService.$transaction(async (tx) => {
-      // 1. Get subTask
-      const subTask = await tx.subTask.findUnique({
-        where: { id: subTaskId },
-        select: {
-          id: true,
-          status: true,
-        },
-      });
-
-      if (!subTask)
-        throw TasksErrors.TaskNotFoundError.byId(actorId, subTaskId);
-
-      // 2. Check if it is a legal status transition
-      const from = subTask.status;
-      const legal = this.taskStatusCanTransition(from, newStatus);
-
-      if (!legal) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
-          `ILLEGAL_SUBTASK_TRANSITION_${from}_TO_${newStatus}`,
-        );
-      }
-
-      // 4) Build update data
-      const data: Prisma.SubTaskUpdateInput = { status: newStatus };
-
-      if (newStatus === TaskStatus.CLOSED) {
-        Object.assign(data, {
-          closedAt: new Date(),
-          closedById: actorId,
-        });
-      } else if (newStatus === TaskStatus.OPEN) {
-        Object.assign(data, {
-          closedAt: null,
-          closedById: null,
-        });
-      }
-
-      // 5) update
-      await tx.subTask.update({ where: { id: subTaskId }, data });
-    });
-  }
-
-  async restoreSubTask(id: number) {
-    /**
-     * A method for restore closed or archived task
-     *
-     * *@todo
-     * Should check authentication
-     */
-    return this.prismaService.subTask.update({
-      where: { id },
-      data: {
-        status: TaskStatus.OPEN,
-        closedAt: null,
-        closedById: null,
-      },
-    });
-  }
-
-  // subtask指派狀態更新, self-assign, claim相關
-  async updateSubTaskAssigneeStatus(
-    subTaskId: number,
-    actorId: number,
-    dto: { status: AssignmentStatus; reason?: string },
-    updatedBy: string | null = null,
-  ) {
-    /**
-     * Manages sub-task assignment lifecycle, supporting both "Auto-Claiming" and status reporting.
-     * * @param subTaskId - The unique identifier of the sub-task.
-     * @param actorId - The ID of the user performing the status update.
-     * @param dto - Data containing the target AssignmentStatus and an optional reason.
-     * @param updatedBy - (Optional) The name of the actor for notification purposes.
-     * * @description
-     * This method acts as the primary interface for users to interact with sub-task assignments:
-     * 1. **Auto-Claiming**: If no assignment record exists and the status is set to 'ACCEPTED',
-     * the system automatically creates a new assignment for the actor.
-     * 2. **State Management**: If a record exists, it validates the transition against the
-     * Assignment State Machine before updating.
-     * * @constraints
-     * - Restricted to **Group Tasks** only; personal sub-tasks do not support assignment tracking.
-     * - Only valid **Group Members** can claim or update assignment statuses.
-     * * @returns {Promise<{ ok: boolean }>} A confirmation object upon successful transaction.
-     * * @throws {TasksErrors.TaskNotFoundError} If the sub-task does not exist.
-     * @throws {TasksErrors.TaskForbiddenError}
-     * - 'ASSIGNEE_STATUS_FOR_PERSONAL_SUBTASK': Attempting to assign on a personal task.
-     * - 'ASSIGNEE_STATUS_FOR_NON_MEMBER': Actor is not a member of the task's group.
-     * - 'ASSIGNEE_STATUS_ILLEGAL_TRANSITION': The state transition violates business rules.
-     * @todo
-     * I think I should separate self-claim and assigned subTask status report to 2 methods
-     */
-    const { status: next, reason } = dto;
-
-    return this.prismaService.$transaction(async (tx) => {
-      // 1. Get subTasks and parent task info
-      const subTask = await tx.subTask.findUnique({
-        where: { id: subTaskId },
-        include: {
-          task: { select: { id: true, groupId: true, status: true } },
-        },
-      });
-
-      if (!subTask)
-        throw TasksErrors.TaskNotFoundError.byId(actorId, subTaskId);
-
-      // Safety check: only group task supports assigned-subtask status updating
-      if (!subTask.task.groupId) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
-          'ASSIGNEE_STATUS_FOR_PERSONAL_SUBTASK',
-        );
-      }
-
-      // Check if actor is really a group member
-      const member = await tx.groupMember.findUnique({
-        where: {
-          groupId_userId: {
-            groupId: subTask.task.groupId,
-            userId: actorId,
-          },
-        },
-        select: { userId: true },
-      });
-
-      if (!member) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
-          'ASSIGNEE_STATUS_FOR_NON_MEMBER',
-        );
-      }
-
-      // 2. Check if there is a subTask assigning record
-      const assignee = await tx.subTaskAssignee.findUnique({
-        where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
-        select: { status: true },
-      });
-
-      // -----------------------------------------------------------
-      // 3. Self-claim logic: no subTask assigning record
-      // and want to turn the status to ACCEPTED
-      // -----------------------------------------------------------
-      if (!assignee) {
-        if (next !== AssignmentStatus.ACCEPTED) {
-          throw TasksErrors.TaskForbiddenError.byActorOnTask(
-            actorId,
-            subTaskId,
-            'ASSIGNEE_STATUS_ILLEGAL_WITHOUT_ASSIGNMENT',
-          );
-        }
-
-        await tx.subTaskAssignee.create({
-          data: {
-            subTaskId,
-            assigneeId: actorId,
-            assignedById: actorId,
-            status: AssignmentStatus.ACCEPTED,
-            assignedAt: new Date(),
-            acceptedAt: new Date(),
-          },
-        });
-
-        this.notifyTaskChange(
-          subTask.task.id,
-          actorId,
-          updatedBy!,
-          'SUBTASK_CLAIMED',
-        );
-
-        return { ok: true };
-      }
-
-      // -----------------------------------------------------------
-      // 4. Check if status is legal to change
-      // -----------------------------------------------------------
-      const prev = assignee.status;
-      const isLegal = this.isValidAssignmentTransition(
-        prev,
-        next,
-        subTask.status,
-      );
-
-      if (!isLegal) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
-          `ASSIGNEE_STATUS_ILLEGAL_TRANSITION_${prev}_TO_${next}`,
-        );
-      }
-
-      // -----------------------------------------------------------
-      // 5. Update
-      // -----------------------------------------------------------
-      const updateData = this.getAssigneeUpdateData(next, reason);
-
-      await tx.subTaskAssignee.update({
-        where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
-        data: updateData,
-      });
-
-      return { ok: true };
-    });
-  }
-
   // ------------------ Assign task -------------------
 
   async assignTask(payload: AssignTaskPayload): Promise<boolean | void> {
-    const { assignment, mailSent } = await this.handleAssignment({
+    const mailSent = await this.taskAssignmentManager.execute({
       type: 'TASK',
       targetId: payload.id,
       assigneeId: payload.assigneeId,
       assignerId: payload.assignerId,
       sendUrgentEmail: payload.sendUrgentEmail,
+      updatedBy: payload.updatedBy,
     });
-
-    this.notifyTaskChange(
-      payload.id,
-      payload.assignerId,
-      payload.updatedBy!,
-      'ASSIGNMENT_UPDATED',
-    );
 
     return mailSent;
-  }
-
-  async assignSubTask(payload: AssignTaskPayload) {
-    return this.handleAssignment({
-      type: 'SUBTASK',
-      targetId: payload.id,
-      assigneeId: payload.assigneeId,
-      assignerId: payload.assignerId,
-      sendUrgentEmail: payload.sendUrgentEmail,
-    });
-  }
-
-  private async handleAssignment(options: InternalAssignOptions): Promise<{
-    assignment: TaskAssignee | SubTaskAssignee;
-    mailSent: boolean;
-  }> {
-    /**
-     * Internal orchestrator for handling task and sub-task assignments.
-     * * @param options - Configuration for the assignment process, including target type and notification flags.
-     * * @description
-     * This private method centralizes the assignment logic for both high-level Tasks and Sub-tasks:
-     * 1. **Resource Discovery**: Resolves group context and metadata based on the target type.
-     * 2. **Dual-Factor Authentication**:
-     * - Validates that the Assigner has administrative privileges (Admin/Owner).
-     * - Ensures the Assignee is a valid member of the associated group.
-     * 3. **Smart Persistence**: Performs an `upsert` operation. If the actor assigns a task to
-     * themselves, the status is automatically set to 'ACCEPTED'; otherwise, it remains 'PENDING'.
-     * 4. **Urgent Notification**: Optionally triggers an email dispatch with deep-linking to the specific task.
-     * * @throws {TasksErrors.TaskNotFoundError} If the target resource or group context is missing.
-     * @throws {TasksErrors.TaskForbiddenError} If a non-administrative member attempts to assign tasks.
-     * * @returns {Promise<TaskAssignee | SubTaskAssignee>} The resulting assignment record.
-     * * @returns {Promise<boolean>} A flag indicating whether an urgent email notification was sent.
-     * * @todo
-     * 1. Currently this method can assign self, this is duplicated with self-claim.
-     * But to fix this problem, we need to change a lot of things
-     * (frontend and get member list api).
-     * I think using create is more logical than upsert. The reason why I use upsert
-     * is that once an assigner saw an assignee set task to 'completed',
-     * but actually not reaching the criteria. Assigner can use this method to
-     * 'send back' the task and makes the assignee to re-do it. But this is actually
-     * a bad idea since the assigning history will be washed away.
-     * To change this behavior needs to develop other api and more frontned chanings.
-     */
-
-    const { type, targetId, assigneeId, assignerId, sendUrgentEmail } = options;
-
-    // 1. Get basic infomation from type(Task or subTask)
-    let groupId: number;
-    let title: string;
-    let priority: number;
-    let description: string | null;
-    let dueAt: Date | null;
-    let redirectTaskId: number;
-    let mailSent: boolean = false;
-
-    if (type === 'TASK') {
-      const task = await this.prismaService.task.findUnique({
-        where: { id: targetId, status: TaskStatus.OPEN },
-        select: {
-          groupId: true,
-          title: true,
-          priority: true,
-          description: true,
-          dueAtUtc: true,
-        },
-      });
-
-      if (!task || !task.groupId)
-        throw TasksErrors.TaskNotFoundError.byId(assignerId, targetId);
-
-      groupId = task.groupId;
-      title = task.title;
-      priority = task.priority;
-      description = task.description;
-      dueAt = task.dueAtUtc;
-      redirectTaskId = targetId;
-    } else {
-      const sub = await this.prismaService.subTask.findUnique({
-        where: { id: targetId, status: TaskStatus.OPEN },
-        include: { task: { select: { id: true, groupId: true } } },
-      });
-
-      if (!sub || !sub.task.groupId)
-        throw TasksErrors.TaskNotFoundError.byId(assignerId, targetId);
-
-      groupId = sub.task.groupId;
-      title = sub.title;
-      priority = sub.priority;
-      description = sub.description;
-      dueAt = sub.dueAtUtc;
-      redirectTaskId = sub.task.id;
-    }
-
-    // 2. Assigner authentication check
-    const assigner = await this.prismaService.groupMember.findUnique({
-      where: { groupId_userId: { groupId, userId: assignerId } },
-      include: {
-        user: { select: { name: true } },
-        group: { select: { name: true } },
-      },
-    });
-
-    if (!assigner || assigner.role === GroupRole.MEMBER) {
-      throw TasksErrors.TaskForbiddenError.byActorOnTask(
-        assignerId,
-        targetId,
-        'ONLY_ADMINISH_CAN_ASSIGN_TASKS',
-      );
-    }
-
-    // 3. Assignee authentication check
-    const isAssigneeMember = await this.prismaService.groupMember.findUnique({
-      where: { groupId_userId: { groupId, userId: assigneeId } },
-    });
-
-    if (!isAssigneeMember)
-      throw TasksErrors.TaskNotFoundError.byId(assignerId, targetId);
-
-    // 4. Do upsert
-    const targetStatus =
-      assigneeId === assignerId
-        ? AssignmentStatus.ACCEPTED
-        : AssignmentStatus.PENDING;
-
-    let assignment;
-    if (type === 'TASK') {
-      assignment = await this.prismaService.taskAssignee.upsert({
-        where: { taskId_assigneeId: { taskId: targetId, assigneeId } },
-        update: {
-          assignedById: assignerId,
-          status: AssignmentStatus.PENDING,
-          updatedAt: new Date(),
-        },
-        create: {
-          taskId: targetId,
-          assigneeId,
-          assignedById: assignerId,
-          status: AssignmentStatus.PENDING,
-        },
-      });
-    } else {
-      assignment = await this.prismaService.subTaskAssignee.upsert({
-        where: { subTaskId_assigneeId: { subTaskId: targetId, assigneeId } },
-        update: {
-          assignedById: assignerId,
-          status: targetStatus,
-          updatedAt: new Date(),
-        },
-        create: {
-          subTaskId: targetId,
-          assigneeId,
-          assignedById: assignerId,
-          status: targetStatus,
-        },
-      });
-    }
-
-    // 5. Email notifaication
-    if (sendUrgentEmail) {
-      const assigneeUser = await this.prismaService.user.findUnique({
-        where: { id: assigneeId },
-        select: { email: true, name: true },
-      });
-
-      if (assigneeUser?.email) {
-        const taskUrl =
-          type === 'TASK'
-            ? `${this.config.get('BASE_URL')}tasks/${targetId}`
-            : `${this.config.get('BASE_URL')}tasks/${redirectTaskId}/sub-tasks/${targetId}`;
-
-        mailSent = await this.mailService.sendTaskAssignNotification({
-          assigneeId,
-          assigneeName: assigneeUser.name,
-          email: assigneeUser.email,
-          assignerName: assigner.user.name,
-          taskId: type === 'TASK' ? targetId : redirectTaskId,
-          subTaskId: type === 'SUBTASK' ? targetId : undefined,
-          groupName: assigner.group.name,
-          taskTitle: title,
-          priority: this.mapPriorityToString(priority),
-          dueAt: dueAt || null,
-          description: description || 'No description provided.',
-          taskUrl,
-        });
-      }
-    }
-
-    return { assignment, mailSent };
   }
 
   // ------------- Notifications --------------------
@@ -2125,272 +1256,5 @@ export class TasksService {
         return timeA - timeB;
       })
       .slice(0, 20);
-  }
-
-  async executeAssignmentDecision(
-    token: string,
-    status: AssignmentStatus,
-  ): Promise<{
-    taskId: number;
-    subTaskId?: number;
-    accessPayload: UserAccessInfo;
-  }> {
-    // Verify token
-    const payload = await this.securityService.verifyTaskDecisionToken(token);
-    const user = await this.usersService.findById(payload.userId);
-
-    if (!user) {
-      throw UsersErrors.UserNotFoundError.byId(payload.userId);
-    }
-
-    const accessPayload: UserAccessInfo = {
-      sub: user.id,
-      userName: user.name,
-      email: user.email,
-      timeZone: user.timeZone,
-    };
-
-    // If it's a subTask assignment
-    if (payload.subTaskId) {
-      await this.updateSubTaskAssigneeStatus(
-        payload.subTaskId,
-        payload.userId,
-        {
-          status,
-        },
-      );
-      return {
-        taskId: payload.taskId,
-        subTaskId: payload.subTaskId,
-        accessPayload,
-      };
-    }
-
-    // If it's a task assignment
-    await this.updateAssigneeStatus(payload.taskId, payload.userId, {
-      status,
-    });
-
-    return { taskId: payload.taskId, accessPayload };
-  }
-
-  //  ----------------- Common helper -----------------
-
-  private getCommonUpdateData<T extends TaskModelFields | SubTaskModelFields>(
-    payload: TaskUpdatePayload,
-    timeZone: string,
-  ): T {
-    const data: any = {};
-
-    if (payload['title'] !== undefined) {
-      data['title'] = payload.title;
-    }
-    if (payload['description'] !== undefined) {
-      data['description'] = payload.description;
-    }
-    if (payload['location'] !== undefined) {
-      data['location'] = payload.location;
-    }
-    if (payload['priority'] !== undefined) {
-      data['priority'] = payload.priority;
-    }
-
-    // Deal with date and time
-    const { dueAtUtc, allDayLocalDate } = this.calculateTaskDates(
-      !!payload.allDay,
-      payload.dueDate,
-      payload.dueTime,
-      timeZone,
-    );
-
-    if (payload.dueDate !== undefined) {
-      data.allDay = !!payload.allDay;
-      data.dueAtUtc = dueAtUtc;
-      data.allDayLocalDate = allDayLocalDate;
-    }
-
-    return data as T;
-  }
-
-  private getAssigneeUpdateData(next: AssignmentStatus, reason?: string) {
-    /**
-     * Generates the structured data object for updating TaskAssignee records.
-     * * @param next - The target AssignmentStatus to transition to.
-     * @param reason - An optional reason, typically required when the status is 'DECLINED'.
-     * * @description
-     * This helper method encapsulates the side effects of status transitions:
-     * 1. **State-Driven Mapping**: Uses a lookup table to define which timestamps (acceptedAt,
-     * completedAt, etc.) should be set or reset based on the new status.
-     * 2. **Audit Integrity**: Ensures that the `updatedAt` field is consistently refreshed and
-     * irrelevant timestamps are cleared when a task is reset to 'PENDING'.
-     * 3. **Data Normalization**: Returns a partial update object compatible with Prisma's update operations.
-     * * @returns {Record<string, any>} A data object containing the status and its associated field updates.
-     */
-    const now = new Date();
-
-    // 1. Define field operations associated with each status
-    const statusEffects = {
-      [AssignmentStatus.ACCEPTED]: {
-        acceptedAt: now,
-        declinedAt: null,
-        completedAt: null,
-      },
-      [AssignmentStatus.DECLINED]: {
-        declinedAt: now,
-        completedAt: null,
-        reason: reason ?? null,
-      },
-      [AssignmentStatus.COMPLETED]: {
-        completedAt: now,
-      },
-      [AssignmentStatus.PENDING]: {
-        acceptedAt: null,
-        declinedAt: null,
-        completedAt: null,
-        reason: null,
-      },
-    };
-
-    // 2. Retrieve state-specific data or fallback to an empty object
-    const effect = statusEffects[next] || {};
-
-    return {
-      status: next,
-      ...effect,
-      updatedAt: now, // Ensure the global update timestamp is always refreshed
-    };
-  }
-
-  private isAdminish(role: GroupRole) {
-    const IS_ADMIN = new Set<GroupRole>([GroupRole.OWNER, GroupRole.ADMIN]);
-    return IS_ADMIN.has(role);
-  }
-
-  private isValidAssignmentTransition(
-    prev: AssignmentStatus,
-    next: AssignmentStatus,
-    taskStatus: string,
-  ): boolean {
-    if (prev === next) return true;
-
-    // Deal with dynamic COMPLETED logic
-    if (prev === AssignmentStatus.COMPLETED) {
-      // Only when the parent task is still OPEN, allow transition from COMPLETED back to ACCEPTED
-      return taskStatus === 'OPEN' && next === AssignmentStatus.ACCEPTED;
-    }
-
-    // Deal with other status rules
-    const allowed = TasksService.ASSIGNMENT_RULES[prev];
-    return allowed?.includes(next) ?? false;
-  }
-
-  private taskStatusCanTransition(from: TaskStatus, to: TaskStatus): boolean {
-    if (from === to) return true; // Staying in the same status is usually okay
-    const allowed = TasksService.TASK_STATUS_MAP[from];
-    return allowed ? allowed.includes(to) : false;
-  }
-
-  private mapPriorityToString(priority: number): string {
-    const map = {
-      1: 'URGENT',
-      2: 'HIGH',
-      3: 'MEDIUM',
-      4: 'LOW',
-    };
-    return map[priority];
-  }
-
-  private async notifyTaskChange(
-    taskId: number,
-    actorId: number,
-    updatedBy: string,
-    type: string,
-  ) {
-    this.tasksGateway.broadcastTaskUpdate(taskId, {
-      type,
-      taskId,
-      userName: updatedBy,
-      actorId,
-    });
-  }
-
-  private getTaskBounds = (timeZone: string) => {
-    const now = new Date();
-
-    // Get the start and end UTC time of today in the specified time zone
-    const { startUtc, endUtc } = dayBoundsUtc(timeZone);
-
-    // Get the date-only object for today in that time zone
-    // (e.g. 2024-05-20T00:00:00.000Z) for matching the allDayLocalDate field in Prisma
-    const todayStr = formatInTimeZone(now, timeZone, 'yyyy-MM-dd');
-    const todayDateOnlyUtc = new Date(`${todayStr}T00:00:00.000Z`);
-
-    return {
-      startUtc, // start of today time (UTC)
-      endUtc, // end of today time (UTC)
-      todayDateOnlyUtc, // date today (Date-only)
-      timeZone,
-    };
-  };
-
-  private resolveOrderBy(
-    orderByKey: OrderKey,
-  ): Prisma.TaskOrderByWithRelationInput[] {
-    switch (orderByKey) {
-      case 'dueAtAscNullsLast':
-        return [
-          { dueAtUtc: { sort: 'asc', nulls: 'last' } },
-          { createdAt: 'asc' },
-        ];
-
-      case 'expiredPriority':
-        return [
-          { allDay: 'asc' }, // Non-all-day tasks go first
-          { allDayLocalDate: 'asc' }, // The earlier the date, the higher the priority
-          { dueAtUtc: 'asc' }, // Arrange by due date for tasks with the same allDay and allDayLocalDate
-        ];
-
-      case 'createdAsc': // default
-      default:
-        return [{ createdAt: 'asc' }];
-    }
-  }
-
-  /**
-   * Processes local date and time input into database-ready UTC and Local Date formats.
-   * * @param isAllDay - Whether the task is an all-day event.
-   * @param dueDate - The local date string (YYYY-MM-DD).
-   * @param dueTime - The local time string (HH:mm), optional.
-   * @param userTz - The user's IANA time zone identifier.
-   * @returns An object containing the absolute UTC point and the localized calendar date.
-   */
-  private calculateTaskDates(
-    isAllDay: boolean,
-    dueDate: string | null | undefined,
-    dueTime: string | null | undefined,
-    userTz: string = 'UTC',
-  ): { dueAtUtc: Date | null; allDayLocalDate: Date | null } {
-    // Defensive check: If no date is provided, both are null
-    if (!dueDate) {
-      return { dueAtUtc: null, allDayLocalDate: null };
-    }
-
-    if (isAllDay) {
-      const allDayLocalDate = new Date(`${dueDate}T00:00:00.000Z`);
-      const localEndOfDay = `${dueDate}T23:59:59.999`;
-
-      const dueAtUtc = fromZonedTime(localEndOfDay, userTz);
-
-      return { allDayLocalDate, dueAtUtc };
-    }
-
-    // Non all-day: Specific time logic
-    const timePart = dueTime || '00:00';
-    const localISO = `${dueDate}T${timePart}:00`;
-
-    return {
-      dueAtUtc: fromZonedTime(localISO, userTz),
-      allDayLocalDate: null,
-    };
   }
 }

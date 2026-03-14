@@ -23,7 +23,7 @@ import {
 } from './dto/groups.dto';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
-import { TasksService } from 'src/tasks/tasks.service';
+import { TasksService } from 'src/tasks/services/tasks.service';
 import { TasksAddDto } from 'src/tasks/dto/tasks.dto';
 import { TasksAddPayload } from 'src/tasks/types/tasks';
 import { Public } from 'src/common/decorators/public.decorator';

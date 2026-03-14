@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TasksGateWay } from './tasks.gateway';
+import { TasksGateWay } from '../tasks.gateway';
 import { SecurityService } from 'src/security/security.service';
 import { UsersService } from 'src/users/users.service';
 import { UsersErrors } from 'src/errors';

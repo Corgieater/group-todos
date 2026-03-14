@@ -4,7 +4,7 @@ import type {
   User as UserModel,
 } from 'src/generated/prisma/client';
 import { TasksPageController } from './tasks.page.controller';
-import { TasksService } from './tasks.service';
+import { TasksService } from '../services/tasks.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Request, Response } from 'express';
 import {
@@ -26,6 +26,7 @@ jest.mock('src/common/helpers/util', () => ({
   })),
 }));
 import { buildTaskVM } from 'src/common/helpers/util';
+import { SubTasksService } from '../services/sub-tasks.service';
 
 describe('TasksController', () => {
   let tasksPageController: TasksPageController;
@@ -53,6 +54,9 @@ describe('TasksController', () => {
     getHomeDashboardData: jest.fn(),
     getTasks: jest.fn(),
     getAllFutureTasks: jest.fn(),
+  };
+
+  const mockSubTasksService = {
     getSubTaskForViewer: jest.fn(),
   };
 
@@ -73,6 +77,7 @@ describe('TasksController', () => {
       providers: [
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: TasksService, useValue: mockTasksService },
+        { provide: SubTasksService, useValue: mockSubTasksService },
       ],
     }).compile();
 
@@ -345,7 +350,7 @@ describe('TasksController', () => {
       jest.clearAllMocks(); // 一次重置所有 Mock，更乾淨
 
       // 🚀 修正：對應 Controller 呼叫的正確 Service 方法名
-      mockTasksService.getSubTaskForViewer.mockResolvedValue(
+      mockSubTasksService.getSubTaskForViewer.mockResolvedValue(
         mockServiceResponse,
       );
 
@@ -367,7 +372,7 @@ describe('TasksController', () => {
       );
 
       // 1. 驗證 Service 呼叫
-      expect(mockTasksService.getSubTaskForViewer).toHaveBeenCalledWith(
+      expect(mockSubTasksService.getSubTaskForViewer).toHaveBeenCalledWith(
         parentTaskId,
         subTaskId,
         actorId,

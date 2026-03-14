@@ -8,7 +8,7 @@ export class TaskMemberGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const taskId = +request.params.id;
+    const taskId = +request.params.id || +request.params.taskId;
     const userId = request.user.userId;
 
     const task = await this.prismaService.task.findUnique({

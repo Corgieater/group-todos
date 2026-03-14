@@ -8,10 +8,10 @@ import {
   Res,
   UseFilters,
   Get,
-  Query,
   UseInterceptors,
   UseGuards,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { GetCurrentUser } from 'src/common/decorators/user.decorator';
@@ -19,26 +19,25 @@ import { CurrentUser } from 'src/common/types/current-user';
 import {
   AssignTaskDto,
   NotificationDto,
-  SubTasksAddDto,
   TasksAddDto,
   UpdateAssigneeStatusDto,
   UpdateTaskDto,
-} from './dto/tasks.dto';
-import { TasksService } from './tasks.service';
+} from '../dto/tasks.dto';
+import { TasksService } from '../services/tasks.service';
 import {
   AssignTaskPayload,
-  SubTaskAddPayload,
   TaskContext,
   TasksAddPayload,
-} from './types/tasks';
+} from '../types/tasks';
 import { setSession } from 'src/common/helpers/flash-helper';
 import { TasksPageFilter } from 'src/common/filters/tasks-page.filter';
 import { Public } from 'src/common/decorators/public.decorator';
 import { AssignmentStatus } from 'src/generated/prisma/enums';
 import { SerializationInterceptor } from 'src/common/interceptors/serialization/serialization.interceptor';
 import { SecurityService } from 'src/security/security.service';
-import { TaskMemberGuard } from './guard/task-member.guard';
+import { TaskMemberGuard } from '../guard/task-member.guard';
 import { GetTaskContext } from 'src/common/decorators/task-context.decorator';
+import { TaskAssignmentManager } from '../services/task-assignment.service';
 
 @Controller('api/tasks')
 @UseFilters(TasksPageFilter)
@@ -46,6 +45,7 @@ export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
     private readonly securityService: SecurityService,
+    private readonly taskAssignmentManager: TaskAssignmentManager,
   ) {}
 
   @Post()
@@ -114,6 +114,7 @@ export class TasksController {
       dto,
       user.userName,
     );
+
     setSession(req, 'success', 'Status has been changed.');
     return res.redirect(`/tasks/${id}`);
   }
@@ -236,95 +237,6 @@ export class TasksController {
     return await this.tasksService.getPendingNotifications(user.userId);
   }
 
-  // --------------- sub-tasks --------------------
-
-  @Post(':id/sub-tasks')
-  async addSubTask(
-    @Req() req: Request,
-    @GetCurrentUser() user: CurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: SubTasksAddDto,
-    @Res() res: Response,
-  ) {
-    const payload: SubTaskAddPayload = {
-      title: dto.title,
-      status: dto.status ?? null,
-      priority: dto.priority ?? null,
-      description: dto.description ?? null,
-      allDay: dto.allDay,
-      dueDate: dto.dueDate ?? null,
-      dueTime: dto.dueTime ?? null,
-      location: dto.location ?? null,
-      parentTaskId: id,
-      actorId: user.userId,
-      updatedBy: user.userName,
-    };
-    await this.tasksService.createSubTask(payload);
-    setSession(req, 'success', 'Sub-task added');
-    return res.redirect(`/tasks/${id}`);
-  }
-
-  @Post(':taskId/sub-tasks/:id/close')
-  async closeSubTask(
-    @Req() req: Request,
-    @GetCurrentUser() user: CurrentUser,
-    @Param('taskId') taskId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Res() res: Response,
-  ) {
-    await this.tasksService.closeSubTask(id, user.userId);
-    setSession(req, 'success', 'Sub-task closed.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
-  }
-
-  // edit
-  @Post(':taskId/sub-tasks/:id/update')
-  async updateSubTask(
-    @Req() req: Request,
-    @Body() dto: UpdateTaskDto,
-    @GetCurrentUser() user: CurrentUser,
-    @Param('taskId') taskId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Res() res: Response,
-  ) {
-    await this.tasksService.updateSubTask(id, user.userId, user.timeZone, dto);
-    setSession(req, 'success', 'Sub-task has been updated');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
-  }
-
-  @Post(':taskId/sub-tasks/:id/restore')
-  async restoreSubTask(
-    @Req() req: Request,
-    @GetCurrentUser() user: CurrentUser,
-    @Param('taskId') taskId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Res() res: Response,
-  ) {
-    await this.tasksService.restoreSubTask(id);
-    setSession(req, 'success', 'Sub-task has been restored.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
-  }
-
-  // claim, assignee task status report
-  @Post(':taskId/sub-tasks/:id/update/assignee-status')
-  async updateSubTaskAssigneeStatus(
-    @Req() req: Request,
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateAssigneeStatusDto,
-    @GetCurrentUser() user: CurrentUser,
-    @Res() res: Response,
-  ) {
-    await this.tasksService.updateSubTaskAssigneeStatus(
-      id,
-      user.userId,
-      dto,
-      user.userName,
-    );
-    setSession(req, 'success', 'Status has been changed.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
-  }
-
   // ----------------- Assign task----------------------
   @Post(':id/assign-task')
   async assignTask(
@@ -342,6 +254,7 @@ export class TasksController {
       assignerId: user.userId,
       updatedBy: user.userName,
     };
+
     const mailSent = await this.tasksService.assignTask(payload);
     if (!dto.sendUrgentEmail) {
       setSession(req, 'success', 'Task is pending now.');
@@ -362,28 +275,6 @@ export class TasksController {
     return res.redirect(`/tasks/${id}`);
   }
 
-  @Post(':taskId/sub-tasks/:id/assign-sub-task')
-  async assignSubTask(
-    @Req() req: Request,
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: AssignTaskDto,
-    @GetCurrentUser() user: CurrentUser,
-    @Res() res: Response,
-  ) {
-    const payload: AssignTaskPayload = {
-      ...dto,
-      id,
-      assigneeId: dto.assigneeId,
-      assignerName: user.userName,
-      assignerId: user.userId,
-      updatedBy: user.userName,
-    };
-    await this.tasksService.assignSubTask(payload);
-    setSession(req, 'success', 'Task is pending now.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
-  }
-
   @Public()
   @Get('assignments/decision')
   async handleAssignmentDecision(
@@ -392,9 +283,8 @@ export class TasksController {
     @Res() res: Response,
   ) {
     try {
-      // 1. 驗證 Token 並更新狀態 (邏輯封裝在 Service)
       const { taskId, subTaskId, accessPayload } =
-        await this.tasksService.executeAssignmentDecision(token, status);
+        await this.taskAssignmentManager.executeDecision(token, status);
       const accessToken =
         await this.securityService.signAccessToken(accessPayload);
 

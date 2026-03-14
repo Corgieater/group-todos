@@ -25,6 +25,7 @@ export interface SubTaskAddPayload extends Omit<TasksAddPayload, 'userId'> {
   parentTaskId: number;
   actorId: number;
   updatedBy: string;
+  timeZone: string;
 }
 
 export interface SubTaskWithAssignees extends SubTaskModel {
