@@ -45,12 +45,12 @@ html
                   tr
                     td(align="center" style="padding: 10px 0;")
                       //- Accept 按鈕
-                      a(href=`${baseUrl}api/tasks/assignments/decision?token=${token}&status=ACCEPTED`
+                      a(href=`${acceptLink}`
                         style="background-color: #28a745; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; margin-right: 10px;") 
                         | ✅ Accept
                       
                       //- Decline 按鈕
-                      a(href=`${baseUrl}api/tasks/assignments/decision?token=${token}&status=DECLINED`
+                      a(href=`${rejectLink}`
                         style="background-color: #dc3545; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;") 
                         | ❌ Decline
 
@@ -59,4 +59,4 @@ html
               td(style="padding: 20px; text-align: center; background-color: #eeeeee; color: #777777; font-size: 12px;")
                 p(style="margin: 0 0 10px;") This is an urgent notification automatically sent by the system.
                 p(style="margin: 0;") 
-                  a(href=taskUrl style="color: #007bff; text-decoration: underline;") View task details
+                  a(href=`${taskUrl}` style="color: #007bff; text-decoration: underline;") View task details
