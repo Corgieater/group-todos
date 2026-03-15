@@ -76,17 +76,24 @@ export class MailService {
     data: TaskAssignmentEmailData,
   ): Promise<boolean> {
     let token: string;
+    let acceptLink: string;
+    let rejectLink: string;
+
     if (!data.subTaskId) {
       token = await this.securityService.signTaskDecisionToken(
         data.taskId,
         data.assigneeId,
       );
+      acceptLink = `${this.configService.get('BASE_URL')}api/tasks/assignments/decision?token=${token}&status=ACCEPTED`;
+      rejectLink = `${this.configService.get('BASE_URL')}api/tasks/assignments/decision?token=${token}&status=REJECTED`;
     } else {
       token = await this.securityService.signTaskDecisionToken(
         data.taskId,
         data.assigneeId,
         data.subTaskId,
       );
+      acceptLink = `${this.configService.get('BASE_URL')}api/tasks/${data.taskId}/sub-tasks/assignments/decision?token=${token}&status=ACCEPTED`;
+      rejectLink = `${this.configService.get('BASE_URL')}api/tasks/${data.taskId}/sub-tasks/assignments/decision?token=${token}&status=REJECTED`;
     }
 
     return this.executeSend({
@@ -102,8 +109,8 @@ export class MailService {
         dueAt: data.dueAt,
         description: data.description,
         taskUrl: data.taskUrl,
-        baseUrl: this.configService.get('BASE_URL'),
-        token,
+        acceptLink,
+        rejectLink,
       },
     });
   }

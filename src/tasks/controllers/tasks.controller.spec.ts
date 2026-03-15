@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TasksController } from './tasks.controller';
 import { CompletionPolicy } from 'src/generated/prisma/enums';
 import type { Task, User as UserModel } from 'src/generated/prisma/client';
-import { TasksAddDto, UpdateTaskDto } from './dto/tasks.dto';
-import { TaskStatus } from './types/enum';
-import { TasksService } from './tasks.service';
+import { TasksAddDto, UpdateTaskDto } from '../dto/tasks.dto';
+import { TaskStatus } from '../types/enum';
+import { TasksService } from '../services/tasks.service';
 import { Request, Response } from 'express';
 import {
   createMockReq,
@@ -15,13 +15,13 @@ import { createMockUser } from 'src/test/factories/mock-user.factory';
 
 jest.mock('src/common/helpers/flash-helper', () => ({ setSession: jest.fn() }));
 import { setSession } from 'src/common/helpers/flash-helper';
-import { TaskPriority } from './types/enum';
+import { TaskPriority } from '../types/enum';
 import { HttpStatus } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { SecurityService } from 'src/security/security.service';
 import { createMockSecurityService } from 'src/test/factories/mock-security.service';
-import { TaskContext } from './types/tasks';
+import { TaskContext } from '../types/tasks';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { TaskAssignmentManager } from '../services/task-assignment.service';
 
 describe('TasksController', () => {
   let tasksController: TasksController;
@@ -41,16 +41,9 @@ describe('TasksController', () => {
     deleteTask: jest.fn(),
   };
 
-  const config = {
-    getOrThrow: jest.fn(),
-  };
-
   const mockSecurityService = createMockSecurityService();
-  const mockPrismaService = {
-    task: {
-      findUnique: jest.fn(),
-    },
-  };
+  const mockPrismaService = {};
+  const mockTaskAssignmentManager = {};
 
   beforeAll(async () => {
     user = createMockUser();
@@ -102,7 +95,6 @@ describe('TasksController', () => {
       controllers: [TasksController],
       providers: [
         { provide: TasksService, useValue: mockTasksService },
-        { provide: ConfigService, useValue: config },
         {
           provide: SecurityService,
           useValue: mockSecurityService,
@@ -110,6 +102,10 @@ describe('TasksController', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: TaskAssignmentManager,
+          useValue: mockTaskAssignmentManager,
         },
       ],
     }).compile();

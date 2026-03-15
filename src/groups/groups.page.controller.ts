@@ -14,7 +14,7 @@ import { CurrentUser } from 'src/common/types/current-user';
 import { GroupsService } from './groups.service';
 import { buildGroupVM } from 'src/common/helpers/util';
 import { GroupsPageFilter } from 'src/common/filters/group-page.filter';
-import { TasksService } from 'src/tasks/tasks.service';
+import { TasksService } from 'src/tasks/services/tasks.service';
 import { GroupsErrors } from 'src/errors';
 import { GroupPageDto } from './dto/groups.dto';
 import { GroupRole } from 'src/generated/prisma/enums';

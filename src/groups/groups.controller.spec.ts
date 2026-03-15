@@ -17,7 +17,7 @@ import {
   KickOutMemberFromGroupDto,
   UpdateMemberRoleDto,
 } from './dto/groups.dto';
-import { TasksService } from 'src/tasks/tasks.service';
+import { TasksService } from 'src/tasks/services/tasks.service';
 import { TasksAddPayload } from 'src/tasks/types/tasks';
 import { GroupsErrors } from 'src/errors';
 import { SecurityService } from 'src/security/security.service';

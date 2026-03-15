@@ -7,6 +7,8 @@ import {
 import { TaskStatus } from './enum';
 import { TaskPriority } from './enum';
 
+export type OrderKey = 'dueAtAscNullsLast' | 'createdAsc' | 'expiredPriority';
+
 export interface TasksAddPayload {
   title: string;
   status: TaskStatus | null;
@@ -23,6 +25,7 @@ export interface SubTaskAddPayload extends Omit<TasksAddPayload, 'userId'> {
   parentTaskId: number;
   actorId: number;
   updatedBy: string;
+  timeZone: string;
 }
 
 export interface SubTaskWithAssignees extends SubTaskModel {
@@ -34,6 +37,26 @@ export interface SubTaskWithAssignees extends SubTaskModel {
     orderBy: [{ acceptedAt: 'asc' }];
   }>[];
 }
+
+export type SubTaskWithAllDetails = Prisma.SubTaskGetPayload<{
+  include: {
+    // 🚀 包含父任務，為了獲取 ownerId 與 groupId
+    task: {
+      select: { id: true; ownerId: true; groupId: true };
+    };
+    // 🚀 包含關閉者資訊 (用於詳情頁顯示)
+    closedBy: {
+      select: { id: true; name: true };
+    };
+    // 🚀 包含指派者資訊
+    assignees: {
+      include: {
+        assignee: { select: { id: true; name: true; email: true } };
+        assignedBy: { select: { id: true; name: true; email: true } };
+      };
+    };
+  };
+}>;
 
 export interface TaskContext {
   task: Task;
@@ -154,7 +177,7 @@ export interface AssignTaskPayload {
   assignerName: string;
   assignerId: number;
   sendUrgentEmail?: boolean;
-  updatedBy: string | null;
+  updatedBy?: string;
 }
 
 export interface InternalAssignOptions {
@@ -164,6 +187,7 @@ export interface InternalAssignOptions {
   assigneeId: number;
   assignerId: number;
   sendUrgentEmail?: boolean;
+  updatedBy?: string;
 }
 
 export interface ListTasksResult {
