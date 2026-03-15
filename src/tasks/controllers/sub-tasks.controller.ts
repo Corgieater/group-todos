@@ -10,6 +10,7 @@ import {
   Get,
   Query,
   UseGuards,
+  SetMetadata,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { GetCurrentUser } from 'src/common/decorators/user.decorator';
@@ -33,7 +34,10 @@ import { SecurityService } from 'src/security/security.service';
 import { SubTasksService } from '../services/sub-tasks.service';
 import { TaskAssignmentManager } from '../services/task-assignment.service';
 import { TaskMemberGuard } from '../guard/task-member.guard';
-import { GetTaskContext } from 'src/common/decorators/task-context.decorator';
+import { GetTaskContext } from 'src/tasks/decorators/task-context.decorator';
+import { SubTaskExistsGuard } from '../guard/sub-task-exists.guard';
+import { GetSubTaskContext } from '../decorators/sub-task-context.decorator';
+import { SubTask, Task } from 'src/generated/prisma/client';
 
 @Controller('api/tasks/:taskId/sub-tasks')
 @UseFilters(TasksPageFilter)
@@ -45,6 +49,7 @@ export class SubTasksController {
   ) {}
 
   @Post('')
+  @SetMetadata('taskParamName', 'taskId')
   @UseGuards(TaskMemberGuard)
   async create(
     @Req() req: Request,
@@ -87,22 +92,25 @@ export class SubTasksController {
 
   // edit
   @Post(':id/update')
+  @UseGuards(TaskMemberGuard)
+  @UseGuards(SubTaskExistsGuard)
   async update(
     @Req() req: Request,
     @Body() dto: UpdateTaskDto,
     @GetCurrentUser() user: CurrentUser,
-    @Param('taskId') taskId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Res() res: Response,
+    @GetTaskContext() task: Task,
+    @GetSubTaskContext() subTask: SubTask,
+    @Res()
+    res: Response,
   ) {
     await this.subTasksService.updateSubTask(
-      id,
+      subTask.id,
       user.userId,
       user.timeZone,
       dto,
     );
     setSession(req, 'success', 'Sub-task has been updated');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+    return res.redirect(`/tasks/${task.id}/sub-tasks/${subTask.id}`);
   }
 
   @Post(':id/restore')

@@ -105,10 +105,8 @@ describe('SubsubTasksService', () => {
     mockUsersService.findByIdOrThrow.mockResolvedValue(createMockUser());
   });
 
-  // -----------------------subTask----------------------------
-
   // ───────────────────────────────────────────────────────────────────────────────
-  // createSubTask
+  // create
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('createSubTask', () => {
@@ -141,15 +139,6 @@ describe('SubsubTasksService', () => {
     });
 
     describe('Permission Validation', () => {
-      // it('should throw TaskNotFoundError if parent task does not exist', async () => {
-      //   mockPrismaService.task.findUnique.mockResolvedValue(null);
-      //   mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-
-      //   await expect(
-      //     subTasksService.createSubTask(basePayload),
-      //   ).rejects.toThrow(); // 會拋出 TaskNotFoundError
-      // });
-
       it('should throw TaskForbiddenError if trying to add subtask to a personal task not owned by actor', async () => {
         // 模擬個人任務，但 Owner 不是目前使用者
         mockPrismaService.task.findUnique.mockResolvedValue({
@@ -167,26 +156,6 @@ describe('SubsubTasksService', () => {
           }),
         );
       });
-
-      //   it('should throw TaskForbiddenError if trying to add subtask to a group task where actor is not a member', async () => {
-      //     // 模擬團體任務
-      //     mockPrismaService.task.findUnique.mockResolvedValue({
-      //       id: parentTaskId,
-      //       ownerId: 999,
-      //       groupId: 50, // Group ID exists
-      //     });
-      //     mockPrismaService.user.findUnique.mockResolvedValue(mockActor);
-      //     // 模擬該使用者不是成員
-      //     mockPrismaService.groupMember.findUnique.mockResolvedValue(null);
-
-      //     await expect(
-      //       subTasksService.createSubTask(basePayload),
-      //     ).rejects.toThrow(
-      //       expect.objectContaining({
-      //         action: 'CREATE_SUBTASK_ON_GROUP_TASK_NOT_MEMBER',
-      //       }),
-      //     );
-      //   });
     });
 
     describe('Core Logic & Database Interaction', () => {
@@ -457,49 +426,6 @@ describe('SubsubTasksService', () => {
 
     it('should throw TaskNotFoundError if subTask does not exist', async () => {
       mockPrismaService.subTask.findUnique.mockResolvedValue(null);
-
-      await expect(
-        subTasksService.updateSubTask(
-          mockSubTaskId,
-          mockActorId,
-          mockActorTz,
-          mockPayload,
-        ),
-      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
-    });
-
-    it('should throw TaskNotFoundError if personal parent task is not owned by actor', async () => {
-      // 模擬 subTask 屬於個人任務（groupId 為 null），但 ownerId 與 actorId 不同
-      mockPrismaService.subTask.findUnique.mockResolvedValue({
-        id: mockSubTaskId,
-        task: {
-          id: 50,
-          ownerId: 999, // 不同人
-          groupId: null,
-        },
-      });
-
-      await expect(
-        subTasksService.updateSubTask(
-          mockSubTaskId,
-          mockActorId,
-          mockActorTz,
-          mockPayload,
-        ),
-      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
-    });
-
-    it('should throw TaskNotFoundError if group task and actor is not a member', async () => {
-      // 模擬 subTask 屬於群組任務，但 group.members 為空（代表 actor 不是成員）
-      mockPrismaService.subTask.findUnique.mockResolvedValue({
-        id: mockSubTaskId,
-        task: {
-          id: 50,
-          ownerId: 1,
-          groupId: 200,
-          group: { members: [] }, // 不是成員
-        },
-      });
 
       await expect(
         subTasksService.updateSubTask(

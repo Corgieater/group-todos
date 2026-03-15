@@ -29,10 +29,9 @@ export class SubTasksService {
     private readonly tasksHelper: TasksHelperService,
     private readonly taskAssignmentManager: TaskAssignmentManager,
   ) {}
-  // ----------------- SubTask -----------------
 
   async createSubTask(payload: SubTaskAddPayload): Promise<void> {
-    // 1. Get parent task info and acotr time zone for time transition
+    // 1. Get parent task info
     const parentTask = await this.prismaService.task.findUnique({
       where: { id: payload.parentTaskId },
       select: {
@@ -205,76 +204,18 @@ export class SubTasksService {
     actorTz: string,
     payload: TaskUpdatePayload,
   ): Promise<void> {
-    /**
-     * Updates a sub-task's details with integrated permission and temporal logic.
-     *
-     * @description
-     * This method implements a secure update workflow:
-     * 1. **Data Consolidation**: Uses a single nested query to retrieve the sub-task, its parent task,
-     * and the actor's group membership status to minimize database round-trips.
-     * 2. **Authorization**:
-     * - Personal Tasks: Strict ownership check (Actor must be the parent task owner).
-     * - Group Tasks: Membership check (Any group member can update sub-tasks to foster collaboration).
-     * 3. **Temporal Normalization**: Leverages `getCommonUpdateData` to handle time zone-to-UTC
-     * conversions for due dates.
-     * 4. **Event Propagation**: Dispatches a WebSocket notification via `notifyTaskChange` to
-     * synchronize UI states for all users in the same task room.
-     *
-     * @param id - The unique identifier of the sub-task.
-     * @param actorId - The user performing the update.
-     * @param actorTz - The IANA time zone string of the actor.
-     * @param payload - The update DTO containing partial fields (title, priority, etc.).
-     *
-     * @throws {TasksErrors.TaskNotFoundError} If the sub-task doesn't exist or permissions are denied.
-     * @returns {Promise<void>} Resolves when the update and notification are complete.
-     */
-
-    // 1. Get subTask, parent task and role of the actor
-    const subTask = await this.prismaService.subTask.findUnique({
+    const exists = await this.prismaService.subTask.findUnique({
       where: { id },
-      include: {
-        task: {
-          select: {
-            id: true,
-            ownerId: true,
-            groupId: true,
-            group: {
-              select: {
-                members: {
-                  where: { userId: actorId },
-                  select: { role: true },
-                },
-              },
-            },
-          },
-        },
-      },
+      select: { id: true },
     });
 
-    // 2. Basic checking
-    if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
+    if (!exists) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
 
-    const parentTask = subTask.task;
-    const groupMember = parentTask.group?.members[0];
-
-    // 3. Permission checking
-    // Personal task: must be owner
-    if (!parentTask.groupId && parentTask.ownerId !== actorId) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    // Group task: must be member
-    if (parentTask.groupId && !groupMember) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    // 4. Build data and time
     const data = TasksUtils.getCommonUpdateData<Prisma.SubTaskUpdateInput>(
       payload,
       actorTz,
     );
 
-    // 5. Update
     await this.prismaService.subTask.update({
       where: { id },
       data,
