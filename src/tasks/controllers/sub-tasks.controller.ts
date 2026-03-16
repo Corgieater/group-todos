@@ -37,7 +37,7 @@ import { TaskMemberGuard } from '../guard/task-member.guard';
 import { GetTaskContext } from 'src/tasks/decorators/task-context.decorator';
 import { SubTaskExistsGuard } from '../guard/sub-task-exists.guard';
 import { GetSubTaskContext } from '../decorators/sub-task-context.decorator';
-import { SubTask, Task } from 'src/generated/prisma/client';
+import { SubTask } from 'src/generated/prisma/client';
 
 @Controller('api/tasks/:taskId/sub-tasks')
 @UseFilters(TasksPageFilter)
@@ -54,7 +54,7 @@ export class SubTasksController {
   async create(
     @Req() req: Request,
     @GetCurrentUser() user: CurrentUser,
-    @GetTaskContext() ctx: TaskContext,
+    @GetTaskContext() taskCtx: TaskContext,
     @Body() dto: SubTasksAddDto,
     @Res() res: Response,
   ) {
@@ -67,14 +67,14 @@ export class SubTasksController {
       dueDate: dto.dueDate ?? null,
       dueTime: dto.dueTime ?? null,
       location: dto.location ?? null,
-      parentTaskId: ctx.task.id,
+      parentTaskId: taskCtx.task.id,
       actorId: user.userId,
       updatedBy: user.userName,
       timeZone: user.timeZone,
     };
     await this.subTasksService.createSubTask(payload);
     setSession(req, 'success', 'Sub-task added');
-    return res.redirect(`/tasks/${ctx.task.id}`);
+    return res.redirect(`/tasks/${taskCtx.task.id}`);
   }
 
   @Post(':id/close')
@@ -92,13 +92,14 @@ export class SubTasksController {
 
   // edit
   @Post(':id/update')
+  @SetMetadata('taskParamName', 'taskId')
   @UseGuards(TaskMemberGuard)
   @UseGuards(SubTaskExistsGuard)
   async update(
     @Req() req: Request,
     @Body() dto: UpdateTaskDto,
     @GetCurrentUser() user: CurrentUser,
-    @GetTaskContext() task: Task,
+    @GetTaskContext() taskCtx: TaskContext,
     @GetSubTaskContext() subTask: SubTask,
     @Res()
     res: Response,
@@ -110,63 +111,71 @@ export class SubTasksController {
       dto,
     );
     setSession(req, 'success', 'Sub-task has been updated');
-    return res.redirect(`/tasks/${task.id}/sub-tasks/${subTask.id}`);
+    return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);
   }
 
   @Post(':id/restore')
+  @SetMetadata('taskParamName', 'taskId')
+  @UseGuards(TaskMemberGuard)
+  @UseGuards(SubTaskExistsGuard)
   async restoreSubTask(
     @Req() req: Request,
-    @GetCurrentUser() user: CurrentUser,
-    @Param('taskId') taskId: number,
-    @Param('id', ParseIntPipe) id: number,
+    @GetTaskContext() taskCtx: TaskContext,
+    @GetSubTaskContext() subTask: SubTask,
     @Res() res: Response,
   ) {
-    await this.subTasksService.restoreSubTask(id);
+    await this.subTasksService.restoreSubTask(subTask.id);
     setSession(req, 'success', 'Sub-task has been restored.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+    return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);
   }
 
   // claim, assignee task status report
   @Post(':id/update/assignee-status')
+  @SetMetadata('taskParamName', 'taskId')
+  @UseGuards(TaskMemberGuard)
+  @UseGuards(SubTaskExistsGuard)
   async updateSubTaskAssigneeStatus(
     @Req() req: Request,
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Param('id', ParseIntPipe) id: number,
+    @GetTaskContext() taskCtx: TaskContext,
+    @GetSubTaskContext() subTask: SubTask,
     @Body() dto: UpdateAssigneeStatusDto,
     @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     await this.subTasksService.updateSubTaskAssigneeStatus(
-      id,
+      subTask.id,
       user.userId,
       dto,
       user.userName,
     );
     setSession(req, 'success', 'Status has been changed.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+    return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);
   }
 
   // ----------------- Assign task----------------------
 
   @Post(':id/assign-sub-task')
+  @SetMetadata('taskParamName', 'taskId')
+  @UseGuards(TaskMemberGuard)
+  @UseGuards(SubTaskExistsGuard)
   async assignSubTask(
     @Req() req: Request,
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Param('id', ParseIntPipe) id: number,
+    @GetTaskContext() taskCtx: TaskContext,
+    @GetSubTaskContext() subTask: SubTask,
     @Body() dto: AssignTaskDto,
     @GetCurrentUser() user: CurrentUser,
     @Res() res: Response,
   ) {
     const payload: AssignTaskPayload = {
       ...dto,
-      id,
+      id: subTask.id,
       assigneeId: dto.assigneeId,
       assignerName: user.userName,
       assignerId: user.userId,
     };
     await this.subTasksService.assignSubTask(payload);
     setSession(req, 'success', 'Task is pending now.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+    return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);
   }
 
   @Public()

@@ -712,17 +712,6 @@ describe('SubsubTasksService', () => {
       expect(result.status).toBe(TaskStatus.OPEN);
       expect(result.closedAt).toBeNull();
     });
-
-    it('should throw error if prisma update fails', async () => {
-      const subTaskId = 999;
-      mockPrismaService.subTask.update.mockRejectedValueOnce(
-        new Error('Record not found'),
-      );
-
-      await expect(subTasksService.restoreSubTask(subTaskId)).rejects.toThrow(
-        'Record not found',
-      );
-    });
   });
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -829,18 +818,6 @@ describe('SubsubTasksService', () => {
         }),
       ).rejects.toThrow();
       // 這裡會拋出 TasksErrors.TaskForbiddenError
-    });
-
-    it('should throw error if user is not a member of the group', async () => {
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-      // 模擬非成員
-      mockPrismaService.groupMember.findUnique.mockResolvedValueOnce(null);
-
-      await expect(
-        subTasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-          status: AssignmentStatus.ACCEPTED,
-        }),
-      ).rejects.toThrow();
     });
   });
 

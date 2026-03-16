@@ -360,88 +360,35 @@ export class SubTasksService {
   }
 
   // subtask指派狀態更新, self-assign, claim相關
+  // TODO: claim要分開
   async updateSubTaskAssigneeStatus(
     subTaskId: number,
     actorId: number,
     dto: { status: AssignmentStatus; reason?: string },
     updatedBy: string | null = null,
   ) {
-    /**
-     * Manages sub-task assignment lifecycle, supporting both "Auto-Claiming" and status reporting.
-     * * @param subTaskId - The unique identifier of the sub-task.
-     * @param actorId - The ID of the user performing the status update.
-     * @param dto - Data containing the target AssignmentStatus and an optional reason.
-     * @param updatedBy - (Optional) The name of the actor for notification purposes.
-     * * @description
-     * This method acts as the primary interface for users to interact with sub-task assignments:
-     * 1. **Auto-Claiming**: If no assignment record exists and the status is set to 'ACCEPTED',
-     * the system automatically creates a new assignment for the actor.
-     * 2. **State Management**: If a record exists, it validates the transition against the
-     * Assignment State Machine before updating.
-     * * @constraints
-     * - Restricted to **Group Tasks** only; personal sub-tasks do not support assignment tracking.
-     * - Only valid **Group Members** can claim or update assignment statuses.
-     * * @returns {Promise<{ ok: boolean }>} A confirmation object upon successful transaction.
-     * * @throws {TasksErrors.TaskNotFoundError} If the sub-task does not exist.
-     * @throws {TasksErrors.TaskForbiddenError}
-     * - 'ASSIGNEE_STATUS_FOR_PERSONAL_SUBTASK': Attempting to assign on a personal task.
-     * - 'ASSIGNEE_STATUS_FOR_NON_MEMBER': Actor is not a member of the task's group.
-     * - 'ASSIGNEE_STATUS_ILLEGAL_TRANSITION': The state transition violates business rules.
-     * @todo
-     * I think I should separate self-claim and assigned subTask status report to 2 methods
-     */
     const { status: next, reason } = dto;
+    let parentTaskId: number;
 
-    return this.prismaService.$transaction(async (tx) => {
-      // 1. Get subTasks and parent task info
+    // 🚀 執行資料庫事務
+    await this.prismaService.$transaction(async (tx) => {
+      // 1. 僅獲取必要的父任務 ID (為了後續通知)
       const subTask = await tx.subTask.findUnique({
         where: { id: subTaskId },
-        include: {
-          task: { select: { id: true, groupId: true, status: true } },
-        },
+        select: { taskId: true, status: true },
       });
 
       if (!subTask)
         throw TasksErrors.TaskNotFoundError.byId(actorId, subTaskId);
+      parentTaskId = subTask.taskId;
 
-      // Safety check: only group task supports assigned-subtask status updating
-      if (!subTask.task.groupId) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
-          'ASSIGNEE_STATUS_FOR_PERSONAL_SUBTASK',
-        );
-      }
-
-      // Check if actor is really a group member
-      const member = await tx.groupMember.findUnique({
-        where: {
-          groupId_userId: {
-            groupId: subTask.task.groupId,
-            userId: actorId,
-          },
-        },
-        select: { userId: true },
-      });
-
-      if (!member) {
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
-          'ASSIGNEE_STATUS_FOR_NON_MEMBER',
-        );
-      }
-
-      // 2. Check if there is a subTask assigning record
+      // 2. 檢查指派紀錄
       const assignee = await tx.subTaskAssignee.findUnique({
         where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
         select: { status: true },
       });
 
-      // -----------------------------------------------------------
-      // 3. Self-claim logic: no subTask assigning record
-      // and want to turn the status to ACCEPTED
-      // -----------------------------------------------------------
+      // 3. 自領邏輯 (Self-claim)
       if (!assignee) {
         if (next !== AssignmentStatus.ACCEPTED) {
           throw TasksErrors.TaskForbiddenError.byActorOnTask(
@@ -461,47 +408,39 @@ export class SubTasksService {
             acceptedAt: new Date(),
           },
         });
-
-        this.tasksHelper.notifyTaskChange(
-          subTask.task.id,
-          actorId,
-          updatedBy!,
-          'SUBTASK_CLAIMED',
-        );
-
-        return { ok: true };
+        return; // 結束 transaction
       }
 
-      // -----------------------------------------------------------
-      // 4. Check if status is legal to change
-      // -----------------------------------------------------------
-      const prev = assignee.status;
+      // 4. 狀態轉移檢查 (isValidAssignmentTransition)
       const isLegal = TasksUtils.isValidAssignmentTransition(
-        prev,
+        assignee.status,
         next,
         subTask.status,
       );
-
       if (!isLegal) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
           actorId,
           subTaskId,
-          `ASSIGNEE_STATUS_ILLEGAL_TRANSITION_${prev}_TO_${next}`,
+          `ASSIGNEE_STATUS_ILLEGAL_TRANSITION_${assignee.status}_TO_${next}`,
         );
       }
 
-      // -----------------------------------------------------------
-      // 5. Update
-      // -----------------------------------------------------------
-      const updateData = TasksUtils.getAssigneeUpdateData(next, reason);
-
+      // 5. 更新狀態
       await tx.subTaskAssignee.update({
         where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
-        data: updateData,
+        data: TasksUtils.getAssigneeUpdateData(next, reason),
       });
-
-      return { ok: true };
     });
+
+    // 🚀 交易成功後，才發送 Socket 通知
+    this.tasksHelper.notifyTaskChange(
+      parentTaskId!,
+      actorId,
+      updatedBy!,
+      'SUBTASK_STATUS_UPDATED',
+    );
+
+    return { ok: true };
   }
 
   // ------------------ Assign task -------------------
