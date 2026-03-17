@@ -1,14 +1,20 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { TasksErrors } from 'src/errors';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class TaskMemberGuard implements CanActivate {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const taskId = +request.params.id || +request.params.taskId;
+    const paramName =
+      this.reflector.get<string>('taskParamName', context.getHandler()) || 'id';
+    const taskId = +request.params[paramName];
     const userId = request.user.userId;
 
     const task = await this.prismaService.task.findUnique({

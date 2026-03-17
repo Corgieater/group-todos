@@ -36,7 +36,7 @@ import { AssignmentStatus } from 'src/generated/prisma/enums';
 import { SerializationInterceptor } from 'src/common/interceptors/serialization/serialization.interceptor';
 import { SecurityService } from 'src/security/security.service';
 import { TaskMemberGuard } from '../guard/task-member.guard';
-import { GetTaskContext } from 'src/common/decorators/task-context.decorator';
+import { GetTaskContext } from 'src/tasks/decorators/task-context.decorator';
 import { TaskAssignmentManager } from '../services/task-assignment.service';
 
 @Controller('api/tasks')

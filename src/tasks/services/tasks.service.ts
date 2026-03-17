@@ -142,7 +142,19 @@ export class TasksService {
 
     // 2. Build where conditions dynamically
     // Use Prisma.sql in case SQL injection
-    const conditions: Prisma.Sql[] = [Prisma.sql`t."ownerId" = ${userId}`];
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`
+    t."ownerId" = ${userId} 
+    AND (
+      t."groupId" IS NULL -- 個人任務直接放行
+      OR EXISTS (        -- 群組任務則必須確認使用者還在成員名單內
+        SELECT 1 FROM "GroupMember" gm 
+        WHERE gm."groupId" = t."groupId" 
+        AND gm."userId" = ${userId}
+      )
+    )
+  `,
+    ];
 
     if (status) {
       conditions.push(Prisma.sql`t."status" = ${status}`);

@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RequireRoles } from 'src/common/decorators/require-roles.decorator';
+import { RequireRoles } from 'src/groups/decorators/require-roles.decorator';
 import { GroupsService } from 'src/groups/groups.service';
 
 @Injectable()

@@ -31,7 +31,7 @@ import { SecurityService } from 'src/security/security.service';
 import {
   MemberRoles,
   RequireRoles,
-} from 'src/common/decorators/require-roles.decorator';
+} from 'src/groups/decorators/require-roles.decorator';
 import { GroupRolesGuard } from 'src/groups/guard/group-role.guard';
 
 @Controller('/api/groups')

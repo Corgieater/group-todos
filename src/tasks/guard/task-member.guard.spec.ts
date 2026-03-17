@@ -2,14 +2,15 @@ import { ExecutionContext } from '@nestjs/common';
 import { TaskMemberGuard } from './task-member.guard';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TasksErrors } from 'src/errors';
+import { Reflector } from '@nestjs/core';
 
 describe('TaskMemberGuard', () => {
   let guard: TaskMemberGuard;
   let prisma: PrismaService;
+  let reflector: Reflector;
 
   // 輔助函式：建立 Mock 的 ExecutionContext
   const createMockContext = (params: any, user: any) => {
-    // 1. 先建立一個固定的 request 物件
     const mockRequest = {
       params,
       user,
@@ -17,8 +18,11 @@ describe('TaskMemberGuard', () => {
     };
 
     return {
+      // ✅ 1. getHandler 必須在這一層 (與 switchToHttp 平級)
+      getHandler: jest.fn(),
+
+      // ✅ 2. switchToHttp 內部只需要有 getRequest
       switchToHttp: () => ({
-        // 2. 讓 getRequest 永遠回傳同一個物件
         getRequest: () => mockRequest,
       }),
     } as unknown as ExecutionContext;
@@ -30,7 +34,15 @@ describe('TaskMemberGuard', () => {
       task: { findUnique: jest.fn() },
       groupMember: { findUnique: jest.fn() },
     } as any;
-    guard = new TaskMemberGuard(prisma);
+
+    reflector = {
+      get: jest.fn(),
+      getAll: jest.fn(),
+      getAllAndMerge: jest.fn(),
+      getAllAndOverride: jest.fn(),
+    };
+
+    guard = new TaskMemberGuard(prisma, reflector);
   });
 
   it('should throw TaskNotFoundError if task not found', async () => {
