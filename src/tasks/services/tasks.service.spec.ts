@@ -626,7 +626,7 @@ describe('TasksService', () => {
         .mockResolvedValueOnce(mockTasks)
         .mockResolvedValueOnce(mockCount);
 
-      const result = await tasksService.getTasks(userId, timeZone, {
+      await tasksService.getTasks(userId, timeZone, {
         status: 'OPEN',
         page: 1,
         limit: 10,
