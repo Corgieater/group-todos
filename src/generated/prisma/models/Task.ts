@@ -348,6 +348,7 @@ export type TaskWhereInput = {
   group?: Prisma.XOR<Prisma.GroupNullableScalarRelationFilter, Prisma.GroupWhereInput> | null
   subTasks?: Prisma.SubTaskListRelationFilter
   assignees?: Prisma.TaskAssigneeListRelationFilter
+  closedBy?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
 }
 
 export type TaskOrderByWithRelationInput = {
@@ -374,6 +375,7 @@ export type TaskOrderByWithRelationInput = {
   group?: Prisma.GroupOrderByWithRelationInput
   subTasks?: Prisma.SubTaskOrderByRelationAggregateInput
   assignees?: Prisma.TaskAssigneeOrderByRelationAggregateInput
+  closedBy?: Prisma.UserOrderByWithRelationInput
 }
 
 export type TaskWhereUniqueInput = Prisma.AtLeast<{
@@ -403,6 +405,7 @@ export type TaskWhereUniqueInput = Prisma.AtLeast<{
   group?: Prisma.XOR<Prisma.GroupNullableScalarRelationFilter, Prisma.GroupWhereInput> | null
   subTasks?: Prisma.SubTaskListRelationFilter
   assignees?: Prisma.TaskAssigneeListRelationFilter
+  closedBy?: Prisma.XOR<Prisma.UserNullableScalarRelationFilter, Prisma.UserWhereInput> | null
 }, "id">
 
 export type TaskOrderByWithAggregationInput = {
@@ -471,13 +474,13 @@ export type TaskCreateInput = {
   updatedAt?: Date | string
   completionPolicy?: $Enums.CompletionPolicy
   closedAt?: Date | string | null
-  closedById?: number | null
   closedReason?: string | null
   closedWithOpenAssignees?: boolean
   owner: Prisma.UserCreateNestedOneWithoutTaskInput
   group?: Prisma.GroupCreateNestedOneWithoutGroupTasksInput
   subTasks?: Prisma.SubTaskCreateNestedManyWithoutTaskInput
   assignees?: Prisma.TaskAssigneeCreateNestedManyWithoutTaskInput
+  closedBy?: Prisma.UserCreateNestedOneWithoutClosedTasksInput
 }
 
 export type TaskUncheckedCreateInput = {
@@ -518,13 +521,13 @@ export type TaskUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
   owner?: Prisma.UserUpdateOneRequiredWithoutTaskNestedInput
   group?: Prisma.GroupUpdateOneWithoutGroupTasksNestedInput
   subTasks?: Prisma.SubTaskUpdateManyWithoutTaskNestedInput
   assignees?: Prisma.TaskAssigneeUpdateManyWithoutTaskNestedInput
+  closedBy?: Prisma.UserUpdateOneWithoutClosedTasksNestedInput
 }
 
 export type TaskUncheckedUpdateInput = {
@@ -587,7 +590,6 @@ export type TaskUpdateManyMutationInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
@@ -800,10 +802,24 @@ export type TaskCreateNestedManyWithoutOwnerInput = {
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
 }
 
+export type TaskCreateNestedManyWithoutClosedByInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutClosedByInput, Prisma.TaskUncheckedCreateWithoutClosedByInput> | Prisma.TaskCreateWithoutClosedByInput[] | Prisma.TaskUncheckedCreateWithoutClosedByInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutClosedByInput | Prisma.TaskCreateOrConnectWithoutClosedByInput[]
+  createMany?: Prisma.TaskCreateManyClosedByInputEnvelope
+  connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+}
+
 export type TaskUncheckedCreateNestedManyWithoutOwnerInput = {
   create?: Prisma.XOR<Prisma.TaskCreateWithoutOwnerInput, Prisma.TaskUncheckedCreateWithoutOwnerInput> | Prisma.TaskCreateWithoutOwnerInput[] | Prisma.TaskUncheckedCreateWithoutOwnerInput[]
   connectOrCreate?: Prisma.TaskCreateOrConnectWithoutOwnerInput | Prisma.TaskCreateOrConnectWithoutOwnerInput[]
   createMany?: Prisma.TaskCreateManyOwnerInputEnvelope
+  connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+}
+
+export type TaskUncheckedCreateNestedManyWithoutClosedByInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutClosedByInput, Prisma.TaskUncheckedCreateWithoutClosedByInput> | Prisma.TaskCreateWithoutClosedByInput[] | Prisma.TaskUncheckedCreateWithoutClosedByInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutClosedByInput | Prisma.TaskCreateOrConnectWithoutClosedByInput[]
+  createMany?: Prisma.TaskCreateManyClosedByInputEnvelope
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
 }
 
@@ -821,6 +837,20 @@ export type TaskUpdateManyWithoutOwnerNestedInput = {
   deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
 }
 
+export type TaskUpdateManyWithoutClosedByNestedInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutClosedByInput, Prisma.TaskUncheckedCreateWithoutClosedByInput> | Prisma.TaskCreateWithoutClosedByInput[] | Prisma.TaskUncheckedCreateWithoutClosedByInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutClosedByInput | Prisma.TaskCreateOrConnectWithoutClosedByInput[]
+  upsert?: Prisma.TaskUpsertWithWhereUniqueWithoutClosedByInput | Prisma.TaskUpsertWithWhereUniqueWithoutClosedByInput[]
+  createMany?: Prisma.TaskCreateManyClosedByInputEnvelope
+  set?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  disconnect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  delete?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  update?: Prisma.TaskUpdateWithWhereUniqueWithoutClosedByInput | Prisma.TaskUpdateWithWhereUniqueWithoutClosedByInput[]
+  updateMany?: Prisma.TaskUpdateManyWithWhereWithoutClosedByInput | Prisma.TaskUpdateManyWithWhereWithoutClosedByInput[]
+  deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
+}
+
 export type TaskUncheckedUpdateManyWithoutOwnerNestedInput = {
   create?: Prisma.XOR<Prisma.TaskCreateWithoutOwnerInput, Prisma.TaskUncheckedCreateWithoutOwnerInput> | Prisma.TaskCreateWithoutOwnerInput[] | Prisma.TaskUncheckedCreateWithoutOwnerInput[]
   connectOrCreate?: Prisma.TaskCreateOrConnectWithoutOwnerInput | Prisma.TaskCreateOrConnectWithoutOwnerInput[]
@@ -832,6 +862,20 @@ export type TaskUncheckedUpdateManyWithoutOwnerNestedInput = {
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   update?: Prisma.TaskUpdateWithWhereUniqueWithoutOwnerInput | Prisma.TaskUpdateWithWhereUniqueWithoutOwnerInput[]
   updateMany?: Prisma.TaskUpdateManyWithWhereWithoutOwnerInput | Prisma.TaskUpdateManyWithWhereWithoutOwnerInput[]
+  deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
+}
+
+export type TaskUncheckedUpdateManyWithoutClosedByNestedInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutClosedByInput, Prisma.TaskUncheckedCreateWithoutClosedByInput> | Prisma.TaskCreateWithoutClosedByInput[] | Prisma.TaskUncheckedCreateWithoutClosedByInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutClosedByInput | Prisma.TaskCreateOrConnectWithoutClosedByInput[]
+  upsert?: Prisma.TaskUpsertWithWhereUniqueWithoutClosedByInput | Prisma.TaskUpsertWithWhereUniqueWithoutClosedByInput[]
+  createMany?: Prisma.TaskCreateManyClosedByInputEnvelope
+  set?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  disconnect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  delete?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
+  update?: Prisma.TaskUpdateWithWhereUniqueWithoutClosedByInput | Prisma.TaskUpdateWithWhereUniqueWithoutClosedByInput[]
+  updateMany?: Prisma.TaskUpdateManyWithWhereWithoutClosedByInput | Prisma.TaskUpdateManyWithWhereWithoutClosedByInput[]
   deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
 }
 
@@ -849,12 +893,12 @@ export type TaskCreateWithoutGroupInput = {
   updatedAt?: Date | string
   completionPolicy?: $Enums.CompletionPolicy
   closedAt?: Date | string | null
-  closedById?: number | null
   closedReason?: string | null
   closedWithOpenAssignees?: boolean
   owner: Prisma.UserCreateNestedOneWithoutTaskInput
   subTasks?: Prisma.SubTaskCreateNestedManyWithoutTaskInput
   assignees?: Prisma.TaskAssigneeCreateNestedManyWithoutTaskInput
+  closedBy?: Prisma.UserCreateNestedOneWithoutClosedTasksInput
 }
 
 export type TaskUncheckedCreateWithoutGroupInput = {
@@ -945,12 +989,12 @@ export type TaskCreateWithoutAssigneesInput = {
   updatedAt?: Date | string
   completionPolicy?: $Enums.CompletionPolicy
   closedAt?: Date | string | null
-  closedById?: number | null
   closedReason?: string | null
   closedWithOpenAssignees?: boolean
   owner: Prisma.UserCreateNestedOneWithoutTaskInput
   group?: Prisma.GroupCreateNestedOneWithoutGroupTasksInput
   subTasks?: Prisma.SubTaskCreateNestedManyWithoutTaskInput
+  closedBy?: Prisma.UserCreateNestedOneWithoutClosedTasksInput
 }
 
 export type TaskUncheckedCreateWithoutAssigneesInput = {
@@ -1006,12 +1050,12 @@ export type TaskUpdateWithoutAssigneesInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
   owner?: Prisma.UserUpdateOneRequiredWithoutTaskNestedInput
   group?: Prisma.GroupUpdateOneWithoutGroupTasksNestedInput
   subTasks?: Prisma.SubTaskUpdateManyWithoutTaskNestedInput
+  closedBy?: Prisma.UserUpdateOneWithoutClosedTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutAssigneesInput = {
@@ -1051,12 +1095,12 @@ export type TaskCreateWithoutSubTasksInput = {
   updatedAt?: Date | string
   completionPolicy?: $Enums.CompletionPolicy
   closedAt?: Date | string | null
-  closedById?: number | null
   closedReason?: string | null
   closedWithOpenAssignees?: boolean
   owner: Prisma.UserCreateNestedOneWithoutTaskInput
   group?: Prisma.GroupCreateNestedOneWithoutGroupTasksInput
   assignees?: Prisma.TaskAssigneeCreateNestedManyWithoutTaskInput
+  closedBy?: Prisma.UserCreateNestedOneWithoutClosedTasksInput
 }
 
 export type TaskUncheckedCreateWithoutSubTasksInput = {
@@ -1112,12 +1156,12 @@ export type TaskUpdateWithoutSubTasksInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
   owner?: Prisma.UserUpdateOneRequiredWithoutTaskNestedInput
   group?: Prisma.GroupUpdateOneWithoutGroupTasksNestedInput
   assignees?: Prisma.TaskAssigneeUpdateManyWithoutTaskNestedInput
+  closedBy?: Prisma.UserUpdateOneWithoutClosedTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutSubTasksInput = {
@@ -1157,12 +1201,12 @@ export type TaskCreateWithoutOwnerInput = {
   updatedAt?: Date | string
   completionPolicy?: $Enums.CompletionPolicy
   closedAt?: Date | string | null
-  closedById?: number | null
   closedReason?: string | null
   closedWithOpenAssignees?: boolean
   group?: Prisma.GroupCreateNestedOneWithoutGroupTasksInput
   subTasks?: Prisma.SubTaskCreateNestedManyWithoutTaskInput
   assignees?: Prisma.TaskAssigneeCreateNestedManyWithoutTaskInput
+  closedBy?: Prisma.UserCreateNestedOneWithoutClosedTasksInput
 }
 
 export type TaskUncheckedCreateWithoutOwnerInput = {
@@ -1198,6 +1242,61 @@ export type TaskCreateManyOwnerInputEnvelope = {
   skipDuplicates?: boolean
 }
 
+export type TaskCreateWithoutClosedByInput = {
+  title: string
+  status?: $Enums.Status
+  priority?: number
+  description?: string | null
+  location?: string | null
+  dueAtUtc?: Date | string | null
+  allDay?: boolean
+  allDayLocalDate?: Date | string | null
+  sourceTimeZone?: string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  completionPolicy?: $Enums.CompletionPolicy
+  closedAt?: Date | string | null
+  closedReason?: string | null
+  closedWithOpenAssignees?: boolean
+  owner: Prisma.UserCreateNestedOneWithoutTaskInput
+  group?: Prisma.GroupCreateNestedOneWithoutGroupTasksInput
+  subTasks?: Prisma.SubTaskCreateNestedManyWithoutTaskInput
+  assignees?: Prisma.TaskAssigneeCreateNestedManyWithoutTaskInput
+}
+
+export type TaskUncheckedCreateWithoutClosedByInput = {
+  id?: number
+  ownerId: number
+  groupId?: number | null
+  title: string
+  status?: $Enums.Status
+  priority?: number
+  description?: string | null
+  location?: string | null
+  dueAtUtc?: Date | string | null
+  allDay?: boolean
+  allDayLocalDate?: Date | string | null
+  sourceTimeZone?: string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  completionPolicy?: $Enums.CompletionPolicy
+  closedAt?: Date | string | null
+  closedReason?: string | null
+  closedWithOpenAssignees?: boolean
+  subTasks?: Prisma.SubTaskUncheckedCreateNestedManyWithoutTaskInput
+  assignees?: Prisma.TaskAssigneeUncheckedCreateNestedManyWithoutTaskInput
+}
+
+export type TaskCreateOrConnectWithoutClosedByInput = {
+  where: Prisma.TaskWhereUniqueInput
+  create: Prisma.XOR<Prisma.TaskCreateWithoutClosedByInput, Prisma.TaskUncheckedCreateWithoutClosedByInput>
+}
+
+export type TaskCreateManyClosedByInputEnvelope = {
+  data: Prisma.TaskCreateManyClosedByInput | Prisma.TaskCreateManyClosedByInput[]
+  skipDuplicates?: boolean
+}
+
 export type TaskUpsertWithWhereUniqueWithoutOwnerInput = {
   where: Prisma.TaskWhereUniqueInput
   update: Prisma.XOR<Prisma.TaskUpdateWithoutOwnerInput, Prisma.TaskUncheckedUpdateWithoutOwnerInput>
@@ -1212,6 +1311,22 @@ export type TaskUpdateWithWhereUniqueWithoutOwnerInput = {
 export type TaskUpdateManyWithWhereWithoutOwnerInput = {
   where: Prisma.TaskScalarWhereInput
   data: Prisma.XOR<Prisma.TaskUpdateManyMutationInput, Prisma.TaskUncheckedUpdateManyWithoutOwnerInput>
+}
+
+export type TaskUpsertWithWhereUniqueWithoutClosedByInput = {
+  where: Prisma.TaskWhereUniqueInput
+  update: Prisma.XOR<Prisma.TaskUpdateWithoutClosedByInput, Prisma.TaskUncheckedUpdateWithoutClosedByInput>
+  create: Prisma.XOR<Prisma.TaskCreateWithoutClosedByInput, Prisma.TaskUncheckedCreateWithoutClosedByInput>
+}
+
+export type TaskUpdateWithWhereUniqueWithoutClosedByInput = {
+  where: Prisma.TaskWhereUniqueInput
+  data: Prisma.XOR<Prisma.TaskUpdateWithoutClosedByInput, Prisma.TaskUncheckedUpdateWithoutClosedByInput>
+}
+
+export type TaskUpdateManyWithWhereWithoutClosedByInput = {
+  where: Prisma.TaskScalarWhereInput
+  data: Prisma.XOR<Prisma.TaskUpdateManyMutationInput, Prisma.TaskUncheckedUpdateManyWithoutClosedByInput>
 }
 
 export type TaskCreateManyGroupInput = {
@@ -1249,12 +1364,12 @@ export type TaskUpdateWithoutGroupInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
   owner?: Prisma.UserUpdateOneRequiredWithoutTaskNestedInput
   subTasks?: Prisma.SubTaskUpdateManyWithoutTaskNestedInput
   assignees?: Prisma.TaskAssigneeUpdateManyWithoutTaskNestedInput
+  closedBy?: Prisma.UserUpdateOneWithoutClosedTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutGroupInput = {
@@ -1322,6 +1437,27 @@ export type TaskCreateManyOwnerInput = {
   closedWithOpenAssignees?: boolean
 }
 
+export type TaskCreateManyClosedByInput = {
+  id?: number
+  ownerId: number
+  groupId?: number | null
+  title: string
+  status?: $Enums.Status
+  priority?: number
+  description?: string | null
+  location?: string | null
+  dueAtUtc?: Date | string | null
+  allDay?: boolean
+  allDayLocalDate?: Date | string | null
+  sourceTimeZone?: string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  completionPolicy?: $Enums.CompletionPolicy
+  closedAt?: Date | string | null
+  closedReason?: string | null
+  closedWithOpenAssignees?: boolean
+}
+
 export type TaskUpdateWithoutOwnerInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.EnumStatusFieldUpdateOperationsInput | $Enums.Status
@@ -1336,12 +1472,12 @@ export type TaskUpdateWithoutOwnerInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
   group?: Prisma.GroupUpdateOneWithoutGroupTasksNestedInput
   subTasks?: Prisma.SubTaskUpdateManyWithoutTaskNestedInput
   assignees?: Prisma.TaskAssigneeUpdateManyWithoutTaskNestedInput
+  closedBy?: Prisma.UserUpdateOneWithoutClosedTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutOwnerInput = {
@@ -1384,6 +1520,72 @@ export type TaskUncheckedUpdateManyWithoutOwnerInput = {
   completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
   closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   closedById?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
+}
+
+export type TaskUpdateWithoutClosedByInput = {
+  title?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumStatusFieldUpdateOperationsInput | $Enums.Status
+  priority?: Prisma.IntFieldUpdateOperationsInput | number
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dueAtUtc?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  allDay?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  allDayLocalDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTimeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
+  closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  owner?: Prisma.UserUpdateOneRequiredWithoutTaskNestedInput
+  group?: Prisma.GroupUpdateOneWithoutGroupTasksNestedInput
+  subTasks?: Prisma.SubTaskUpdateManyWithoutTaskNestedInput
+  assignees?: Prisma.TaskAssigneeUpdateManyWithoutTaskNestedInput
+}
+
+export type TaskUncheckedUpdateWithoutClosedByInput = {
+  id?: Prisma.IntFieldUpdateOperationsInput | number
+  ownerId?: Prisma.IntFieldUpdateOperationsInput | number
+  groupId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  title?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumStatusFieldUpdateOperationsInput | $Enums.Status
+  priority?: Prisma.IntFieldUpdateOperationsInput | number
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dueAtUtc?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  allDay?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  allDayLocalDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTimeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
+  closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  subTasks?: Prisma.SubTaskUncheckedUpdateManyWithoutTaskNestedInput
+  assignees?: Prisma.TaskAssigneeUncheckedUpdateManyWithoutTaskNestedInput
+}
+
+export type TaskUncheckedUpdateManyWithoutClosedByInput = {
+  id?: Prisma.IntFieldUpdateOperationsInput | number
+  ownerId?: Prisma.IntFieldUpdateOperationsInput | number
+  groupId?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  title?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.EnumStatusFieldUpdateOperationsInput | $Enums.Status
+  priority?: Prisma.IntFieldUpdateOperationsInput | number
+  description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  location?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dueAtUtc?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  allDay?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  allDayLocalDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTimeZone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  completionPolicy?: Prisma.EnumCompletionPolicyFieldUpdateOperationsInput | $Enums.CompletionPolicy
+  closedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   closedReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   closedWithOpenAssignees?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
@@ -1452,6 +1654,7 @@ export type TaskSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   group?: boolean | Prisma.Task$groupArgs<ExtArgs>
   subTasks?: boolean | Prisma.Task$subTasksArgs<ExtArgs>
   assignees?: boolean | Prisma.Task$assigneesArgs<ExtArgs>
+  closedBy?: boolean | Prisma.Task$closedByArgs<ExtArgs>
   _count?: boolean | Prisma.TaskCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["task"]>
 
@@ -1477,6 +1680,7 @@ export type TaskSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   closedWithOpenAssignees?: boolean
   owner?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   group?: boolean | Prisma.Task$groupArgs<ExtArgs>
+  closedBy?: boolean | Prisma.Task$closedByArgs<ExtArgs>
 }, ExtArgs["result"]["task"]>
 
 export type TaskSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1501,6 +1705,7 @@ export type TaskSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   closedWithOpenAssignees?: boolean
   owner?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   group?: boolean | Prisma.Task$groupArgs<ExtArgs>
+  closedBy?: boolean | Prisma.Task$closedByArgs<ExtArgs>
 }, ExtArgs["result"]["task"]>
 
 export type TaskSelectScalar = {
@@ -1531,15 +1736,18 @@ export type TaskInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   group?: boolean | Prisma.Task$groupArgs<ExtArgs>
   subTasks?: boolean | Prisma.Task$subTasksArgs<ExtArgs>
   assignees?: boolean | Prisma.Task$assigneesArgs<ExtArgs>
+  closedBy?: boolean | Prisma.Task$closedByArgs<ExtArgs>
   _count?: boolean | Prisma.TaskCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type TaskIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   owner?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   group?: boolean | Prisma.Task$groupArgs<ExtArgs>
+  closedBy?: boolean | Prisma.Task$closedByArgs<ExtArgs>
 }
 export type TaskIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   owner?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   group?: boolean | Prisma.Task$groupArgs<ExtArgs>
+  closedBy?: boolean | Prisma.Task$closedByArgs<ExtArgs>
 }
 
 export type $TaskPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1549,6 +1757,7 @@ export type $TaskPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     group: Prisma.$GroupPayload<ExtArgs> | null
     subTasks: Prisma.$SubTaskPayload<ExtArgs>[]
     assignees: Prisma.$TaskAssigneePayload<ExtArgs>[]
+    closedBy: Prisma.$UserPayload<ExtArgs> | null
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: number
@@ -1968,6 +2177,7 @@ export interface Prisma__TaskClient<T, Null = never, ExtArgs extends runtime.Typ
   group<T extends Prisma.Task$groupArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$groupArgs<ExtArgs>>): Prisma.Prisma__GroupClient<runtime.Types.Result.GetResult<Prisma.$GroupPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   subTasks<T extends Prisma.Task$subTasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$subTasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SubTaskPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   assignees<T extends Prisma.Task$assigneesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$assigneesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskAssigneePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  closedBy<T extends Prisma.Task$closedByArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$closedByArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2476,6 +2686,25 @@ export type Task$assigneesArgs<ExtArgs extends runtime.Types.Extensions.Internal
   take?: number
   skip?: number
   distinct?: Prisma.TaskAssigneeScalarFieldEnum | Prisma.TaskAssigneeScalarFieldEnum[]
+}
+
+/**
+ * Task.closedBy
+ */
+export type Task$closedByArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the User
+   */
+  select?: Prisma.UserSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the User
+   */
+  omit?: Prisma.UserOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.UserInclude<ExtArgs> | null
+  where?: Prisma.UserWhereInput
 }
 
 /**

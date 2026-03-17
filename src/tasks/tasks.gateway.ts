@@ -39,6 +39,22 @@ export class TasksGateWay implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(`task_${taskId}`).emit('taskUpdated', data);
   }
 
+  @SubscribeMessage('joinSubTask')
+  handleJoinSubTask(client: Socket, data: { taskId: any; subTaskId: any }) {
+    const room = `task_${data.taskId}_subTask_${data.subTaskId}`;
+
+    client.join(room);
+
+    console.log(`Client ${client.id} joined room: ${room}`);
+  }
+
+  broadcastSubTaskUpdate(taskId: number, subTaskId: number, data: any) {
+    console.log('Received data:', data);
+    this.server
+      .to(`task_${taskId}_subTask_${subTaskId}`)
+      .emit('subTaskUpdated', data);
+  }
+
   @SubscribeMessage('typing')
   heandleTyping(client: Socket, payload: { taskId: string; userName: string }) {
     client.to(`task_${payload.taskId}`).emit('userTyping', {
@@ -54,5 +70,27 @@ export class TasksGateWay implements OnGatewayConnection, OnGatewayDisconnect {
     client
       .to(`task_${payload.taskId}`)
       .emit('userStopTyping', { userName: payload.userName });
+  }
+
+  // --- 子任務打字提示 ---
+  @SubscribeMessage('subTyping')
+  handleSubTaskTyping(
+    client: Socket,
+    payload: { taskId: string; subTaskId: string; userName: string },
+  ) {
+    // 🚀 確保房間字串與 joinSubTask 時一致
+    const room = `task_${payload.taskId}_subTask_${payload.subTaskId}`;
+    client.to(room).emit('subUserTyping', {
+      userName: payload.userName,
+    });
+  }
+
+  @SubscribeMessage('stopSubTyping')
+  handleSubTaskStopTyping(
+    client: Socket,
+    payload: { taskId: string; subTaskId: string; userName: string },
+  ) {
+    const room = `task_${payload.taskId}_subTask_${payload.subTaskId}`;
+    client.to(room).emit('subUserStopTyping');
   }
 }
