@@ -1138,6 +1138,7 @@ export const SubTaskScalarFieldEnum = {
   sourceTimeZone: 'sourceTimeZone',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  closedReason: 'closedReason',
   closedAt: 'closedAt',
   closedById: 'closedById'
 } as const

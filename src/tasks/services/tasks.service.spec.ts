@@ -83,19 +83,6 @@ describe('TasksService', () => {
 
   const mocktaskAssignmentManager = { execute: jest.fn() };
 
-  const mockTasksGateWay = {
-    // 模擬 @WebSocketServer() server
-    server: {
-      to: jest.fn().mockReturnThis(), // 支援鏈式呼叫 .to().emit()
-      emit: jest.fn(),
-    },
-    // 模擬 Gateway 裡的方法
-    broadcastTaskUpdate: jest.fn(),
-    handleJoinRoom: jest.fn(),
-    heandleTyping: jest.fn(),
-    handleStopTyping: jest.fn(),
-  };
-
   const user: Usermodel = createMockUser();
   const lowTask: TaskModel = createMockTask();
 

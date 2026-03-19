@@ -8,7 +8,7 @@ import {
   UpdateStatusOpts,
   SubTaskWithAllDetails,
 } from '../types/tasks';
-import { AssignmentStatus, Prisma } from 'src/generated/prisma/client';
+import { AssignmentStatus, Prisma, User } from 'src/generated/prisma/client';
 
 import { TaskStatus } from '../types/enum';
 import { TasksErrors, UsersErrors } from 'src/errors';
@@ -16,6 +16,7 @@ import { TasksErrors, UsersErrors } from 'src/errors';
 import { TasksUtils } from '../tasks.util';
 import { TasksHelperService } from './helper.service';
 import { TaskAssignmentManager } from './task-assignment.service';
+import { CurrentUser } from 'src/common/types/current-user';
 /**
  * TODO:
  * 1. This service file is too big, we should separate Task and Subtask to another service.
@@ -222,52 +223,89 @@ export class SubTasksService {
     });
   }
 
-  async closeSubTask(id: number, actorId: number) {
-    // TODO:
-    // 1. Consider if it's a must to split the checking subTask logic
-    // since it's pretty much the same like updateSubTask
-    // 2. Here is no 'force close' like close the parent Task in the frontend and here
+  async closeSubTask(
+    parentId: number,
+    id: number,
+    user: CurrentUser,
+    opts?: { reason?: string },
+  ) {
     const subTask = await this.prismaService.subTask.findUnique({
       where: {
         id,
       },
-      include: {
-        task: {
-          select: {
-            id: true,
-            ownerId: true,
-            groupId: true,
-            group: {
-              select: {
-                members: { where: { userId: actorId }, select: { role: true } },
-              },
-            },
-          },
+
+      select: {
+        id: true,
+      },
+    });
+
+    if (!subTask) throw TasksErrors.TaskNotFoundError.byId(user.userId, id);
+
+    const result = await this.prismaService.$transaction(async (tx) => {
+      const updateSubTask = await tx.subTask.update({
+        where: { id },
+        data: {
+          status: TaskStatus.CLOSED,
+          closedAt: new Date(),
+          closedById: user.userId,
+          closedReason: opts?.reason ?? null,
         },
-      },
+      });
+
+      // check if this subTask belongs to actor
+      const isActorsAssignment = await tx.subTaskAssignee.findUnique({
+        where: {
+          subTaskId_assigneeId: { subTaskId: id, assigneeId: user.userId },
+        },
+        select: { status: true },
+      });
+
+      if (
+        !isActorsAssignment ||
+        isActorsAssignment.status !== AssignmentStatus.COMPLETED
+      ) {
+        await tx.subTaskAssignee.upsert({
+          where: {
+            subTaskId_assigneeId: { subTaskId: id, assigneeId: user.userId },
+          },
+          update: {
+            status: AssignmentStatus.COMPLETED, // 或是自訂一個 COMPLETED 狀態
+          },
+          create: {
+            subTaskId: id,
+            assigneeId: user.userId,
+            assignedById: user.userId, // 自己領的
+            status: AssignmentStatus.COMPLETED,
+            acceptedAt: new Date(),
+          },
+        });
+      }
+
+      await tx.subTaskAssignee.updateMany({
+        where: { subTaskId: id, status: AssignmentStatus.ACCEPTED },
+        data: { status: AssignmentStatus.DROPPED, updatedAt: new Date() },
+      });
+
+      await tx.subTaskAssignee.updateMany({
+        where: { subTaskId: id, status: AssignmentStatus.PENDING },
+        data: { status: AssignmentStatus.SKIPPED, updatedAt: new Date() },
+      });
+      return updateSubTask;
     });
-
-    if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-
-    const parentTask = subTask.task;
-    const groupMember = parentTask.group?.members[0];
-
-    if (!parentTask.groupId && parentTask.ownerId !== actorId) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    if (parentTask.groupId && !groupMember) {
-      throw TasksErrors.TaskNotFoundError.byId(actorId, id);
-    }
-
-    return this.prismaService.subTask.update({
-      where: { id },
-      data: {
-        status: TaskStatus.CLOSED,
-        closedAt: new Date(),
-        closedById: actorId,
-      },
-    });
+    this.tasksHelper.notifyTaskChange(
+      parentId,
+      user.userId,
+      user.userName,
+      'CLOSE_SUBTASK',
+    );
+    this.tasksHelper.notifySubTaskChange(
+      parentId,
+      id,
+      user.userId,
+      user.userName,
+      'CLOSE_SUBTASK',
+    );
+    return result;
   }
 
   async updateSubTaskStatus(
@@ -342,49 +380,76 @@ export class SubTasksService {
     });
   }
 
-  async restoreSubTask(id: number) {
+  async restoreSubTask(parentId: number, id: number, user: CurrentUser) {
     /**
      * A method for restore closed or archived task
      *
      * *@todo
      * Should check authentication
      */
-    return this.prismaService.subTask.update({
-      where: { id },
-      data: {
-        status: TaskStatus.OPEN,
-        closedAt: null,
-        closedById: null,
-      },
+    const result = await this.prismaService.$transaction(async (tx) => {
+      await tx.subTask.update({
+        where: { id },
+        data: {
+          status: TaskStatus.OPEN,
+          closedAt: null,
+          closedById: null,
+        },
+      });
+
+      await tx.subTaskAssignee.updateMany({
+        where: { subTaskId: id, status: AssignmentStatus.DROPPED },
+        data: { status: AssignmentStatus.ACCEPTED, updatedAt: new Date() }, // 恢復到「已接受」
+      });
+
+      await tx.subTaskAssignee.updateMany({
+        where: { subTaskId: id, status: AssignmentStatus.SKIPPED },
+        data: { status: AssignmentStatus.PENDING, updatedAt: new Date() }, // 恢復到「待處理」
+      });
     });
+
+    this.tasksHelper.notifySubTaskChange(
+      parentId,
+      id,
+      user.userId,
+      user.userName,
+      'RESTORE_SUBTASK',
+    );
+
+    this.tasksHelper.notifyTaskChange(
+      parentId,
+      user.userId,
+      user.userName,
+      'RESTORE_SUBTASK',
+    );
+    return result;
   }
 
   // subtask指派狀態更新, self-assign, claim相關
   // TODO: claim要分開
   async updateSubTaskAssigneeStatus(
-    subTaskId: number,
-    actorId: number,
+    parentId: number,
+    id: number,
+    actor: CurrentUser,
     dto: { status: AssignmentStatus; reason?: string },
-    updatedBy: string | null = null,
   ) {
     const { status: next, reason } = dto;
-    let parentTaskId: number;
 
     // 🚀 執行資料庫事務
     await this.prismaService.$transaction(async (tx) => {
       // 1. 僅獲取必要的父任務 ID (為了後續通知)
       const subTask = await tx.subTask.findUnique({
-        where: { id: subTaskId },
-        select: { taskId: true, status: true },
+        where: { id },
+        select: { status: true },
       });
 
-      if (!subTask)
-        throw TasksErrors.TaskNotFoundError.byId(actorId, subTaskId);
-      parentTaskId = subTask.taskId;
+      if (!subTask) throw TasksErrors.TaskNotFoundError.byId(actor.userId, id);
 
       // 2. 檢查指派紀錄
       const assignee = await tx.subTaskAssignee.findUnique({
-        where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
+        where: {
+          subTaskId_assigneeId: { subTaskId: id, assigneeId: actor.userId },
+        },
         select: { status: true },
       });
 
@@ -392,22 +457,36 @@ export class SubTasksService {
       if (!assignee) {
         if (next !== AssignmentStatus.ACCEPTED) {
           throw TasksErrors.TaskForbiddenError.byActorOnTask(
-            actorId,
-            subTaskId,
+            actor.userId,
+            id,
             'ASSIGNEE_STATUS_ILLEGAL_WITHOUT_ASSIGNMENT',
           );
         }
 
         await tx.subTaskAssignee.create({
           data: {
-            subTaskId,
-            assigneeId: actorId,
-            assignedById: actorId,
+            subTaskId: id,
+            assigneeId: actor.userId,
+            assignedById: actor.userId,
             status: AssignmentStatus.ACCEPTED,
             assignedAt: new Date(),
             acceptedAt: new Date(),
           },
         });
+
+        this.tasksHelper.notifySubTaskChange(
+          parentId,
+          id,
+          actor.userId,
+          actor.userName,
+          'SUBTASK_STATUS_UPDATED',
+        );
+        this.tasksHelper.notifyTaskChange(
+          parentId,
+          actor.userId,
+          actor.userName,
+          'SUBTASK_STATUS_UPDATED',
+        );
         return; // 結束 transaction
       }
 
@@ -419,24 +498,27 @@ export class SubTasksService {
       );
       if (!isLegal) {
         throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          subTaskId,
+          actor.userId,
+          id,
           `ASSIGNEE_STATUS_ILLEGAL_TRANSITION_${assignee.status}_TO_${next}`,
         );
       }
 
       // 5. 更新狀態
       await tx.subTaskAssignee.update({
-        where: { subTaskId_assigneeId: { subTaskId, assigneeId: actorId } },
+        where: {
+          subTaskId_assigneeId: { subTaskId: id, assigneeId: actor.userId },
+        },
         data: TasksUtils.getAssigneeUpdateData(next, reason),
       });
     });
 
     // 🚀 交易成功後，才發送 Socket 通知
-    this.tasksHelper.notifyTaskChange(
-      parentTaskId!,
-      actorId,
-      updatedBy!,
+    this.tasksHelper.notifySubTaskChange(
+      parentId,
+      id,
+      actor.userId,
+      actor.userName,
       'SUBTASK_STATUS_UPDATED',
     );
 
@@ -457,117 +539,118 @@ export class SubTasksService {
 
   // ------------- assignment --------------------
 
-  async updateAssigneeStatus(
-    id: number,
-    actorId: number,
-    dto: { status: AssignmentStatus; reason?: string },
-    updatedBy: string | null = null,
-  ): Promise<void> {
-    /**
-     * @TODO Refactpr request
-     * Split into `claimTask` and `updateAssignmentStatus`
-     * POST /tasks/:id/claim
-     *
-     * Updates the assignment status for a user on a specific task, handling self-claims and status reports.
-     * * This method implements a "Group Task Assignment" workflow with two primary entry points:
-     * 1. **Self-Claim (New Assignment)**: If the actor has no existing assignment for the task,
-     * they can "claim" it by setting the status to 'ACCEPTED'. This creates a new assignment record.
-     * 2. **Status Transition (Existing Assignment)**: If the actor is already assigned,
-     * the method validates the state transition (e.g., ACCEPTED -> COMPLETED) against the current
-     * task and assignment status.
-     * * @param id - The unique identifier of the task.
-     * @param actorId - The ID of the user performing the update (the actor).
-     * @param dto - The data transfer object containing:
-     * - `status`: The target AssignmentStatus the actor wants to transition to.
-     * - `reason`: An optional string explaining the status change (e.g., for declining or reporting).
-     * @param updatedBy - The display name of the actor, used for broadcasting notifications.
-     * * @returns {Promise<void>} Resolves when the transaction is successfully committed and notifications are sent.
-     * * @throws {Error} 'Task lost in transaction' if the task becomes unavailable during the atomic operation.
-     * @throws {TasksErrors.TaskForbiddenError}
-     * - Action: 'ILLEGAL_WITHOUT_ASSIGNMENT' if a non-assigned user attempts a status other than 'ACCEPTED'.
-     * - Action: 'TRANSITION_ERROR' if the status change is invalid based on current assignment or task states.
-     * - Action: 'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK' if try to update status for a non-group task
-     */
-    const { status: next, reason } = dto;
-    let shouldNotify = false;
+  //   async updateAssigneeStatus(
+  //     id: number,
+  //     actorId: number,
+  //     dto: { status: AssignmentStatus; reason?: string },
+  //     updatedBy: string | null = null,
+  //   ): Promise<void> {
+  //     /**
+  //      * @TODO Refactpr request
+  //      * Split into `claimTask` and `updateAssignmentStatus`
+  //      * POST /tasks/:id/claim
+  //      *
+  //      * Updates the assignment status for a user on a specific task, handling self-claims and status reports.
+  //      * * This method implements a "Group Task Assignment" workflow with two primary entry points:
+  //      * 1. **Self-Claim (New Assignment)**: If the actor has no existing assignment for the task,
+  //      * they can "claim" it by setting the status to 'ACCEPTED'. This creates a new assignment record.
+  //      * 2. **Status Transition (Existing Assignment)**: If the actor is already assigned,
+  //      * the method validates the state transition (e.g., ACCEPTED -> COMPLETED) against the current
+  //      * task and assignment status.
+  //      * * @param id - The unique identifier of the task.
+  //      * @param actorId - The ID of the user performing the update (the actor).
+  //      * @param dto - The data transfer object containing:
+  //      * - `status`: The target AssignmentStatus the actor wants to transition to.
+  //      * - `reason`: An optional string explaining the status change (e.g., for declining or reporting).
+  //      * @param updatedBy - The display name of the actor, used for broadcasting notifications.
+  //      * * @returns {Promise<void>} Resolves when the transaction is successfully committed and notifications are sent.
+  //      * * @throws {Error} 'Task lost in transaction' if the task becomes unavailable during the atomic operation.
+  //      * @throws {TasksErrors.TaskForbiddenError}
+  //      * - Action: 'ILLEGAL_WITHOUT_ASSIGNMENT' if a non-assigned user attempts a status other than 'ACCEPTED'.
+  //      * - Action: 'TRANSITION_ERROR' if the status change is invalid based on current assignment or task states.
+  //      * - Action: 'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK' if try to update status for a non-group task
+  //      */
+  //     const { status: next, reason } = dto;
+  //     let shouldNotify = false;
 
-    return this.prismaService.$transaction(async (tx) => {
-      // Check if task exitsts in transaction although we already checked in Guard,
-      // for making sure the data status not changed during updating
-      const task = await tx.task.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          status: true,
-          groupId: true,
-          assignees: {
-            where: { assigneeId: actorId },
-            select: { status: true },
-          },
-        },
-      });
+  //     return this.prismaService.$transaction(async (tx) => {
+  //       // Check if task exitsts in transaction although we already checked in Guard,
+  //       // for making sure the data status not changed during updating
+  //       const task = await tx.task.findUnique({
+  //         where: { id },
+  //         select: {
+  //           id: true,
+  //           status: true,
+  //           groupId: true,
+  //           assignees: {
+  //             where: { assigneeId: actorId },
+  //             select: { status: true },
+  //           },
+  //         },
+  //       });
 
-      if (!task) throw new Error('Task lost in transaction');
-      // If not group task, throw error
-      if (!task.groupId)
-        throw TasksErrors.TaskForbiddenError.byActorOnTask(
-          actorId,
-          task.id,
-          'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK',
-        );
+  //       if (!task) throw new Error('Task lost in transaction');
+  //       // If not group task, throw error
+  //       if (!task.groupId)
+  //         throw TasksErrors.TaskForbiddenError.byActorOnTask(
+  //           actorId,
+  //           task.id,
+  //           'UPDATE_ASSIGNEEE_STATUS_ON_PERSONAL_TASK',
+  //         );
 
-      const currentAssignee = task.assignees[0];
+  //       const currentAssignee = task.assignees[0];
 
-      // 1. Deal with Self-claim (when no assigned record)
-      if (!currentAssignee) {
-        if (next !== AssignmentStatus.ACCEPTED) {
-          throw TasksErrors.TaskForbiddenError.byActorOnTask(
-            actorId,
-            id,
-            'ILLEGAL_WITHOUT_ASSIGNMENT',
-          );
-        }
+  //       // 1. Deal with Self-claim (when no assigned record)
+  //       if (!currentAssignee) {
+  //         if (next !== AssignmentStatus.ACCEPTED) {
+  //           throw TasksErrors.TaskForbiddenError.byActorOnTask(
+  //             actorId,
+  //             id,
+  //             'ILLEGAL_WITHOUT_ASSIGNMENT',
+  //           );
+  //         }
 
-        await tx.taskAssignee.create({
-          data: {
-            taskId: id,
-            assigneeId: actorId,
-            assignedById: actorId,
-            status: AssignmentStatus.ACCEPTED,
-            assignedAt: new Date(),
-            acceptedAt: new Date(),
-          },
-        });
-      } else {
-        // 2. Deal with status changing (assigned record found)
-        const isLegal = TasksUtils.isValidAssignmentTransition(
-          currentAssignee.status,
-          next,
-          task.status,
-        );
-        if (!isLegal) {
-          throw TasksErrors.TaskForbiddenError.byActorOnTask(
-            actorId,
-            id,
-            `TRANSITION_ERROR`,
-          );
-        }
+  //         await tx.taskAssignee.create({
+  //           data: {
+  //             taskId: id,
+  //             assigneeId: actorId,
+  //             assignedById: actorId,
+  //             status: AssignmentStatus.ACCEPTED,
+  //             assignedAt: new Date(),
+  //             acceptedAt: new Date(),
+  //           },
+  //         });
+  //       } else {
+  //         // 2. Deal with status changing (assigned record found)
+  //         const isLegal = TasksUtils.isValidAssignmentTransition(
+  //           currentAssignee.status,
+  //           next,
+  //           task.status,
+  //         );
+  //         if (!isLegal) {
+  //           throw TasksErrors.TaskForbiddenError.byActorOnTask(
+  //             actorId,
+  //             id,
+  //             `TRANSITION_ERROR`,
+  //           );
+  //         }
 
-        await tx.taskAssignee.update({
-          where: { taskId_assigneeId: { taskId: id, assigneeId: actorId } },
-          data: TasksUtils.getAssigneeUpdateData(next, reason),
-        });
+  //         await tx.taskAssignee.update({
+  //           where: { taskId_assigneeId: { taskId: id, assigneeId: actorId } },
+  //           data: TasksUtils.getAssigneeUpdateData(next, reason),
+  //         });
 
-        shouldNotify = true;
-      }
-      if (shouldNotify) {
-        this.tasksHelper.notifyTaskChange(
-          id,
-          actorId,
-          updatedBy!,
-          'ASSIGNEE_STATUS_UPDATED',
-        );
-      }
-    });
-  }
+  //         shouldNotify = true;
+  //       }
+  //       if (shouldNotify) {
+  //         this.tasksHelper.notifySubTaskChange(
+  //           parentId,
+  //           id,
+  //           actorId,
+  //           updatedBy!,
+  //           'ASSIGNEE_STATUS_UPDATED',
+  //         );
+  //       }
+  //     });
+  //   }
 }

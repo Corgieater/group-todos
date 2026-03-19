@@ -669,7 +669,7 @@ export class TasksService {
     }
 
     // 2. Execute Transaction to update task and related assignments/sub-tasks
-    return this.prismaService.$transaction(async (tx) => {
+    const result = await this.prismaService.$transaction(async (tx) => {
       const updatedTask = await tx.task.update({
         where: { id },
         data: {
@@ -703,9 +703,10 @@ export class TasksService {
           },
         });
       }
-      this.tasksHelper.notifyTaskChange(id, actorId, userName, 'UPDATED');
       return updatedTask;
     });
+    this.tasksHelper.notifyTaskChange(id, actorId, userName, 'UPDATED');
+    return result;
   }
 
   async archiveTask(

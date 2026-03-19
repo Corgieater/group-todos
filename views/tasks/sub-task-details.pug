@@ -21,20 +21,13 @@ html(lang="en")
         const isGroup = typeof groupId !== 'undefined' && groupId !== null;
         const hasAssignees = Array.isArray(assignees) && assignees.length > 0;
         
-        // --- 權限邏輯修正 ---
+        // --- 權限邏輯 ---
         const isOwner = typeof ownerId !== 'undefined' && Number(ownerId) === Number(currentUserId);
-        
-        // 🚀 1. 誰能改標題/內容？ (如果是群組任務則全員皆可，個人任務限 Owner)
         const canEditSubTask = (isGroup || isOwner) && status === 'OPEN';
-
-        // 2. 誰能執行「強行恢復/管理」？ (僅限 Admin)
         const canFinalizeSubTask = !!isAdminish;
         
-        // 3. 檢查指派者是否全清以決定是否可直接關閉
         const allAssigneesCompleted = !assignees.some(a => ['PENDING', 'ACCEPTED'].includes(a.status));
         const subTaskCanClose = allAssigneesCompleted;
-
-        // 🚀 決定按鈕是否禁用
         const isBtnDisabled = !subTaskCanClose && !canFinalizeSubTask;
 
         const editSubModalId = `editSubTaskModal-${id}`;
@@ -49,6 +42,9 @@ html(lang="en")
               li.breadcrumb-item.active(aria-current="page") Sub-Task Details
           
           h1.h3.mb-1= title
+          #typing-indicator.text-muted.small.fw-bold.d-none
+            i.bi.bi-pencil-fill.me-1
+            span#typing-text
           .d-flex.flex-wrap.gap-2.mt-2
             span.badge(class=priorityClass) Priority: #{priorityLabel}
             span.badge(class=statusClass) Status: #{statusLabel}
@@ -66,10 +62,7 @@ html(lang="en")
                 disabled=isBtnDisabled
               )
                 i.bi.bi-check2-circle.me-1
-                if isBtnDisabled
-                  | Close (Admin Only)
-                else
-                  | Close
+                | #{isBtnDisabled ? 'Close (Admin Only)' : 'Close'}
 
             if status === 'CLOSED' && canFinalizeSubTask
               form(action=`/api/tasks/${taskId}/sub-tasks/${id}/restore`, method="POST", class="d-inline")
@@ -79,7 +72,6 @@ html(lang="en")
                   i.bi.bi-arrow-counterclockwise.me-1
                   | Reopen
 
-            //- 🚀 修改點：現在團隊所有人都能看到編輯按鈕
             if canEditSubTask
               button.btn.btn-primary(type="button" data-bs-toggle="modal" data-bs-target=`#${editSubModalId}`)
                 i.bi.bi-pencil-square.me-1
@@ -157,12 +149,7 @@ html(lang="en")
                     input(type="hidden", name="status", value="ACCEPTED")
                     button.btn.btn-outline-primary.btn-sm(type="submit")
                       i.bi.bi-hand-thumbs-up.me-1
-                      if st === 'NONE'
-                        | Claim
-                      else if st === 'COMPLETED'
-                        | Resume
-                      else
-                        | Accept
+                      | #{st === 'NONE' ? 'Claim' : (st === 'COMPLETED' ? 'Resume' : 'Accept')}
 
                 if canComplete
                   form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update/assignee-status`, method="POST", class="d-inline")
@@ -176,7 +163,7 @@ html(lang="en")
                 if canDecline
                   button.btn.btn-outline-danger.btn-sm(type="button" data-bs-toggle="modal" data-bs-target=`#${declineModalId}`)
                     i.bi.bi-x-circle.me-1
-                    = (st === 'ACCEPTED' ? 'Withdraw' : 'Decline')
+                    | #{st === 'ACCEPTED' ? 'Withdraw' : 'Decline'}
 
       // ===== Sub-task Info Card =====
       .card.shadow-sm.mb-3
@@ -189,7 +176,7 @@ html(lang="en")
 
           ul.list-group.list-group-flush
             li.list-group-item
-              strong Due:&nbsp;
+              strong Due: 
               if dueLabel
                 | #{dueLabel}
                 if allDay
@@ -197,19 +184,16 @@ html(lang="en")
               else
                 span.text-muted Not set
             li.list-group-item
-              strong Location:&nbsp;
-              if location
-                | #{location}
-              else
-                span.text-muted Not set
+              strong Location: 
+              | #{location || 'Not set'}
             li.list-group-item
-              strong Created:&nbsp; #{createdLabel}
+              strong Created: 
+              | #{createdLabel}
             li.list-group-item
-              strong Updated:&nbsp; #{updatedLabel}
+              strong Updated: 
+              | #{updatedLabel}
 
       // ===== ALL MODALS =====
-
-      // 1. Edit Sub-task Modal
       if canEditSubTask
         .modal.fade(id=editSubModalId tabindex="-1" aria-hidden="true")
           .modal-dialog.modal-lg
@@ -221,68 +205,57 @@ html(lang="en")
                 .modal-body.p-4
                   input(type="hidden" name="_csrf" value=csrfToken) 
                   .mb-3
-                    label.form-label(for="title") Title
+                    label.form-label Title
                     input#title.form-control(type="text", name="title", required, value=(title || ''))
                   .mb-3
-                    label.form-label(for="description") Description
+                    label.form-label Description
                     textarea#description.form-control(name="description", rows="3")= (description || '')
                   .row.g-3.mb-3
                     .col-sm-6
-                      label.form-label(for="dueDate") Due date
-                      input#dueDate.form-control(type="date", name="dueDate", value=(dueDateLocal || ''), min=todayISO)
+                      label.form-label Due date
+                      input.form-control(type="date", name="dueDate", value=(dueDateLocal || ''), min=todayISO)
                     .col-sm-6.d-flex.align-items-end
                       .form-check.mb-2
                         input#allDay.form-check-input(type="checkbox", name="allDay", checked=!!allDay)
-                        label.form-check-label(for="allDay") All day
+                        label.form-check-label All day
                   .mb-3#timeRow
-                    label.form-label(for="dueTime") Time
-                    input#dueTime.form-control(type="time", name="dueTime", value=(allDay ? '' : (dueTimeLocal || '')))
+                    label.form-label Time
+                    input.form-control(type="time", name="dueTime", value=(allDay ? '' : (dueTimeLocal || '')))
                   .mb-3
-                    label.form-label(for="location") Location
-                    input#location.form-control(type="text", name="location", value=(location || ''))
-                  .mb-3
-                    label.form-label(for="priority") Priority
-                    select#priority.form-select(name="priority")
-                      option(value="1", selected=(priority === 1)) Urgent
-                      option(value="2", selected=(priority === 2)) High
-                      option(value="3", selected=(priority === 3)) Medium
-                      option(value="4", selected=(priority === 4)) Low
+                    label.form-label Priority
+                    select.form-select(name="priority")
+                      each p in [{v:1, l:'Urgent'}, {v:2, l:'High'}, {v:3, l:'Medium'}, {v:4, l:'Low'}]
+                        option(value=p.v selected=(priority === p.v))= p.l
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-primary(type="submit") Save Changes
 
-      // 2. Decline/Withdraw Modal
       if isGroup
         .modal.fade(id=declineModalId tabindex="-1" aria-hidden="true")
           .modal-dialog
             .modal-content
               .modal-header.bg-danger.text-white
                 h5.modal-title Confirm Action
-                button.btn-close.btn-close-white(type="button" data-bs-dismiss="modal" aria-label="Close")
+                button.btn-close.btn-close-white(type="button" data-bs-dismiss="modal")
               form(action=`/api/tasks/${taskId}/sub-tasks/${id}/update/assignee-status`, method="POST")
                 .modal-body
-                  if typeof csrfToken !== 'undefined'
-                    input(type="hidden", name="_csrf", value=csrfToken)
-                  input(type="hidden", name="status", value="DECLINED")
+                  input(type="hidden" name="_csrf" value=csrfToken)
+                  input(type="hidden" name="status", value="DECLINED")
                   p Are you sure you want to #{viewerAssigneeStatus === 'ACCEPTED' ? 'withdraw from' : 'decline'} this sub-task? 
                 .modal-footer
                   button.btn.btn-secondary(type="button" data-bs-dismiss="modal") Cancel
                   button.btn.btn-danger(type="submit") Confirm
 
-      // 3. Forbidden Modal
       .modal.fade(id=forbiddenModalId tabindex="-1" aria-hidden="true")
         .modal-dialog
           .modal-content
             .modal-header.bg-light
-              h5.modal-title 
-                i.bi.bi-shield-lock.me-2.text-danger
-                | Action Denied
+              h5.modal-title Action Denied
               button.btn-close(type="button" data-bs-dismiss="modal")
             .modal-body.text-center.py-4
               i.bi.bi-exclamation-circle.text-warning(style="font-size: 3rem;")
               h4.mt-3 Cannot Close Sub-task
-              p.text-muted This sub-task still has active assignees who haven't completed their work.
-              p.small.text-primary Only administrators can bypass this check.
+              p.text-muted Active assignees haven't completed their work.
             .modal-footer
               button.btn.btn-primary(type="button" data-bs-dismiss="modal") Understood
 
@@ -292,56 +265,54 @@ html(lang="en")
     // ===== SCRIPTS =====
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js")
     script(src="https://cdn.socket.io/4.7.2/socket.io.min.js")
+    script(src="/js/task-socket.js")
     
     script.
-      (function () {
-        const allDay = document.getElementById('allDay');
-        const timeRow = document.getElementById('timeRow');
-        function updateTimeVisibility() {
-          if (!timeRow || !allDay) return;
-          timeRow.style.display = allDay.checked ? 'none' : '';
-        }
-        if (allDay) allDay.addEventListener('change', updateTimeVisibility);
-        updateTimeVisibility();
-      })();
-
-    script.
       (function() {
-        const socket = io();
-        const taskId = "#{taskId}";
-        const subTaskId = "#{id}";
-        const currentUserId = "#{currentUserId}";
-        const canFinalize = "#{canFinalizeSubTask}" === "true";
-        const subTaskCanClose = "#{subTaskCanClose}" === "true";
-        const forbiddenModalEl = document.getElementById("#{forbiddenModalId}");
-        const forbiddenModal = forbiddenModalEl ? new bootstrap.Modal(forbiddenModalEl) : null;
+        // 1. 初始化 Socket 連線 (使用封裝好的 initTaskSocket)
+        const socketModule = initTaskSocket({
+          taskId: "#{taskId}",
+          subTaskId: "#{id}",
+          currentUserId: "#{currentUserId}",
+          currentUserName: "#{currentUserName}",
+          csrfToken: "#{csrfToken}"
+        });
+        const socket = socketModule.socket;
 
-        socket.on('connect', () => socket.emit('joinTask', taskId));
-        socket.on('taskUpdated', (data) => { 
-          if (Number(data.actorId) !== Number(currentUserId)) {
-            window.location.reload();
-          }
+        // 2. 加入子任務專用房間
+        socket.on('connect', () => {
+          socket.emit('joinSubTask', { taskId: "#{taskId}", subTaskId: "#{id}" });
         });
 
+        // 3. 處理關閉按鈕
         const closeBtn = document.getElementById('btn-main-close');
         if (closeBtn) {
+          const canFinalize = "#{canFinalizeSubTask}" === "true";
+          const subTaskCanClose = "#{subTaskCanClose}" === "true";
+          const forbiddenModal = new bootstrap.Modal(document.getElementById("#{forbiddenModalId}"));
+
           closeBtn.addEventListener('click', async () => {
             if (!subTaskCanClose && !canFinalize) {
-              if (forbiddenModal) forbiddenModal.show();
+              forbiddenModal.show();
               return;
             }
-            try {
-              const res = await fetch(`/api/tasks/${taskId}/sub-tasks/${subTaskId}/close`, {
-                method: 'POST',
-                headers: { 
-                  'Content-Type': 'application/json',
-                  'x-csrf-token': '#{csrfToken}'
-                }
-              });
-              if (res.ok) window.location.reload();
-            } catch (e) {
-              console.error('Network error', e);
-            }
+            const res = await fetch(`/api/tasks/#{taskId}/sub-tasks/#{id}/close`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-csrf-token': '#{csrfToken}'
+              }
+            });
+            if (res.ok) window.location.reload();
           });
+        }
+
+        // 4. All Day 切換邏輯
+        const allDay = document.getElementById('allDay');
+        const timeRow = document.getElementById('timeRow');
+        if (allDay && timeRow) {
+          const update = () => timeRow.style.display = allDay.checked ? 'none' : '';
+          allDay.addEventListener('change', update);
+          update();
         }
       })();

@@ -12,6 +12,7 @@ model User {
   assignedSubTasks  SubTaskAssignee[] @relation("SubTaskAssigneeUser")
   delegatedTasks    TaskAssignee[]    @relation("AssignedByUser")
   delegatedSubTasks SubTaskAssignee[] @relation("SubTaskAssignedByUser")
+  closedTasks       Task[]            @relation("TaskClosedBy")
   closedSubTasks    SubTask[]         @relation("SubTaskClosedBy")
 
   Group       Group[]
