@@ -387,17 +387,37 @@ export class SubTasksService {
      * *@todo
      * Should check authentication
      */
-    const result = await this.prismaService.subTask.update({
-      where: { id },
-      data: {
-        status: TaskStatus.OPEN,
-        closedAt: null,
-        closedById: null,
-      },
+    const result = await this.prismaService.$transaction(async (tx) => {
+      await tx.subTask.update({
+        where: { id },
+        data: {
+          status: TaskStatus.OPEN,
+          closedAt: null,
+          closedById: null,
+        },
+      });
+
+      await tx.subTaskAssignee.updateMany({
+        where: { subTaskId: id, status: AssignmentStatus.DROPPED },
+        data: { status: AssignmentStatus.ACCEPTED, updatedAt: new Date() }, // 恢復到「已接受」
+      });
+
+      await tx.subTaskAssignee.updateMany({
+        where: { subTaskId: id, status: AssignmentStatus.SKIPPED },
+        data: { status: AssignmentStatus.PENDING, updatedAt: new Date() }, // 恢復到「待處理」
+      });
     });
+
     this.tasksHelper.notifySubTaskChange(
       parentId,
       id,
+      user.userId,
+      user.userName,
+      'RESTORE_SUBTASK',
+    );
+
+    this.tasksHelper.notifyTaskChange(
+      parentId,
       user.userId,
       user.userName,
       'RESTORE_SUBTASK',

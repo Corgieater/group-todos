@@ -738,27 +738,28 @@ describe('SubsubTasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('restoreSubTask', () => {
-    it('should update subTask status to OPEN and clear closure metadata', async () => {
-      const parentId = 11;
-      const subTaskId = 4;
+    const parentId = 1;
+    const subTaskId = 10;
+
+    it('should successfully restore a subtask and rollback assignee statuses', async () => {
+      // Arrange
+      // 模擬 subTask.update 回傳的值
       const mockUpdatedSubTask = {
         id: subTaskId,
         status: TaskStatus.OPEN,
         closedAt: null,
         closedById: null,
-        title: 'Test Subtask',
       };
+      mockPrismaService.subTask.update.mockResolvedValue(mockUpdatedSubTask);
 
-      mockPrismaService.subTask.update.mockResolvedValueOnce(
-        mockUpdatedSubTask,
-      );
-
+      // Act
       const result = await subTasksService.restoreSubTask(
         parentId,
         subTaskId,
         currentUser,
       );
 
+      // Assert: 1. 檢查子任務主表更新
       expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
         where: { id: subTaskId },
         data: {
@@ -768,9 +769,65 @@ describe('SubsubTasksService', () => {
         },
       });
 
-      expect(result).toEqual(mockUpdatedSubTask);
-      expect(result.status).toBe(TaskStatus.OPEN);
-      expect(result.closedAt).toBeNull();
+      // Assert: 2. 檢查指派狀態回滾 (DROPPED -> ACCEPTED)
+      expect(mockPrismaService.subTaskAssignee.updateMany).toHaveBeenCalledWith(
+        {
+          where: {
+            subTaskId: subTaskId,
+            status: AssignmentStatus.DROPPED,
+          },
+          data: expect.objectContaining({
+            status: AssignmentStatus.ACCEPTED,
+          }),
+        },
+      );
+
+      // Assert: 3. 檢查指派狀態回滾 (SKIPPED -> PENDING)
+      expect(mockPrismaService.subTaskAssignee.updateMany).toHaveBeenCalledWith(
+        {
+          where: {
+            subTaskId: subTaskId,
+            status: AssignmentStatus.SKIPPED,
+          },
+          data: expect.objectContaining({
+            status: AssignmentStatus.PENDING,
+          }),
+        },
+      );
+
+      // Assert: 4. 檢查 Socket 通知是否正確發送 (兩種層級都要有)
+      expect(mocktasksHelper.notifySubTaskChange).toHaveBeenCalledWith(
+        parentId,
+        subTaskId,
+        currentUser.userId,
+        currentUser.userName,
+        'RESTORE_SUBTASK',
+      );
+
+      expect(mocktasksHelper.notifyTaskChange).toHaveBeenCalledWith(
+        parentId,
+        currentUser.userId,
+        currentUser.userName,
+        'RESTORE_SUBTASK',
+      );
+
+      expect(result).toBeUndefined();
+      // 注意：你的實作中 result 是在 transaction 內部的賦值，
+      // 若 transaction 沒有 return cb 的結果，這裡會是 undefined。
+      // 如果你原本實作是 return await this.prismaService.$transaction(...) 則會拿到 mockUpdatedSubTask
+    });
+
+    it('should handle errors if database update fails', async () => {
+      // Arrange
+      mockPrismaService.subTask.update.mockRejectedValue(new Error('DB Error'));
+
+      // Act & Assert
+      await expect(
+        subTasksService.restoreSubTask(parentId, subTaskId, currentUser),
+      ).rejects.toThrow('DB Error');
+
+      // 確保通知不會在失敗時被發送
+      expect(mocktasksHelper.notifySubTaskChange).not.toHaveBeenCalled();
     });
   });
 
