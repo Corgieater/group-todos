@@ -238,6 +238,7 @@ export class TasksPageController {
 
       // 🚀 關鍵 3：taskId 使用路徑參數的 taskId，確保麵包屑導航正確
       taskId: taskId,
+      id,
       todayISO: new Date().toISOString().slice(0, 10),
 
       // --- 📋 指派狀態與領取控制 ---
@@ -251,6 +252,7 @@ export class TasksPageController {
       // 這裡我們假設子任務的關閉權限直接看 assignees 狀態（Pug 裡面已經有算 subTaskCanClose）
       groupMembers,
       currentUserId: user.userId,
+      currentUserName: user.userName,
     });
   }
 

@@ -238,11 +238,11 @@ describe('TasksController', () => {
   describe('close', () => {
     it('should redirect on successful traditional form submission', async () => {
       const req = { headers: {} } as any; // Not an AJAX request
-      await tasksController.close(66, {}, currentUser, taskContext, res, req);
+      await tasksController.close({}, currentUser, taskContext, res, req);
 
       expect(mockTasksService.closeTask).toHaveBeenCalledWith(
         {
-          id: 66,
+          id: 1,
           isAdminish: true,
           isOwner: true,
           userId: 1,
@@ -250,13 +250,12 @@ describe('TasksController', () => {
         },
         { reason: undefined },
       );
-      expect(res.redirect).toHaveBeenCalledWith('/tasks/66');
+      expect(res.redirect).toHaveBeenCalledWith('/tasks/1');
     });
 
     it('should return JSON 200 on successful AJAX request', async () => {
       const req = { headers: { accept: 'application/json' } } as any;
       await tasksController.close(
-        66,
         { reason: 'Done' },
         currentUser,
         taskContext,
@@ -275,7 +274,7 @@ describe('TasksController', () => {
       };
       mockTasksService.closeTask.mockRejectedValueOnce(forceCloseError);
       const req = { headers: { accept: 'application/json' } } as any;
-      await tasksController.close(66, {}, currentUser, taskContext, res, req);
+      await tasksController.close({}, currentUser, taskContext, res, req);
 
       expect(res.status).toHaveBeenCalledWith(HttpStatus.FORBIDDEN);
       expect(res.json).toHaveBeenCalledWith({
@@ -293,7 +292,7 @@ describe('TasksController', () => {
       mockTasksService.closeTask.mockRejectedValueOnce(forbiddenError);
 
       const req = { headers: { accept: 'application/json' } } as any;
-      await tasksController.close(66, {}, currentUser, taskContext, res, req);
+      await tasksController.close({}, currentUser, taskContext, res, req);
 
       expect(res.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
       expect(res.json).toHaveBeenCalledWith({

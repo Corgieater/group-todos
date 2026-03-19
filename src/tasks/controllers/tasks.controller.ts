@@ -122,7 +122,6 @@ export class TasksController {
   @Post(':id/close')
   @UseGuards(TaskMemberGuard)
   async close(
-    @Param('id', ParseIntPipe) id: number,
     @Body() body: { reason?: string },
     @GetCurrentUser() user: CurrentUser,
     @GetTaskContext() ctx: TaskContext,
@@ -130,7 +129,7 @@ export class TasksController {
     @Req() req: Request, // 引入 Request 以檢查 Header
   ) {
     const closeCtx = {
-      id,
+      id: ctx.task.id,
       userId: user.userId,
       userName: user.userName,
       isOwner: ctx.isOwner,
@@ -147,7 +146,7 @@ export class TasksController {
       }
 
       // 如果是傳統 Form 提交，則重導向
-      return res.redirect(`/tasks/${id}`);
+      return res.redirect(`/tasks/${ctx.task.id}`);
     } catch (error) {
       console.log('Caught Error:', error);
 
@@ -184,7 +183,7 @@ export class TasksController {
 
       // 如果是傳統頁面跳轉出錯，可以導回原頁面並帶上錯誤訊息（這部分視你的 flash message 實作而定）
       return res.redirect(
-        `/tasks/${id}?error=${encodeURIComponent(error.message)}`,
+        `/tasks/${ctx.task.id}?error=${encodeURIComponent(error.message)}`,
       );
     }
   }

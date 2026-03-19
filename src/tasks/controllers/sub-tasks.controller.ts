@@ -78,16 +78,22 @@ export class SubTasksController {
   }
 
   @Post(':id/close')
+  @SetMetadata('taskParamName', 'taskId')
+  @UseGuards(TaskMemberGuard)
+  @UseGuards(SubTaskExistsGuard)
   async close(
     @Req() req: Request,
+    @Body() body: { reason?: string },
     @GetCurrentUser() user: CurrentUser,
-    @Param('taskId') taskId: number,
-    @Param('id', ParseIntPipe) id: number,
+    @GetTaskContext() taskCtx: TaskContext,
+    @GetSubTaskContext() subTask: SubTask,
     @Res() res: Response,
   ) {
-    await this.subTasksService.closeSubTask(id, user.userId);
+    await this.subTasksService.closeSubTask(taskCtx.task.id, subTask.id, user, {
+      reason: body.reason,
+    });
     setSession(req, 'success', 'Sub-task closed.');
-    return res.redirect(`/tasks/${taskId}/sub-tasks/${id}`);
+    return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);
   }
 
   // edit
@@ -120,11 +126,16 @@ export class SubTasksController {
   @UseGuards(SubTaskExistsGuard)
   async restoreSubTask(
     @Req() req: Request,
+    @GetCurrentUser() user: CurrentUser,
     @GetTaskContext() taskCtx: TaskContext,
     @GetSubTaskContext() subTask: SubTask,
     @Res() res: Response,
   ) {
-    await this.subTasksService.restoreSubTask(subTask.id);
+    await this.subTasksService.restoreSubTask(
+      taskCtx.task.id,
+      subTask.id,
+      user,
+    );
     setSession(req, 'success', 'Sub-task has been restored.');
     return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);
   }
@@ -143,10 +154,10 @@ export class SubTasksController {
     @Res() res: Response,
   ) {
     await this.subTasksService.updateSubTaskAssigneeStatus(
+      taskCtx.task.id,
       subTask.id,
-      user.userId,
+      user,
       dto,
-      user.userName,
     );
     setSession(req, 'success', 'Status has been changed.');
     return res.redirect(`/tasks/${taskCtx.task.id}/sub-tasks/${subTask.id}`);

@@ -14,6 +14,7 @@ import { createMockTask } from 'src/test/factories/mock-task.factory';
 import { TasksHelperService } from './helper.service';
 import { TaskAssignmentManager } from './task-assignment.service';
 import { TasksUtils } from '../tasks.util';
+import { CurrentUser } from 'src/common/types/current-user';
 
 describe('SubsubTasksService', () => {
   let subTasksService: SubTasksService;
@@ -56,6 +57,8 @@ describe('SubsubTasksService', () => {
       create: jest.fn(),
       update: jest.fn(),
       findMany: jest.fn(),
+      upsert: jest.fn(),
+      updateMany: jest.fn(),
     },
     $transaction: jest.fn().mockImplementation(async (cb: any) => {
       const tx = {
@@ -71,6 +74,7 @@ describe('SubsubTasksService', () => {
 
   const mocktasksHelper = {
     notifyTaskChange: jest.fn(),
+    notifySubTaskChange: jest.fn(),
   };
   const mockTaskAssignmentManager = {
     execute: jest.fn(),
@@ -78,6 +82,12 @@ describe('SubsubTasksService', () => {
 
   const user: Usermodel = createMockUser();
   const lowTask: TaskModel = createMockTask();
+  const currentUser: CurrentUser = {
+    userId: user.id,
+    userName: user.name,
+    email: user.email,
+    timeZone: user.timeZone,
+  };
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -480,81 +490,126 @@ describe('SubsubTasksService', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('closeSubTask', () => {
-    const actorId = 1;
-    const subTaskId = 10;
+    const parentId = 100;
+    const subTaskId = 200;
+    const mockCurrentUser = {
+      userId: 1,
+      userName: 'testUser',
+      timeZone: 'Asia/Taipei',
+    };
 
-    it('should successfully close a subtask and record closer info', async () => {
-      // 1. 準備模擬資料
-      const mockSubTask = {
-        id: subTaskId,
-        title: 'Test SubTask',
-        status: 'OPEN',
-        task: {
-          groupId: 1,
-          group: { members: [{ userId: actorId, role: 'MEMBER' }] },
-        },
-      };
+    it('should throw TaskNotFoundError if subTask does not exist', async () => {
+      // Arrange: 模擬資料庫找不到該子任務
+      mockPrismaService.subTask.findUnique.mockResolvedValue(null);
 
-      // 2. Mock 查詢與更新
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(mockSubTask);
-      mockPrismaService.subTask.update.mockResolvedValueOnce({
-        ...mockSubTask,
-        status: TaskStatus.CLOSED,
-        closedById: actorId,
-        closedAt: new Date(),
-      });
+      // Act & Assert
+      await expect(
+        subTasksService.closeSubTask(
+          parentId,
+          subTaskId,
+          mockCurrentUser as any,
+        ),
+      ).rejects.toThrow(TasksErrors.TaskNotFoundError);
 
-      // 3. 執行測試
-      const result = await subTasksService.closeSubTask(subTaskId, actorId);
-
-      // 4. 斷言檢查
-      expect(mockPrismaService.subTask.findUnique).toHaveBeenCalledWith({
-        where: {
-          id: subTaskId,
-        },
-        include: {
-          task: {
-            select: {
-              id: true,
-              ownerId: true,
-              groupId: true,
-              group: {
-                select: {
-                  members: {
-                    where: { userId: actorId },
-                    select: { role: true },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
-        where: { id: subTaskId },
-        data: {
-          status: TaskStatus.CLOSED,
-          closedAt: expect.any(Date),
-          closedById: actorId,
-        },
-      });
-
-      expect(result.status).toBe(TaskStatus.CLOSED);
-      expect(result.closedById).toBe(actorId);
+      // 驗證沒進到交易流程
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
 
-    it('should throw TaskNotFoundError if the subtask does not exist', async () => {
-      // 模擬找不到任務
-      mockPrismaService.subTask.findUnique.mockResolvedValueOnce(null);
+    it('should successfully close subTask and self-claim if actor is not yet completed', async () => {
+      // Arrange
+      // 1. 模擬基礎檢查通過
+      mockPrismaService.subTask.findUnique.mockResolvedValue({ id: subTaskId });
+      // 2. 模擬更新子任務成功
+      const mockUpdatedSubTask = { id: subTaskId, status: TaskStatus.CLOSED };
+      mockPrismaService.subTask.update.mockResolvedValue(mockUpdatedSubTask);
+      // 3. 模擬使用者目前並非完成者
+      mockPrismaService.subTaskAssignee.findUnique.mockResolvedValue(null);
 
-      // 執行並檢查錯誤
-      await expect(
-        subTasksService.closeSubTask(subTaskId, actorId),
-      ).rejects.toThrow();
+      // Act
+      const result = await subTasksService.closeSubTask(
+        parentId,
+        subTaskId,
+        mockCurrentUser as any,
+        { reason: 'Mission accomplished' },
+      );
 
-      // 確保沒有執行後續的 update
-      expect(mockPrismaService.subTask.update).not.toHaveBeenCalled();
+      // Assert
+      // 驗證子任務狀態更新
+      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
+        where: { id: subTaskId },
+        data: expect.objectContaining({
+          status: TaskStatus.CLOSED,
+          closedById: mockCurrentUser.userId,
+          closedReason: 'Mission accomplished',
+        }),
+      });
+
+      // 驗證觸發了自我認領 (upsert)
+      expect(mockPrismaService.subTaskAssignee.upsert).toHaveBeenCalled();
+
+      // 驗證清理了其他人的狀態 (ACCEPTED -> DROPPED, PENDING -> SKIPPED)
+      expect(
+        mockPrismaService.subTaskAssignee.updateMany,
+      ).toHaveBeenCalledTimes(2);
+      expect(mockPrismaService.subTaskAssignee.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { subTaskId, status: AssignmentStatus.ACCEPTED },
+        }),
+      );
+
+      // 驗證 Socket 通知
+      expect(mocktasksHelper.notifyTaskChange).toHaveBeenCalledWith(
+        parentId,
+        mockCurrentUser.userId,
+        mockCurrentUser.userName,
+        'CLOSE_SUBTASK',
+      );
+
+      expect(result).toEqual(mockUpdatedSubTask);
+    });
+
+    it('should not call upsert if actor is already in COMPLETED status', async () => {
+      // Arrange
+      mockPrismaService.subTask.findUnique.mockResolvedValue({ id: subTaskId });
+      // 模擬使用者已經是 COMPLETED
+      mockPrismaService.subTaskAssignee.findUnique.mockResolvedValue({
+        status: AssignmentStatus.COMPLETED,
+      });
+
+      // Act
+      await subTasksService.closeSubTask(
+        parentId,
+        subTaskId,
+        mockCurrentUser as any,
+      );
+
+      // Assert
+      // 應該只查詢，不更新 (因為 if 條件不成立)
+      expect(mockPrismaService.subTaskAssignee.upsert).not.toHaveBeenCalled();
+      // 但其他的清理動作還是要執行
+      expect(mockPrismaService.subTaskAssignee.updateMany).toHaveBeenCalled();
+    });
+
+    it('should handle missing reason by setting it to null', async () => {
+      // Arrange
+      mockPrismaService.subTask.findUnique.mockResolvedValue({ id: subTaskId });
+      mockPrismaService.subTaskAssignee.findUnique.mockResolvedValue(null);
+
+      // Act
+      await subTasksService.closeSubTask(
+        parentId,
+        subTaskId,
+        mockCurrentUser as any,
+      );
+
+      // Assert
+      expect(mockPrismaService.subTask.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            closedReason: null,
+          }),
+        }),
+      );
     });
   });
 
@@ -684,6 +739,7 @@ describe('SubsubTasksService', () => {
 
   describe('restoreSubTask', () => {
     it('should update subTask status to OPEN and clear closure metadata', async () => {
+      const parentId = 11;
       const subTaskId = 4;
       const mockUpdatedSubTask = {
         id: subTaskId,
@@ -697,7 +753,11 @@ describe('SubsubTasksService', () => {
         mockUpdatedSubTask,
       );
 
-      const result = await subTasksService.restoreSubTask(subTaskId);
+      const result = await subTasksService.restoreSubTask(
+        parentId,
+        subTaskId,
+        currentUser,
+      );
 
       expect(mockPrismaService.subTask.update).toHaveBeenCalledWith({
         where: { id: subTaskId },
@@ -720,6 +780,7 @@ describe('SubsubTasksService', () => {
 
   describe('updateSubTaskAssigneeStatus', () => {
     const actorId = 1;
+    const parentId = 11;
     const subTaskId = 10;
     const groupId = 2;
     const taskId = 100;
@@ -750,9 +811,14 @@ describe('SubsubTasksService', () => {
       });
 
       // 執行
-      await subTasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-        status: AssignmentStatus.ACCEPTED,
-      });
+      await subTasksService.updateSubTaskAssigneeStatus(
+        parentId,
+        subTaskId,
+        currentUser,
+        {
+          status: AssignmentStatus.ACCEPTED,
+        },
+      );
 
       // 斷言：檢查是否正確建立了指派紀錄 (Claim)
       expect(mockPrismaService.subTaskAssignee.create).toHaveBeenCalledWith({
@@ -788,9 +854,14 @@ describe('SubsubTasksService', () => {
       });
 
       // 執行
-      await subTasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-        status: AssignmentStatus.COMPLETED,
-      });
+      await subTasksService.updateSubTaskAssigneeStatus(
+        parentId,
+        subTaskId,
+        currentUser,
+        {
+          status: AssignmentStatus.COMPLETED,
+        },
+      );
 
       // 斷言：檢查是否呼叫了 update 並帶入正確的時間戳記 (由 getAssigneeUpdateData 產生)
       expect(mockPrismaService.subTaskAssignee.update).toHaveBeenCalledWith({
@@ -813,9 +884,14 @@ describe('SubsubTasksService', () => {
 
       // 嘗試在沒有紀錄的情況下直接傳送 COMPLETED
       await expect(
-        subTasksService.updateSubTaskAssigneeStatus(subTaskId, actorId, {
-          status: AssignmentStatus.COMPLETED,
-        }),
+        subTasksService.updateSubTaskAssigneeStatus(
+          parentId,
+          subTaskId,
+          currentUser,
+          {
+            status: AssignmentStatus.COMPLETED,
+          },
+        ),
       ).rejects.toThrow();
       // 這裡會拋出 TasksErrors.TaskForbiddenError
     });
