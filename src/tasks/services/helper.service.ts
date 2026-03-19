@@ -46,4 +46,20 @@ export class TasksHelperService {
       actorId,
     });
   }
+
+  async notifySubTaskChange(
+    taskId: number,
+    subTaskId: number,
+    actorId: number,
+    updatedBy: string | undefined,
+    type: string,
+  ) {
+    this.tasksGateway.broadcastSubTaskUpdate(taskId, subTaskId, {
+      type,
+      taskId,
+      subTaskId,
+      userName: updatedBy,
+      actorId,
+    });
+  }
 }
